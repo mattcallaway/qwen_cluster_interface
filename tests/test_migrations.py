@@ -34,11 +34,12 @@ def test_fresh_database_reaches_latest_version(tmp_path):
     conn = _connect(tmp_path / "fresh.db")
     create_baseline_schema(conn)
     applied = mig.apply_migrations(conn)
-    assert applied == [1]
+    assert applied == [1, 2]
     assert mig.current_version(conn) == mig.latest_version()
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     for t in ("projects", "project_paths", "path_stages", "knowledge_metadata",
-              "knowledge_relations", "project_decisions"):
+              "knowledge_relations", "project_decisions", "task_dependencies",
+              "deliverables", "deliverable_revisions", "task_execution_events", "path_revisions"):
         assert t in tables
 
 
@@ -50,7 +51,7 @@ def test_existing_v0_data_preserved(tmp_path):
     after = dict(conn.execute("SELECT * FROM tasks WHERE id='task-legacy01'").fetchone())
     for k, v in before.items():
         assert after[k] == v, f"column {k} changed"
-    for new_col in ("project_id", "path_id", "stage_id", "purpose", "expected_output", "completion_criteria"):
+    for new_col in ("project_id", "path_id", "stage_id", "purpose", "expected_output", "completion_criteria", "deliverable_id"):
         assert after[new_col] is None
     assert conn.execute("SELECT count(*) FROM users").fetchone()[0] == 1
     assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
@@ -67,10 +68,39 @@ def test_fts5_still_works_after_migration(tmp_path):
 def test_migrations_are_idempotent(tmp_path):
     conn = _connect(tmp_path / "idem.db")
     create_baseline_schema(conn)
-    assert mig.apply_migrations(conn) == [1]
+    assert mig.apply_migrations(conn) == [1, 2]
     assert mig.apply_migrations(conn) == []
     create_baseline_schema(conn)  # startup re-runs baseline CREATE IF NOT EXISTS safely
+    assert mig.current_version(conn) == 2
+
+
+def test_upgrade_from_v1_to_v2(tmp_path):
+    conn = _connect(tmp_path / "v1.db")
+    create_baseline_schema(conn)
+    # Apply only M1
+    applied1 = mig.apply_migrations(conn, [mig.MIGRATIONS[0]])
+    assert applied1 == [1]
     assert mig.current_version(conn) == 1
+
+    # Insert sample M1 project and decision
+    conn.execute("INSERT INTO projects (id, name, status, owner, knowledge_dir, created_at, updated_at, last_activity_at) VALUES ('prj-1','P1','draft','admin','projects/p1','2026-01-01','2026-01-01','2026-01-01')")
+    conn.execute("INSERT INTO project_decisions (id, project_id, decision_type, rationale, decided_by, decided_at) VALUES ('dec-1','prj-1','project_status_change','init','admin','2026-01-01')")
+    conn.commit()
+
+    # Now upgrade with full migrations suite
+    applied2 = mig.apply_migrations(conn)
+    assert applied2 == [2]
+    assert mig.current_version(conn) == 2
+
+    # Verify M1 data preserved and new decision types allowed
+    assert conn.execute("SELECT name FROM projects WHERE id='prj-1'").fetchone()[0] == "P1"
+    assert conn.execute("SELECT rationale FROM project_decisions WHERE id='dec-1'").fetchone()[0] == "init"
+    # Insert M2 decision type
+    conn.execute("INSERT INTO project_decisions (id, project_id, decision_type, rationale, decided_by, decided_at) VALUES ('dec-2','prj-1','deliverable_acceptance','looks great','admin','2026-01-02')")
+    conn.commit()
+    assert conn.execute("SELECT count(*) FROM project_decisions WHERE project_id='prj-1'").fetchone()[0] == 2
+    assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+    assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
 
 def test_failed_migration_rolls_back_completely(tmp_path):

@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import get_csrf_token, get_current_user, verify_csrf
+from app.services import deliverables as ds
 from app.services import knowledge_meta as km
 from app.services import projects as ps
 from app.services import tasks as ts
@@ -15,7 +16,7 @@ from app.services.knowledge import list_all_notes
 router = APIRouter(tags=["projects"])
 templates = Jinja2Templates(directory="app/templates")
 
-TABS = ("overview", "paths", "tasks", "knowledge")
+TABS = ("overview", "paths", "tasks", "deliverables", "knowledge")
 
 
 def _to(pid: Optional[str] = None, tab: str = "overview", err: str = "", msg: str = "") -> RedirectResponse:
@@ -83,9 +84,18 @@ def project_detail(request: Request, project_id: str, tab: str = "overview",
 
     paths = ps.list_paths(project_id)
     stages_by_path = {p["id"]: ps.list_stages(p["id"]) for p in paths}
+    deliverables = ds.list_deliverables(project_id)
+    deliverable_names = {d["id"]: d["name"] for d in deliverables}
+    stage_gates = {s["id"]: ps.evaluate_stage_gate(project_id, s["id"]) for ss in stages_by_path.values() for s in ss}
+    path_revisions = {p["id"]: ps.list_path_revisions(p["id"]) for p in paths}
+    deliverable_revisions = {d["id"]: ds.list_deliverable_revisions(d["id"]) for d in deliverables}
+
     tasks = ts.get_project_tasks(project_id)
     for t in tasks:
         t["problems"] = ts.validate_project_task_dispatch(t) if t["status"] in ("draft", "awaiting_approval") else []
+        t["dependencies"] = ts.get_task_dependencies(t["id"])
+        t["dependents"] = ts.get_task_dependents(t["id"])
+        t["execution_events"] = ts.list_task_execution_events(t["id"])
     knowledge = km.list_project_knowledge(project_id)
     parent = ps.get_project(project["parent_id"]) if project["parent_id"] else None
     path_names = {p["id"]: p["name"] for p in paths}
@@ -97,6 +107,10 @@ def project_detail(request: Request, project_id: str, tab: str = "overview",
         "parent": parent, "children": ps.list_children(project_id),
         "candidate_parents": [p for p in ps.list_projects() if p["id"] != project_id],
         "paths": paths, "stages_by_path": stages_by_path, "path_names": path_names, "stage_names": stage_names,
+        "deliverables": deliverables, "deliverable_names": deliverable_names,
+        "deliverable_types": ds.DELIVERABLE_TYPES, "deliverable_statuses": ds.DELIVERABLE_STATUSES,
+        "deliverable_revisions": deliverable_revisions, "stage_gates": stage_gates,
+        "path_revisions": path_revisions,
         "path_evidence": {p["id"]: km.list_relations_for_target("path", p["id"]) for p in paths},
         "path_transitions": ps.PATH_TRANSITIONS, "path_selectable": ps.PATH_SELECTABLE,
         "path_editable": ps.PATH_EDITABLE, "path_terminal": ps.PATH_TERMINAL,
@@ -105,6 +119,7 @@ def project_detail(request: Request, project_id: str, tab: str = "overview",
         "tasks": tasks, "knowledge": knowledge, "decisions": ps.list_decisions(project_id, 20),
         "knowledge_types": km.KNOWLEDGE_TYPES, "origins": km.ORIGINS, "trust_transitions": km.TRUST_TRANSITIONS,
         "relation_types": km.RELATION_TYPES, "untrusted_origins": km.UNTRUSTED_ORIGINS,
+        "collective_knowledge": km.list_collective_knowledge() if tab == "knowledge" else [],
         "vault_notes": list_all_notes() if tab == "knowledge" else [],
         "alert": _alert(err, msg),
     })
@@ -204,6 +219,24 @@ def path_select(request: Request, project_id: str, path_id: str, csrf_token: str
                 "Path selected as the project's active strategy.")
 
 
+@router.post("/projects/{project_id}/paths/{path_id}/revise")
+def path_revise(request: Request, project_id: str, path_id: str, csrf_token: str = Form(...),
+                revision_reason: str = Form(...), name: str = Form(""),
+                rationale: str = Form(""), assumptions: str = Form(""), risks: str = Form(""),
+                dependencies: str = Form(""), resource_requirements: str = Form(""),
+                estimated_cost: str = Form(""), estimated_effort_hours: str = Form(""),
+                expected_outcome: str = Form(""), forecast_confidence: str = Form("")):
+    user = _guard(request, csrf_token)
+    if not user:
+        return _to(project_id, "paths", err="Session expired or invalid form token.")
+    return _run(project_id, "paths", lambda: ps.revise_path(
+        project_id, path_id, user, revision_reason, name=name or None, rationale=rationale or None,
+        assumptions=assumptions or None, risks=risks or None, dependencies=dependencies or None,
+        resource_requirements=resource_requirements or None, estimated_cost=estimated_cost or None,
+        estimated_effort_hours=estimated_effort_hours or None, expected_outcome=expected_outcome or None,
+        forecast_confidence=forecast_confidence or None), "Path revised and previous snapshot archived.")
+
+
 @router.post("/projects/{project_id}/paths/{path_id}/stages/create")
 def stage_create(request: Request, project_id: str, path_id: str, csrf_token: str = Form(...),
                  name: str = Form(...), objective: str = Form(""), expected_outputs: str = Form(""),
@@ -237,13 +270,23 @@ def stage_status(request: Request, project_id: str, stage_id: str, csrf_token: s
                 f"Stage marked {new_status}.")
 
 
+@router.post("/projects/{project_id}/stages/{stage_id}/advance")
+def stage_advance(request: Request, project_id: str, stage_id: str, csrf_token: str = Form(...),
+                  rationale: str = Form("")):
+    user = _guard(request, csrf_token)
+    if not user:
+        return _to(project_id, "paths", err="Session expired or invalid form token.")
+    return _run(project_id, "paths", lambda: ps.advance_stage(project_id, stage_id, user, rationale),
+                "Stage completion gate verified and stage advanced.")
+
+
 # --- task actions ----------------------------------------------------------
 
 @router.post("/projects/{project_id}/tasks/create")
 def project_task_create(request: Request, project_id: str, csrf_token: str = Form(...), title: str = Form(...),
-                        stage_id: str = Form(""), purpose: str = Form(""), description: str = Form(""),
-                        expected_output: str = Form(""), completion_criteria: str = Form(""),
-                        task_type: str = Form("general")):
+                        stage_id: str = Form(""), deliverable_id: str = Form(""), purpose: str = Form(""),
+                        description: str = Form(""), expected_output: str = Form(""),
+                        completion_criteria: str = Form(""), task_type: str = Form("general")):
     user = _guard(request, csrf_token)
     if not user:
         return _to(project_id, "tasks", err="Session expired or invalid form token.")
@@ -261,8 +304,9 @@ def project_task_create(request: Request, project_id: str, csrf_token: str = For
 
     def _create():
         t = ts.create_task(title=title, description=description, task_type=task_type, project_id=project_id,
-                           path_id=path_id, stage_id=stage_id or None, purpose=purpose,
-                           expected_output=expected_output, completion_criteria=completion_criteria)
+                           path_id=path_id, stage_id=stage_id or None, deliverable_id=deliverable_id or None,
+                           purpose=purpose, expected_output=expected_output,
+                           completion_criteria=completion_criteria)
         if t["status"] == "draft":
             raise ps.ValidationError("Task saved as DRAFT (not dispatchable): "
                                      + " ".join(ts.validate_project_task_dispatch(t)))
@@ -295,6 +339,97 @@ def project_task_approve(request: Request, project_id: str, task_id: str, csrf_t
         problems = ts.validate_project_task_dispatch(task)
         return _to(project_id, "tasks", err="Not approved: " + (" ".join(problems) or "task is not awaiting approval."))
     return _to(project_id, "tasks", msg="Task approved and queued.")
+
+
+@router.post("/projects/{project_id}/tasks/{task_id}/dependencies/add")
+def task_dependency_add(request: Request, project_id: str, task_id: str, csrf_token: str = Form(...),
+                        depends_on_task_id: str = Form(...)):
+    user = _guard(request, csrf_token)
+    if not user:
+        return _to(project_id, "tasks", err="Session expired or invalid form token.")
+    return _run(project_id, "tasks", lambda: ts.add_task_dependency(task_id, depends_on_task_id),
+                "Prerequisite task dependency added.")
+
+
+@router.post("/projects/{project_id}/tasks/{task_id}/dependencies/remove")
+def task_dependency_remove(request: Request, project_id: str, task_id: str, csrf_token: str = Form(...),
+                           depends_on_task_id: str = Form(...)):
+    user = _guard(request, csrf_token)
+    if not user:
+        return _to(project_id, "tasks", err="Session expired or invalid form token.")
+    return _run(project_id, "tasks", lambda: ts.remove_task_dependency(task_id, depends_on_task_id),
+                "Prerequisite task dependency removed.")
+
+
+@router.post("/projects/{project_id}/tasks/{task_id}/execute")
+def task_record_execution(request: Request, project_id: str, task_id: str, csrf_token: str = Form(...),
+                          outcome: str = Form(...), attempted: str = Form(...),
+                          actual_result: str = Form(...), evidence_summary: str = Form(""),
+                          assumptions_feedback: str = Form(""), reusable_lessons: str = Form(""),
+                          error_details: str = Form(""), create_knowledge_note: str = Form("")):
+    user = _guard(request, csrf_token)
+    if not user:
+        return _to(project_id, "tasks", err="Session expired or invalid form token.")
+    make_note = bool(create_knowledge_note and create_knowledge_note not in ("0", "false", "off"))
+    return _run(project_id, "tasks", lambda: ts.record_task_execution(
+        task_id=task_id, outcome=outcome, user=user, attempted=attempted, actual_result=actual_result,
+        evidence_summary=evidence_summary, assumptions_feedback=assumptions_feedback,
+        reusable_lessons=reusable_lessons, error_details=error_details,
+        create_knowledge_note=make_note), f"Task execution recorded with outcome: {outcome}.")
+
+
+# --- deliverable actions ---------------------------------------------------
+
+@router.post("/projects/{project_id}/deliverables/create")
+def deliverable_create(request: Request, project_id: str, csrf_token: str = Form(...),
+                       name: str = Form(...), deliverable_type: str = Form("document"),
+                       stage_id: str = Form(""), description: str = Form(""),
+                       acceptance_criteria: str = Form(""), due_date: str = Form("")):
+    user = _guard(request, csrf_token)
+    if not user:
+        return _to(project_id, "deliverables", err="Session expired or invalid form token.")
+    return _run(project_id, "deliverables", lambda: ds.create_deliverable(
+        project_id, name, deliverable_type, user, stage_id=stage_id or None,
+        description=description, acceptance_criteria=acceptance_criteria, due_date=due_date or None),
+        "Deliverable planned.")
+
+
+@router.post("/projects/{project_id}/deliverables/{deliverable_id}/submit")
+def deliverable_submit(request: Request, project_id: str, deliverable_id: str, csrf_token: str = Form(...),
+                       artifact_references: str = Form(...), verification_results: str = Form("")):
+    user = _guard(request, csrf_token)
+    if not user:
+        return _to(project_id, "deliverables", err="Session expired or invalid form token.")
+    return _run(project_id, "deliverables", lambda: ds.submit_deliverable(
+        deliverable_id, user, artifact_references, verification_results),
+        "Deliverable submitted for formal review.")
+
+
+@router.post("/projects/{project_id}/deliverables/{deliverable_id}/review")
+def deliverable_review(request: Request, project_id: str, deliverable_id: str, csrf_token: str = Form(...),
+                       decision: str = Form(...), rationale: str = Form(...),
+                       verification_results: str = Form("")):
+    user = _guard(request, csrf_token)
+    if not user:
+        return _to(project_id, "deliverables", err="Session expired or invalid form token.")
+    target_status = "accepted" if decision == "accept" else ("rejected" if decision == "reject" else "changes_requested")
+    return _run(project_id, "deliverables", lambda: ds.review_deliverable(
+        deliverable_id, target_status, user, rationale, verification_results or None),
+        f"Deliverable marked as {target_status}.")
+
+
+@router.post("/projects/{project_id}/deliverables/{deliverable_id}/update")
+def deliverable_update(request: Request, project_id: str, deliverable_id: str, csrf_token: str = Form(...),
+                       name: str = Form(""), description: str = Form(""),
+                       acceptance_criteria: str = Form(""), due_date: str = Form(""),
+                       stage_id: str = Form("")):
+    user = _guard(request, csrf_token)
+    if not user:
+        return _to(project_id, "deliverables", err="Session expired or invalid form token.")
+    return _run(project_id, "deliverables", lambda: ds.update_deliverable(
+        deliverable_id, user, name=name or None, description=description or None,
+        acceptance_criteria=acceptance_criteria or None, due_date=due_date or None,
+        stage_id=stage_id or None), "Deliverable updated.")
 
 
 # --- knowledge actions -----------------------------------------------------
@@ -349,3 +484,13 @@ def project_knowledge_relate(request: Request, project_id: str, kn_id: str, csrf
     return _run(project_id, "knowledge", lambda: km.add_relation(
         kn_id, target_type, target_id, relation_type, user, note, scope_project_id=project_id),
         "Relation recorded.")
+
+
+@router.post("/projects/{project_id}/knowledge/{kn_id}/promote")
+def project_knowledge_promote(request: Request, project_id: str, kn_id: str, csrf_token: str = Form(...),
+                              rationale: str = Form("")):
+    user = _guard(request, csrf_token)
+    if not user:
+        return _to(project_id, "knowledge", err="Session expired or invalid form token.")
+    return _run(project_id, "knowledge", lambda: km.promote_to_collective(kn_id, user, rationale),
+                "Knowledge verified and promoted to Collective Memory.")

@@ -53,7 +53,14 @@ PATH_SELECTABLE = {"approved", "paused"}
 PATH_TERMINAL = {"superseded", "completed", "rejected"}
 
 STAGE_STATUSES = ["planned", "active", "blocked", "awaiting_review", "completed", "skipped"]
-# Milestone 1 only manages these; completion requires the gates introduced in Milestone 2.
+STAGE_TRANSITIONS = {
+    "planned": {"active", "skipped"},
+    "active": {"blocked", "awaiting_review", "completed"},
+    "blocked": {"active", "planned"},
+    "awaiting_review": {"active", "completed", "blocked"},
+    "completed": set(),
+    "skipped": {"planned"},
+}
 STAGE_M1_STATUSES = {"planned", "active", "blocked"}
 
 PROJECT_TEXT_FIELDS = ["description", "objective", "scope", "constraints_text", "success_criteria"]
@@ -484,22 +491,243 @@ def move_stage(project_id: str, stage_id: str, direction: str) -> None:
         _touch(conn, project_id)
 
 
+def evaluate_stage_gate(project_id: str, stage_id: str) -> Dict[str, Any]:
+    """Evaluate deterministic completion conditions for a stage (Milestone 2).
+
+    A stage completion gate is satisfied if:
+    1. All tasks belonging to the stage are completed.
+    2. All deliverables belonging to the stage are accepted.
+    3. The stage has at least one recorded completed task, accepted deliverable, or linked verified evidence.
+    """
+    conn = get_db_connection()
+    try:
+        tasks = [dict(r) for r in conn.execute(
+            "SELECT id, title, status FROM tasks WHERE stage_id = ? ORDER BY created_at ASC",
+            (stage_id,)
+        ).fetchall()]
+
+        deliverables = [dict(r) for r in conn.execute(
+            "SELECT id, name, status, deliverable_type FROM deliverables WHERE stage_id = ? ORDER BY created_at ASC",
+            (stage_id,)
+        ).fetchall()]
+
+        evidence = [dict(r) for r in conn.execute("""
+            SELECT kr.id, km.title, km.trust_status FROM knowledge_relations kr
+            JOIN knowledge_metadata km ON km.id = kr.knowledge_id
+            WHERE kr.target_type = 'stage' AND kr.target_id = ? AND km.trust_status IN ('verified', 'accepted')
+        """, (stage_id,)).fetchall()]
+
+        blocking_reasons: List[str] = []
+
+        # Check tasks
+        incomplete_tasks = [t for t in tasks if t["status"] != "completed"]
+        for t in incomplete_tasks:
+            blocking_reasons.append(f"Task '{t['title']}' is not completed (current status: {t['status']}).")
+
+        # Check deliverables
+        unaccepted_delivs = [d for d in deliverables if d["status"] != "accepted"]
+        for d in unaccepted_delivs:
+            blocking_reasons.append(f"Deliverable '{d['name']}' is not accepted (current status: {d['status']}).")
+
+        # Must have at least one verified task, deliverable, or verified evidence
+        if len(tasks) == 0 and len(deliverables) == 0 and len(evidence) == 0:
+            blocking_reasons.append("Stage has no associated tasks, deliverables, or linked verified evidence to prove completion.")
+
+        is_satisfied = len(blocking_reasons) == 0
+        gate_status = "gate_requirements_satisfied" if is_satisfied else "blocked"
+
+        return {
+            "stage_id": stage_id,
+            "is_satisfied": is_satisfied,
+            "gate_status": gate_status,
+            "tasks": tasks,
+            "deliverables": deliverables,
+            "evidence": evidence,
+            "blocking_reasons": blocking_reasons,
+        }
+    finally:
+        conn.close()
+
+
 def change_stage_status(project_id: str, stage_id: str, new_status: str) -> Dict[str, Any]:
+    """Manual stage status changes among working statuses (planned, active, blocked).
+
+    Formal completion must use advance_stage() which enforces completion gates.
+    """
     if new_status not in STAGE_M1_STATUSES:
-        raise ValidationError("Stage completion requires completion gates (Milestone 2). "
-                              "Available statuses: planned, active, blocked.")
+        raise ValidationError("Stage completion requires completion gates (use advance_stage). "
+                              "Available manual statuses: planned, active, blocked.")
     with db_transaction() as conn:
         s = _load_stage(conn, project_id, stage_id)
         if s["status"] not in STAGE_M1_STATUSES:
-            raise ValidationError(f"Stage is {s['status']} and cannot be changed in this milestone.")
+            raise ValidationError(f"Stage is {s['status']} and cannot be changed manually.")
         path = _load_path(conn, project_id, s["path_id"])
         if new_status == "active" and path["status"] != "active":
             raise ValidationError("Only stages of the project's active Path can be started.")
-        started = s["started_at"] or (_now() if new_status == "active" else None)
+        now = _now()
+        started = s["started_at"] or (now if new_status == "active" else None)
         conn.execute("UPDATE path_stages SET status=?, started_at=?, updated_at=? WHERE id=?",
-                     (new_status, started, _now(), stage_id))
+                     (new_status, started, now, stage_id))
         _touch(conn, project_id)
     return get_stage(stage_id)  # type: ignore[return-value]
+
+
+def advance_stage(
+    project_id: str,
+    stage_id: str,
+    user: str = "admin",
+    rationale: str = ""
+) -> Dict[str, Any]:
+    """Advance a stage through its completion gate to 'completed', and auto-activate the next stage."""
+    with db_transaction() as conn:
+        s = _load_stage(conn, project_id, stage_id)
+        if s["status"] == "completed":
+            raise ValidationError("Stage is already completed.")
+
+        path = _load_path(conn, project_id, s["path_id"])
+        if path["status"] != "active":
+            raise ValidationError("Only stages of the project's active Path can be advanced.")
+
+        # Strict deterministic completion gate validation
+        gate = evaluate_stage_gate(project_id, stage_id)
+        if not gate["is_satisfied"]:
+            raise ValidationError("Stage completion gate blocked: " + " ".join(gate["blocking_reasons"]))
+
+        now = _now()
+        started = s["started_at"] or now
+        conn.execute("""
+            UPDATE path_stages SET status = 'completed', started_at = ?, completed_at = ?, updated_at = ?
+            WHERE id = ?
+        """, (started, now, now, stage_id))
+
+        decision_type = "stage_advancement"
+        rat = rationale.strip() or f"Stage '{s['name']}' completion gate passed and stage completed."
+        record_decision(
+            conn,
+            project_id,
+            decision_type,
+            rat,
+            user,
+            subject_id=stage_id,
+            from_value=s["status"],
+            to_value="completed"
+        )
+
+        # If completed, find if there is an immediately following planned stage on the same active Path
+        next_stg = conn.execute("""
+            SELECT id, name, status FROM path_stages
+            WHERE path_id = ? AND position > ? AND status = 'planned'
+            ORDER BY position ASC LIMIT 1
+        """, (s["path_id"], s["position"])).fetchone()
+        if next_stg:
+            conn.execute("UPDATE path_stages SET status = 'active', started_at = ?, updated_at = ? WHERE id = ?",
+                         (now, now, next_stg["id"]))
+            record_decision(
+                conn,
+                project_id,
+                "stage_status_change",
+                f"Automatically activated following completion of stage '{s['name']}'",
+                user,
+                subject_id=next_stg["id"],
+                from_value="planned",
+                to_value="active"
+            )
+
+        _touch(conn, project_id)
+
+    return get_stage(stage_id)  # type: ignore[return-value]
+
+
+# --- Path Revisions (Milestone 2) -------------------------------------------
+
+def revise_path(
+    project_id: str,
+    path_id: str,
+    user: str,
+    revision_reason: str,
+    name: Optional[str] = None,
+    rationale: Optional[str] = None,
+    assumptions: Optional[str] = None,
+    risks: Optional[str] = None,
+    dependencies: Optional[str] = None,
+    resource_requirements: Optional[str] = None,
+    estimated_cost: Optional[str] = None,
+    estimated_effort_hours: Optional[str] = None,
+    expected_outcome: Optional[str] = None,
+    forecast_confidence: Optional[str] = None
+) -> Dict[str, Any]:
+    """Revise a Path, snapshotting previous estimates and strategic assumptions into history."""
+    clean_reason = _text(revision_reason, "Revision reason", required=True)
+    with db_transaction() as conn:
+        p = _load_path(conn, project_id, path_id)
+        if p["status"] in PATH_TERMINAL:
+            raise ValidationError(f"Cannot revise a {p['status']} Path.")
+
+        now = _now()
+        rev_count = conn.execute(
+            "SELECT COUNT(*) FROM path_revisions WHERE path_id = ?", (path_id,)
+        ).fetchone()[0]
+
+        conn.execute("""
+            INSERT INTO path_revisions (
+                path_id, revision_number, name, rationale, assumptions, risks,
+                dependencies, resource_requirements, estimated_cost, estimated_effort_hours,
+                expected_outcome, forecast_confidence, revision_reason, revised_by, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            path_id, rev_count + 1, p["name"], p["rationale"], p["assumptions"], p["risks"],
+            p["dependencies"], p["resource_requirements"], p["estimated_cost"],
+            p["estimated_effort_hours"], p["expected_outcome"], p["forecast_confidence"],
+            clean_reason, user, now
+        ))
+
+        new_name = _text(name, "Name", NAME_MAX, required=True) if name is not None else p["name"]
+        new_rat = _text(rationale, "Strategic rationale", required=True) if rationale is not None else p["rationale"]
+        new_assump = _text(assumptions, "Assumptions") if assumptions is not None else p["assumptions"]
+        new_risks = _text(risks, "Risks") if risks is not None else p["risks"]
+        new_deps = _text(dependencies, "Dependencies") if dependencies is not None else p["dependencies"]
+        new_res = _text(resource_requirements, "Resource requirements") if resource_requirements is not None else p["resource_requirements"]
+        new_cost = _number(estimated_cost, "Estimated cost") if estimated_cost is not None else p["estimated_cost"]
+        new_effort = _number(estimated_effort_hours, "Estimated effort") if estimated_effort_hours is not None else p["estimated_effort_hours"]
+        new_outcome = _text(expected_outcome, "Expected outcome") if expected_outcome is not None else p["expected_outcome"]
+        new_conf = _number(forecast_confidence, "Forecast confidence", 0.0, 1.0) if forecast_confidence is not None else p["forecast_confidence"]
+
+        conn.execute("""
+            UPDATE project_paths SET
+                name = ?, rationale = ?, assumptions = ?, risks = ?, dependencies = ?,
+                resource_requirements = ?, estimated_cost = ?, estimated_effort_hours = ?,
+                expected_outcome = ?, forecast_confidence = ?, updated_at = ?
+            WHERE id = ?
+        """, (new_name, new_rat, new_assump, new_risks, new_deps, new_res,
+              new_cost, new_effort, new_outcome, new_conf, now, path_id))
+
+        record_decision(
+            conn,
+            project_id,
+            "path_revision",
+            clean_reason,
+            user,
+            subject_id=path_id,
+            from_value=f"rev_{rev_count}",
+            to_value=f"rev_{rev_count + 1}"
+        )
+        _touch(conn, project_id)
+
+    return get_path(path_id)  # type: ignore[return-value]
+
+
+def list_path_revisions(path_id: str) -> List[Dict[str, Any]]:
+    """Return all historical revisions of a Path."""
+    conn = get_db_connection()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM path_revisions WHERE path_id = ? ORDER BY revision_number DESC",
+            (path_id,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
 
 
 def get_stage(stage_id: str) -> Optional[Dict[str, Any]]:

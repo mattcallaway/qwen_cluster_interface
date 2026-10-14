@@ -350,3 +350,60 @@ def search_project_knowledge(project_id: str, query: str) -> List[Dict[str, Any]
                             "knowledge_type": meta["knowledge_type"], "origin": meta["origin"],
                             "link_kind": meta["link_kind"]})
     return results
+
+
+def promote_to_collective(kn_id: str, user: str, rationale: str = "") -> Dict[str, Any]:
+    """Promote verified/accepted project knowledge into collective memory.
+
+    Only knowledge in 'verified' or 'accepted' trust_status may be promoted.
+    Records a 'knowledge_promotion' decision in project_decisions.
+    """
+    with db_transaction() as conn:
+        row = conn.execute("SELECT * FROM knowledge_metadata WHERE id = ?", (kn_id,)).fetchone()
+        if not row:
+            raise NotFound("Knowledge entry not found.")
+        meta = dict(row)
+        if meta["trust_status"] not in ("verified", "accepted"):
+            raise ValidationError("Only verified or accepted knowledge can be promoted to collective memory.")
+        if meta.get("is_collective"):
+            return meta
+
+        now = _now()
+        conn.execute("""
+            UPDATE knowledge_metadata
+            SET is_collective = 1, promoted_by = ?, promoted_at = ?, updated_at = ?
+            WHERE id = ?
+        """, (user, now, now, kn_id))
+
+        if meta.get("project_id"):
+            from app.services.projects import record_decision
+            record_decision(
+                conn=conn,
+                project_id=meta["project_id"],
+                decision_type="knowledge_promotion",
+                rationale=rationale or f"Promoted knowledge '{meta['title']}' to collective memory.",
+                decided_by=user,
+                subject_id=kn_id,
+                from_value="project",
+                to_value="collective",
+                evidence_knowledge_id=kn_id,
+            )
+
+        updated = conn.execute("SELECT * FROM knowledge_metadata WHERE id = ?", (kn_id,)).fetchone()
+        return dict(updated)
+
+
+def list_collective_knowledge() -> List[Dict[str, Any]]:
+    """List all knowledge promoted to collective memory across all projects."""
+    conn = get_db_connection()
+    try:
+        rows = conn.execute("""
+            SELECT km.*, p.name AS project_name
+            FROM knowledge_metadata km
+            LEFT JOIN projects p ON p.id = km.project_id
+            WHERE km.is_collective = 1
+            ORDER BY km.promoted_at DESC
+        """).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()

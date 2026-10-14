@@ -9,7 +9,10 @@ from app.services.tasks import (
     create_task,
     approve_task,
     cancel_task,
-    get_task_counts
+    get_task_counts,
+    get_task_dependencies,
+    get_task_dependents,
+    list_task_execution_events,
 )
 
 router = APIRouter(tags=["tasks"])
@@ -68,7 +71,10 @@ def task_detail_view(request: Request, task_id: str):
         "active_nav": "tasks",
         "current_user": user,
         "csrf_token": get_csrf_token(request),
-        "task": task
+        "task": task,
+        "dependencies": get_task_dependencies(task_id),
+        "dependents": get_task_dependents(task_id),
+        "execution_events": list_task_execution_events(task_id),
     })
 
 @router.post("/tasks/{task_id}/approve")

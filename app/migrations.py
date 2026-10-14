@@ -241,9 +241,156 @@ _M1: List[str] = [
     """,
 ]
 
+# ---------------------------------------------------------------------------
+# Migration 2 — Execution and evidence (Milestone 2)
+# ---------------------------------------------------------------------------
+_M2: List[str] = [
+    # --- Task dependencies ---
+    """
+    CREATE TABLE task_dependencies (
+        task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        depends_on_task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (task_id, depends_on_task_id),
+        CHECK (task_id <> depends_on_task_id)
+    )
+    """,
+    "CREATE INDEX idx_task_deps_dep ON task_dependencies(depends_on_task_id)",
+
+    # --- Deliverables ---
+    """
+    CREATE TABLE deliverables (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id),
+        path_id TEXT REFERENCES project_paths(id),
+        stage_id TEXT REFERENCES path_stages(id),
+        name TEXT NOT NULL CHECK (length(trim(name)) BETWEEN 1 AND 200),
+        description TEXT NOT NULL DEFAULT '',
+        deliverable_type TEXT NOT NULL CHECK (deliverable_type IN (
+            'document','dataset','report','software_artifact','configuration',
+            'research_result','published_material','completed_workflow','other')),
+        acceptance_criteria TEXT NOT NULL DEFAULT '',
+        due_date TEXT,
+        status TEXT NOT NULL DEFAULT 'planned' CHECK (status IN (
+            'planned','in_progress','submitted','changes_requested','accepted','rejected')),
+        artifact_references TEXT NOT NULL DEFAULT '',
+        verification_results TEXT NOT NULL DEFAULT '',
+        acceptance_decision TEXT NOT NULL DEFAULT '',
+        accepted_by TEXT,
+        accepted_at TEXT,
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_deliverables_proj ON deliverables(project_id, status)",
+    "CREATE INDEX idx_deliverables_stage ON deliverables(stage_id)",
+
+    # --- Deliverable revision history ---
+    """
+    CREATE TABLE deliverable_revisions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        deliverable_id TEXT NOT NULL REFERENCES deliverables(id) ON DELETE CASCADE,
+        revision_number INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        artifact_references TEXT NOT NULL DEFAULT '',
+        verification_results TEXT NOT NULL DEFAULT '',
+        decision_rationale TEXT NOT NULL DEFAULT '',
+        decided_by TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_deliv_rev_del ON deliverable_revisions(deliverable_id, revision_number)",
+
+    # --- Task reference to deliverable ---
+    "ALTER TABLE tasks ADD COLUMN deliverable_id TEXT REFERENCES deliverables(id)",
+    "CREATE INDEX idx_tasks_deliverable ON tasks(deliverable_id)",
+
+    # --- Task execution operational events ---
+    """
+    CREATE TABLE task_execution_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        attempt_number INTEGER NOT NULL DEFAULT 1,
+        outcome TEXT NOT NULL CHECK (outcome IN ('completed','failed','aborted')),
+        attempted TEXT NOT NULL DEFAULT '',
+        actual_result TEXT NOT NULL DEFAULT '',
+        evidence_summary TEXT NOT NULL DEFAULT '',
+        assumptions_feedback TEXT NOT NULL DEFAULT '',
+        error_details TEXT NOT NULL DEFAULT '',
+        reusable_lessons TEXT NOT NULL DEFAULT '',
+        resulting_knowledge_id TEXT REFERENCES knowledge_metadata(id),
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_task_exec_task ON task_execution_events(task_id)",
+
+    # --- Path revision history ---
+    """
+    CREATE TABLE path_revisions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        path_id TEXT NOT NULL REFERENCES project_paths(id) ON DELETE CASCADE,
+        revision_number INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        rationale TEXT NOT NULL,
+        assumptions TEXT NOT NULL DEFAULT '',
+        risks TEXT NOT NULL DEFAULT '',
+        dependencies TEXT NOT NULL DEFAULT '',
+        resource_requirements TEXT NOT NULL DEFAULT '',
+        estimated_cost REAL,
+        estimated_effort_hours REAL,
+        expected_outcome TEXT NOT NULL DEFAULT '',
+        forecast_confidence REAL,
+        revision_reason TEXT NOT NULL,
+        revised_by TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_path_rev_path ON path_revisions(path_id, revision_number)",
+
+    # --- Knowledge promotion to collective memory ---
+    "ALTER TABLE knowledge_metadata ADD COLUMN is_collective INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE knowledge_metadata ADD COLUMN promoted_by TEXT",
+    "ALTER TABLE knowledge_metadata ADD COLUMN promoted_at TEXT",
+    "CREATE INDEX idx_kmeta_collective ON knowledge_metadata(is_collective) WHERE is_collective = 1",
+
+    # --- Rebuild project_decisions with expanded decision types ---
+    """
+    CREATE TABLE project_decisions_new (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id),
+        decision_type TEXT NOT NULL CHECK (decision_type IN (
+            'path_selection','path_status_change','project_status_change','project_parent_change',
+            'stage_advancement','stage_status_change','deliverable_acceptance','path_revision','knowledge_promotion')),
+        subject_id TEXT,
+        from_value TEXT,
+        to_value TEXT,
+        rationale TEXT NOT NULL CHECK (length(trim(rationale)) > 0),
+        decided_by TEXT NOT NULL,
+        decided_at TEXT NOT NULL,
+        evidence_knowledge_id TEXT REFERENCES knowledge_metadata(id)
+    )
+    """,
+    "INSERT INTO project_decisions_new SELECT * FROM project_decisions",
+    "DROP TABLE project_decisions",
+    "ALTER TABLE project_decisions_new RENAME TO project_decisions",
+    "CREATE INDEX idx_decisions_project ON project_decisions(project_id, decided_at)",
+    """
+    CREATE TRIGGER trg_decisions_no_update BEFORE UPDATE ON project_decisions
+    BEGIN SELECT RAISE(ABORT, 'project_decisions is append-only'); END
+    """,
+    """
+    CREATE TRIGGER trg_decisions_no_delete BEFORE DELETE ON project_decisions
+    BEGIN SELECT RAISE(ABORT, 'project_decisions is append-only'); END
+    """,
+]
+
 MIGRATIONS: List[Migration] = [
     (1, "project intelligence foundation", _M1),
+    (2, "execution and evidence", _M2),
 ]
+
 
 
 def current_version(conn: sqlite3.Connection) -> int:

@@ -89,8 +89,44 @@
           <td style="color: var(--text-muted); font-weight: 600;">Last Updated</td>
           <td style="font-size: 0.85rem;">{{ task.updated_at[:19] }}</td>
         </tr>
+        {% if task.project_id %}
+        <tr>
+          <td style="color: var(--text-muted); font-weight: 600;">Project</td>
+          <td><a href="/projects/{{ task.project_id }}?tab=tasks">{{ task.project_id }}</a></td>
+        </tr>
+        {% if task.deliverable_id %}
+        <tr>
+          <td style="color: var(--text-muted); font-weight: 600;">Deliverable</td>
+          <td><a href="/projects/{{ task.project_id }}?tab=deliverables">{{ task.deliverable_id }}</a></td>
+        </tr>
+        {% endif %}
+        {% endif %}
       </tbody>
     </table>
+
+    <div style="margin-top: 16px;">
+      <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: 6px;">Prerequisites &amp; Dependents</h4>
+      <div style="font-size: 0.85rem; margin-bottom: 8px;">
+        <strong>Must complete before this task:</strong>
+        {% if dependencies %}
+          <ul style="margin: 4px 0 6px 18px; padding: 0;">
+            {% for dep in dependencies %}
+              <li><a href="/tasks/{{ dep.id }}">{{ dep.title }}</a> <span class="badge badge-offline">{{ dep.status }}</span></li>
+            {% endfor %}
+          </ul>
+        {% else %}<span style="color: var(--text-muted);"> None</span>{% endif %}
+      </div>
+      <div style="font-size: 0.85rem;">
+        <strong>Blocked until this task completes:</strong>
+        {% if dependents %}
+          <ul style="margin: 4px 0 6px 18px; padding: 0;">
+            {% for dep in dependents %}
+              <li><a href="/tasks/{{ dep.id }}">{{ dep.title }}</a> <span class="badge badge-offline">{{ dep.status }}</span></li>
+            {% endfor %}
+          </ul>
+        {% else %}<span style="color: var(--text-muted);"> None</span>{% endif %}
+      </div>
+    </div>
   </div>
 
   <!-- Task Payload & Results -->
@@ -115,6 +151,24 @@
       <h4 style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 4px;">Result Output</h4>
       <div class="code-block">{{ task.result_data_json }}</div>
     </div>
+
+    {% if execution_events %}
+    <div style="margin-top: 16px;">
+      <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: 8px;">Execution Operational Events ({{ execution_events|length }})</h4>
+      {% for ev in execution_events %}
+        <div style="padding: 8px 10px; background: rgba(0,0,0,0.02); border-left: 3px solid var(--color-primary, #6366f1); margin-bottom: 8px; font-size: 0.83rem;">
+          <div><strong>Attempt #{{ ev.attempt_number }}</strong> — {{ ev.outcome|upper }} by {{ ev.created_by }} at {{ ev.created_at[:19] }}</div>
+          <div style="margin-top: 3px;"><strong>Attempted:</strong> {{ ev.attempted }}</div>
+          <div style="margin-top: 2px;"><strong>Result:</strong> {{ ev.actual_result }}</div>
+          {% if ev.evidence_summary %}<div><strong>Evidence:</strong> {{ ev.evidence_summary }}</div>{% endif %}
+          {% if ev.reusable_lessons %}<div><strong>Lessons:</strong> {{ ev.reusable_lessons }}</div>{% endif %}
+          {% if ev.resulting_knowledge_id %}
+            <div style="margin-top: 4px;"><span class="badge badge-online">Durable Note Created</span> ID: <code>{{ ev.resulting_knowledge_id }}</code></div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

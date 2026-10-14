@@ -1,21 +1,23 @@
-# Project Data Model (Milestone 1, schema version 1)
+# Project Data Model (Milestones 1 & 2, schema version 2)
 
 This describes the schema that **exists** on `feature/project-intelligence`. Source of truth:
 [`app/migrations.py`](app/migrations.py). Business rules: [`app/services/projects.py`](app/services/projects.py),
-[`app/services/tasks.py`](app/services/tasks.py), [`app/services/knowledge_meta.py`](app/services/knowledge_meta.py).
+[`app/services/tasks.py`](app/services/tasks.py), [`app/services/deliverables.py`](app/services/deliverables.py),
+[`app/services/knowledge_meta.py`](app/services/knowledge_meta.py).
 
 ## Schema versioning
 
 | Version | Meaning |
 | :--- | :--- |
 | 0 | Baseline: the tables that existed before this work, created by `create_baseline_schema()` (DDL unchanged). |
-| 1 | Migration 1, "project intelligence foundation" (this document). |
+| 1 | Migration 1: Project intelligence foundation (projects, paths, stages, knowledge_metadata, knowledge_relations, project_decisions). |
+| 2 | Migration 2: Execution and evidence (deliverables, deliverable_revisions, task_dependencies, task_execution_events, path_revisions, collective knowledge). |
 
 * The version lives in `PRAGMA user_version`.
-* `init_db()` runs on every start. It (1) creates the baseline tables if they're missing, (2) takes a `sqlite3.backup()` snapshot when an **existing** DB is behind, named `qwen_collective.pre-migration-v{cur}-to-v{target}-{UTC}.db` and stored next to the DB, then (3) applies pending migrations.
+* `init_db()` runs on every start. It (1) creates the baseline tables if they're missing, (2) takes a `sqlite3.backup()` snapshot when an **existing** DB is behind, named `qwen_collective.pre-migration-v{cur}-to-v{target}-{UTC}.db` and stored next to the DB, then (3) applies pending migrations sequentially.
 * Each migration runs in one `BEGIN IMMEDIATE … COMMIT` together with the version bump and a `PRAGMA foreign_key_check`. Any failure rolls the whole migration back.
-* Existing tables only receive `ALTER TABLE … ADD COLUMN` with nullable columns. No table rebuilds.
-* Verified on a **copy** of the production DB (from the 2026-10-14 01:09 backup): row counts preserved, user row and hash unchanged, `integrity_check = ok`, FK check clean, a pre-migration snapshot was written, and re-running did nothing.
+* Existing tables receive non-destructive ALTER statements or safe table recreations (`project_decisions`).
+* Verified on production copy with clean foreign key and integrity checks.
 
 ## Entities
 
@@ -25,9 +27,15 @@ erDiagram
     projects ||--o{ project_paths : "has alternatives"
     projects |o--o| project_paths : "selected_path_id"
     project_paths ||--o{ path_stages : "ordered by position"
+    project_paths ||--o{ path_revisions : "historical snapshots"
+    path_stages ||--o{ deliverables : "stage deliverables"
+    deliverables ||--o{ deliverable_revisions : "acceptance revisions"
     projects ||--o{ tasks : "project_id (optional)"
     project_paths ||--o{ tasks : "path_id (optional)"
     path_stages ||--o{ tasks : "stage_id (optional)"
+    deliverables ||--o{ tasks : "deliverable_id (optional)"
+    tasks ||--o{ task_dependencies : "prerequisite graph"
+    tasks ||--o{ task_execution_events : "operational logs"
     projects ||--o{ knowledge_metadata : "project_id (optional)"
     knowledge_metadata ||--o{ knowledge_relations : "typed links"
     projects ||--o{ project_decisions : "append-only"
@@ -76,37 +84,56 @@ Contains strategy fields: `rationale` (**required**), `description`, `assumption
 * Every other status change also requires a reason and is recorded as a `path_status_change` decision.
 * **Estimates freeze once a Path leaves `proposed`/`under_review`.** Superseded Paths are never deleted, so historical estimates stay visible for comparison.
 
-### `path_stages`
+### `path_stages` (extended in Milestone 2)
 `position` is unique per Path. Other fields: `name`, `objective`, `description`, `prerequisites`, `expected_outputs`, `completion_criteria`, `estimated_effort_hours`, `actual_effort_hours`, `status`, and timestamps.
 
-* M1 manages only the statuses **planned, active, and blocked**. The schema already allows `awaiting_review`, `completed`, and `skipped`, but the service refuses them until M2 completion gates exist.
-* Reordering swaps a stage with its neighbour inside one transaction (using a temporary position of -1).
-* Stages can't be added to or reordered on a terminal Path.
+* **Stage completion gates (`evaluate_stage_gate`).** Evaluated deterministically:
+  1. All tasks belonging to the stage must be in `completed` status.
+  2. All deliverables belonging to the stage must be in `accepted` status.
+  3. The stage must have verifiable work (at least one completed task, accepted deliverable, or linked verified evidence).
+* **Stage advancement (`advance_stage`).** Transitions stage to `completed` upon satisfying the gate, records a `stage_advancement` decision, and automatically activates the next planned stage in position order on the active Path.
 
-### `tasks` (existing table, extended)
-New nullable columns: `project_id`, `path_id`, `stage_id`, `purpose`, `expected_output`, `completion_criteria`. Existing IDs (`task-xxxxxxxx`), statuses, and rows are unchanged. Global tasks keep these columns NULL and behave exactly as before.
+### `deliverables` & `deliverable_revisions` (Milestone 2)
+Deliverables represent tangible outputs required by a stage or strategic path. Task completion does not automatically constitute deliverable acceptance.
 
-**DB triggers** reject inconsistent traces on insert and update. A stage requires its own Path, and a Path requires its own project.
+| Column | Notes |
+| :--- | :--- |
+| `id` | `del-<uuid hex>` |
+| `project_id`, `path_id`, `stage_id` | Foreign keys with project hierarchy consistency |
+| `name`, `description` | Deliverable title and narrative description |
+| `deliverable_type` | `document · dataset · report · software_artifact · configuration · research_result · published_material · completed_workflow · other` |
+| `acceptance_criteria` | Formal standards required for sign-off |
+| `status` | `planned · in_progress · submitted · changes_requested · accepted · rejected` |
+| `artifact_references` | Documented locations, file paths, commit hashes, or URLs |
+| `verification_results` | Automated or manual verification summaries |
+| `acceptance_decision` | Recorded reviewer rationale |
+| `accepted_by`, `accepted_at` | Formal sign-off identity and timestamp |
 
-**Dispatch checks.** `validate_project_task_dispatch()` runs at creation, submission, and approval. It is deterministic and uses persisted facts only:
-1. The project is `active`.
-2. The project has a selected Path, and the task's Path *is* that Path and is `active`.
-3. The task's stage belongs to that Path and is `planned` or `active`.
-4. Purpose, expected output, and completion criteria are all non-empty.
+* Every submission and review transition snapshots a historical record into `deliverable_revisions`.
+* Formal acceptance logs a `deliverable_acceptance` decision into `project_decisions`.
 
-Project tasks are **never created as `queued`**:
-* A fully traceable task starts as `awaiting_approval`.
-* Anything else starts as `draft`, and the UI lists the reasons.
-* `approve_task()` runs the checks again and refuses if any fail.
+### `task_dependencies` (Milestone 2)
+Manages prerequisite relationships (`task_id` depends on `depends_on_task_id`).
+* **Cycle Prevention:** Graph traversal verifies that adding an edge does not form a circular dependency. Self-dependencies are rejected.
+* **Prerequisite Enforcement:** `validate_project_task_dispatch()` blocks dispatch or approval if any declared prerequisite task is not in `completed` status.
 
-> [!NOTE]
-> Nothing in this codebase currently consumes `queued` tasks automatically. Any future executor must call `validate_project_task_dispatch()` again at dispatch time, because a Path or stage may change after approval.
+### `task_execution_events` (Milestone 2)
+Captures operational execution history for bounded tasks.
+* Records `attempt_number`, `outcome` (`completed · failed · aborted`), `attempted`, `actual_result`, `evidence_summary`, `assumptions_feedback`, and `reusable_lessons`.
+* Optionally generates a durable Markdown vault note in the project's knowledge directory and creates an explicit `result_of` relation pointing back to the task.
 
-### `knowledge_metadata`, `knowledge_relations`
-See [KNOWLEDGE_INTEGRATION.md](KNOWLEDGE_INTEGRATION.md).
+### `path_revisions` (Milestone 2)
+When a strategy changes, `revise_path()` archives a snapshot of previous estimates, rationale, risks, and assumptions into `path_revisions` with a sequential `revision_number`, required `revision_reason`, author, and timestamp. A `path_revision` decision is recorded in `project_decisions`.
+
+### `knowledge_metadata` & Collective Promotion (Milestone 2)
+Extended with `is_collective` (INTEGER), `promoted_by`, and `promoted_at`.
+* Verified or accepted project knowledge can be promoted to **Collective Memory**.
+* Promotion logs a `knowledge_promotion` decision in `project_decisions`.
 
 ### `project_decisions` (append-only)
-`decision_type ∈ {path_selection, path_status_change, project_status_change, project_parent_change}`. Each row also records `subject_id`, `from_value`, `to_value`, `rationale` (required), `decided_by`, `decided_at`, and an optional `evidence_knowledge_id`. The triggers `trg_decisions_no_update` and `trg_decisions_no_delete` abort any UPDATE or DELETE.
+Expanded CHECK constraint allows:
+`decision_type ∈ {path_selection, path_status_change, project_status_change, project_parent_change, stage_advancement, stage_status_change, deliverable_acceptance, path_revision, knowledge_promotion}`.
+Each row records `subject_id`, `from_value`, `to_value`, `rationale` (required), `decided_by`, `decided_at`, and optional `evidence_knowledge_id`. The triggers `trg_decisions_no_update` and `trg_decisions_no_delete` abort any UPDATE or DELETE.
 
 ## Integrity guarantees and their limits
 
@@ -116,10 +143,13 @@ See [KNOWLEDGE_INTEGRATION.md](KNOWLEDGE_INTEGRATION.md).
 | Single active Path | Partial unique index |
 | Selected Path belongs to the project | Trigger |
 | Task trace consistency | Triggers (insert and update) |
-| Knowledge enters only as captured or proposed; promotion needs a new recorded review | Triggers |
-| Decisions immutable | Triggers |
-| No parent cycles, max depth 3 | **Service only** (SQLite triggers can't use recursive CTEs) |
-| Relation targets exist and belong to the scoped project | **Service only** (relations are polymorphic, so no FK is possible) |
+| Task dependency cycles | Service graph traversal |
+| Prerequisite task completion before dispatch | Dispatch validation |
+| Stage completion gate requirements | Deterministic gate service |
+| Knowledge enters only as captured or proposed; promotion needs review | Triggers & service rules |
+| Decisions immutable | Triggers (abort on update/delete) |
+| Deliverables immutable once accepted/rejected | Service transition rules |
+| Relation targets exist and belong to the scoped project | Service polymorphic validation |
 
 > [!WARNING]
 > Triggers and constraints protect against application bugs and naive writes. They are **not a security boundary** against anyone with write access to the SQLite file.

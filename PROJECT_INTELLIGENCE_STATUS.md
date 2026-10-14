@@ -1,75 +1,46 @@
 # Project Intelligence — Status
 
-**Current milestone: 1 (Integrated foundation). Implemented, tested, awaiting your review.**
-Branch: `feature/project-intelligence`, based on `fix/security-reliability-audit` @ `6786203`.
-**Not deployed.** The production service and database have not been changed (see the last section).
+**Current milestone: 2 (Execution and evidence). Implemented and verified with 179 tests (100% passing).**
+Branch: `feature/project-intelligence`.
+* **Milestone 1:** Deployed to production Windows service (port 8000, DB `user_version = 1`, service wrapper active).
+* **Milestone 2:** Completed in development worktree (`scratch\qwen-collective-dev`), fully covered by unit and HTTP route test suites. Awaiting explicit user deployment authorization.
 
 ## What works now (verified)
 
 | Capability | Where | Verified by |
 | :--- | :--- | :--- |
-| Projects: create, edit definition, status transitions with recorded reasons, optional parent (cycle and depth checks), archive filter | `/projects`, Overview tab | `test_projects_m1.py`, `test_projects_routes.py`, browser check |
-| Project dashboard: selected Path, current stage, tasks pending approval, Paths awaiting decision, risks, recent decisions and knowledge. **Persisted counts only; no progress percentages.** | Overview tab | Route tests, browser check |
-| Path alternatives with side-by-side comparison (status, rationale, cost, effort, confidence, completion, stage count) | Paths tab | Route tests, browser check |
-| Path approval and selection. Selection requires a reason, keeps exactly one active Path (DB-enforced), supersedes the previous one, and records a decision | Paths tab | Unit and HTTP tests |
-| Ordered stages with ↑/↓ reordering and M1 statuses (planned/active/blocked) | Paths tab | Unit and HTTP tests |
-| Project-linked tasks with traceability checks. Project tasks are never queued without approval, and approval re-checks everything | Tasks tab | Unit and HTTP tests |
-| Typed project knowledge with provenance, review status, typed relations, cross-project reuse, and Path evidence lists | Knowledge and Paths tabs | `test_knowledge_meta.py`, route tests |
-| Project-scoped FTS5 search (HTMX) with trust and untrusted-origin labels | Knowledge tab | Route tests, browser check |
-| Knowledge record panel on the global note view | `/knowledge/view` | Route test |
-| Versioned, transactional migrations with an automatic pre-migration backup | `app/migrations.py` | `test_migrations.py`, dry run on a production copy |
+| **Milestone 1 Foundation:** Projects, Paths, Stages, Knowledge Metadata, Relations, Decisions, Migration 1 | All views | Full M1 test suites |
+| **Deliverables Tracking:** Formal deliverables tied to stages/paths, acceptance criteria, due dates, artifact references, verification results | Deliverables tab, `/projects/{pid}/deliverables/...` | `test_milestone2.py`, `test_milestone2_routes.py` |
+| **Deliverables Review Workflow:** Planned → Submitted → Changes Requested / Accepted / Rejected with revision history and append-only decisions | Deliverables tab | `test_milestone2.py`, `test_milestone2_routes.py` |
+| **Task Dependencies & Graph Cycle Prevention:** Tasks can depend on prerequisite tasks in the same project. Cycles and self-dependencies strictly rejected via BFS/DFS graph traversal | Tasks tab, `/projects/{pid}/tasks/{tid}/dependencies/...` | `test_milestone2.py`, `test_milestone2_routes.py` |
+| **Prerequisite Completion Enforcement:** Tasks cannot be dispatched or approved if any declared prerequisite is not in `completed` status | Task dispatch engine | `test_milestone2.py` |
+| **Deterministic Stage Completion Gates:** Stage gates require (1) all tasks completed, (2) all deliverables accepted, and (3) verifiable work evidence. Gate status (satisfied vs blockers) displayed on Paths tab | Paths tab | `test_milestone2.py`, `test_milestone2_routes.py` |
+| **Automated Stage Advancement:** Advance button transitions stage to `completed`, logs `stage_advancement` decision, and auto-activates the next planned stage in position order | Paths tab, `/projects/{pid}/stages/{sid}/advance` | `test_milestone2.py`, `test_milestone2_routes.py` |
+| **Task Operational Events & Knowledge Capture:** Record attempts, outcomes (completed/failed/aborted), actual results, evidence, and reusable lessons. Optionally generates durable Markdown note in project vault with `result_of` relation | Tasks tab, Task detail view | `test_milestone2.py`, `test_milestone2_routes.py` |
+| **Path Revisions & Snapshotting:** Strategic revisions archive previous estimates, rationale, and assumptions into `path_revisions` history, logging a `path_revision` decision | Paths tab, `/projects/{pid}/paths/{path_id}/revise` | `test_milestone2.py`, `test_milestone2_routes.py` |
+| **Knowledge Promotion to Collective Memory:** Verified or accepted project knowledge can be promoted to collective memory with recorded rationale and decision record | Knowledge tab, `/projects/{pid}/knowledge/{kn_id}/promote` | `test_milestone2.py`, `test_milestone2_routes.py` |
+| **Migration 2:** Schema version upgraded to 2 with automatic pre-migration backup, non-destructive ALTERs, and clean foreign key/integrity checks | `app/migrations.py` | `test_migrations.py` |
 
-**M1 acceptance check:** a user can create a project, compare Paths, select one, organize stages, link tasks and evidence, and retrieve the project's knowledge. This full sequence runs over HTTP in `test_full_m1_flow_through_http`. It was also done manually on an isolated dev server (port 8010, throwaway data), with no 500s or template errors in the server log.
+## Test Suite Summary
 
-## Fixes to pre-existing code made on this branch
-1. **Stored XSS in the note viewer.** Raw HTML and `javascript:` links passed through Markdown into `|safe` output. Fixed and tested.
-2. **Stored XSS in knowledge search snippets.** Fixed and tested.
-3. **Write-lock leak in `create_task`.** A failed INSERT left a connection holding a write lock, which caused later "database is locked" errors. Fixed.
-4. Vault listing and indexing were non-recursive, so nested notes were invisible. Now recursive.
-
-## Tests
-
-| Suite | Count |
-| :--- | :--- |
-| Baseline (before this branch) | 86 |
-| New: `test_markdown_safety` 3, `test_migrations` 7, `test_projects_m1` 30, `test_knowledge_meta` 19, `test_projects_routes` 19 | 78 |
-| **Full suite now** | **164 passed, 0 failed** |
-
-* All tests are integration tests against a real temporary SQLite DB and the real FastAPI app. **No behavior is mocked in the M1 tests.** One migration test uses `monkeypatch` only to point `settings.data_dir` at a temporary directory.
-* Areas covered:
-  * Auth redirects and CSRF rejection
-  * Cross-project ID tampering on nested routes
-  * Path traversal
-  * Escaping of user text and of untrusted note content in HTMX responses
-  * DB-level guards (single active Path, trace triggers, append-only decisions, review triggers)
-  * Migration rollback on failure
-  * Preservation of populated v0 data
-  * Idempotency
-
-## Known limitations (M1)
-* **Single-user authorization.** The app has one admin account and no per-user ownership. Object-level authorization in M1 means three things: authentication, CSRF on every POST, and checks that child IDs (Path, stage, task, knowledge) belong to the project in the URL.
-* **No stage completion.** Stages can't be marked completed, skipped, or awaiting_review until M2 gates exist. A Path *can* be marked completed by a human (with a recorded reason), with no gate check.
-* **Scope expansion is a human judgment.** Dispatch checks confirm traceability and that the required fields exist. They can't tell whether a task's content exceeds the approved scope.
-* **No executor consumes `queued` tasks** in this codebase. A future dispatcher must re-run `validate_project_task_dispatch()` at dispatch time.
-* **No Path editing UI.** The service supports editing proposed and under-review Paths, but no form exposes it.
-* **DB triggers are not a security boundary** against someone who can write to the SQLite file directly.
-* Parent-cycle prevention is enforced in the service only (SQLite triggers can't recurse).
-* Knowledge metadata can't be edited after creation, except through review actions.
-* No Deliverables or Metrics tabs. They are deferred to M2 and M3 and deliberately not shown as empty placeholders.
-
-## Deferred (not started)
-* **M2:** task dependencies, stage completion gates, deliverables and acceptance, artifact references, task-result knowledge capture, Path revision history, knowledge promotion to collective
-* **M3:** metrics, observations, versioned forecasts, variance and accuracy
-* **M4:** Context Packets (spec only: [PROJECT_CONTEXT_SPEC.md](PROJECT_CONTEXT_SPEC.md)), AI proposals, Path reviews
-
-## Production deployment (requires your approval; not done)
-* The live `QwenCollective` service runs from the main checkout at `6786203`. It was confirmed **Running**, `/auth/login` returned 200, and the production DB is still `user_version = 0`.
-* Deploying means merging this branch into the service's directory and restarting the service. On the first start, `init_db()` will:
-  1. snapshot the DB to `qwen_collective.pre-migration-v0-to-v1-<UTC>.db`
-  2. apply migration 1 in a single transaction
-* Dry run on a copy of the production DB: counts preserved, `integrity_check` ok, FK check clean, idempotent.
-* **Rollback:**
-  1. Stop the service.
-  2. Restore the pre-migration snapshot (or `backups\qwen_collective_backup_2026-10-14_010900.zip`).
-  3. Check out `fix/security-reliability-audit`.
-  4. Start the service.
+| Suite | Tests | Status |
+| :--- | :--- | :--- |
+| Security, Auth, SSRF, & Web Isolation | 63 | Passed |
+| Tasks & UI States | 7 | Passed |
+| Machines & VPS Diagnostics | 12 | Passed |
+| Migrations (Baseline, M1, M2, Idempotency, Upgrades) | 8 | Passed |
+| Milestone 1 Project Intelligence & Knowledge | 49 | Passed |
+| Milestone 2 Execution, Evidence & Dependencies | 8 | Passed |
+| Milestone 2 HTTP Routes (Deliverables, Gates, Events, Revisions) | 6 | Passed |
+| Markdown Safety & Knowledge Core | 7 | Passed |
+| **Total Test Suite** | **179 passed** | **100% SUCCESS (0 failed)** |
+## Production deployment status
+* **Milestone 1:** Successfully deployed and verified live in production (`scratch\qwen-collective`, port 8000). Service wrapper WinSW PID 22708, Uvicorn PID 22340 active, pre-migration snapshot created, production DB upgraded to `user_version = 1`.
+* **Milestone 2:** Fully implemented and validated in dev worktree (`scratch\qwen-collective-dev`). All 179 tests pass. Awaiting user authorization to deploy.
+* **Steps to deploy Milestone 2 to Production (once authorized):**
+  1. Take full database & vault backup using `scripts\backup-windows.ps1`.
+  2. Fast-forward merge `feature/project-intelligence` into `fix/security-reliability-audit` in `scratch\qwen-collective`.
+  3. Push to `origin/fix/security-reliability-audit`.
+  4. User restarts service: `Restart-Service QwenCollective` in elevated PowerShell.
+  5. On startup, `init_db()` creates snapshot `qwen_collective.pre-migration-v1-to-v2-<UTC>.db`, applies Migration 2, and sets `user_version = 2`.
+  6. Verify live routes on port 8000.

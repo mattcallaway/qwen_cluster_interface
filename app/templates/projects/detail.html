@@ -33,10 +33,10 @@
 </div>
 
 <div style="display:flex; gap:8px; margin-bottom:20px;">
-  {% for t in ['overview','paths','tasks','knowledge'] %}
+  {% for t in ['overview','paths','tasks','deliverables','knowledge'] %}
     <a id="tab-{{ t }}" href="/projects/{{ project.id }}?tab={{ t }}" class="btn btn-sm {% if tab == t %}btn-primary{% else %}btn-secondary{% endif %}">
       {{ t|capitalize }}
-      {% if t == 'paths' %}({{ paths|length }}){% elif t == 'tasks' %}({{ tasks|length }}){% elif t == 'knowledge' %}({{ knowledge|length }}){% endif %}
+      {% if t == 'paths' %}({{ paths|length }}){% elif t == 'tasks' %}({{ tasks|length }}){% elif t == 'deliverables' %}({{ deliverables|length }}){% elif t == 'knowledge' %}({{ knowledge|length }}){% endif %}
     </a>
   {% endfor %}
 </div>
@@ -229,7 +229,29 @@
           <div><strong>{{ s.name }}</strong> {{ badge(s.status) }}</div>
           {% if s.objective %}<div style="font-size:0.82rem;">Objective: {{ s.objective }}</div>{% endif %}
           {% if s.expected_outputs %}<div style="font-size:0.82rem;">Outputs: {{ s.expected_outputs }}</div>{% endif %}
-          <div style="font-size:0.82rem; color:var(--text-muted);">Completion criteria: {{ s.completion_criteria or 'not defined' }} · Completion gates arrive in Milestone 2</div>
+          <div style="font-size:0.82rem; color:var(--text-muted); margin-bottom:4px;">Completion criteria: {{ s.completion_criteria or 'not defined' }}</div>
+          {% set gate = stage_gates.get(s.id) %}
+          {% if gate %}
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:2px;">
+              {% if gate.satisfied %}
+                <span class="badge badge-online">Completion Gate Satisfied</span>
+                <span style="font-size:0.78rem; color:var(--text-muted);">Tasks: {{ gate.tasks_completed }}/{{ gate.tasks_total }} · Deliverables: {{ gate.deliverables_accepted }}/{{ gate.deliverables_total }} · Evidence: {{ gate.evidence_count }}</span>
+                {% if s.status != 'completed' and p.id == project.selected_path_id %}
+                <form action="/projects/{{ project.id }}/stages/{{ s.id }}/advance" method="post" style="display:inline-flex; gap:4px; align-items:center;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <input class="form-control" name="rationale" placeholder="Advancement rationale" style="padding:2px 6px; font-size:0.75rem; width:160px;" required>
+                  <button class="btn btn-primary btn-sm" type="submit" style="padding:2px 8px; font-size:0.75rem;">Advance / Complete Stage</button>
+                </form>
+                {% endif %}
+              {% else %}
+                <span class="badge badge-warning">Gate Blocked ({{ gate.blockers|length }})</span>
+                <span style="font-size:0.78rem; color:var(--text-muted);">Tasks: {{ gate.tasks_completed }}/{{ gate.tasks_total }} · Deliverables: {{ gate.deliverables_accepted }}/{{ gate.deliverables_total }}</span>
+                <div style="width:100%; font-size:0.75rem; color:#b91c1c;">
+                  {% for b in gate.blockers %}• {{ b }}{% if not loop.last %} {% endif %}{% endfor %}
+                </div>
+              {% endif %}
+            </div>
+          {% endif %}
         </div>
         {% if p.status not in path_terminal %}
         <div style="display:flex; gap:4px; align-items:center;">
@@ -279,6 +301,47 @@
       {% if r.origin in untrusted_origins %}<span class="badge badge-warning">{{ r.origin|replace('_',' ') }}</span>{% endif %}</div>
   {% endfor %}
   {% endif %}
+
+  {% set prev_revs = path_revisions.get(p.id, []) %}
+  {% if prev_revs %}
+  <h4 style="font-size:0.95rem; font-weight:600; margin:14px 0 6px;">Path Revision History ({{ prev_revs|length }})</h4>
+  <div style="font-size:0.8rem; margin-bottom:10px;">
+    {% for rev in prev_revs %}
+      <div style="padding:6px 8px; background:rgba(0,0,0,0.02); border-left:3px solid var(--color-primary, #6366f1); margin-bottom:6px;">
+        <strong>Rev #{{ rev.revision_number }}</strong> — {{ rev.created_at[:10] }} by {{ rev.revised_by }}:
+        <em>“{{ rev.revision_reason }}”</em>
+        <div style="font-size:0.74rem; color:var(--text-muted); margin-top:2px;">
+          Est. Effort: {{ rev.estimated_effort_hours or '—' }}h · Est. Cost: {{ rev.estimated_cost or '—' }} · Confidence: {{ (rev.forecast_confidence * 100)|round|int ~ '%' if rev.forecast_confidence is not none else '—' }}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if p.status not in path_terminal %}
+  <details style="margin-top:10px;"><summary style="cursor:pointer; font-size:0.88rem; font-weight:600; color:var(--color-primary, #4f46e5);">Revise Path (Archive Snapshot)</summary>
+    <form action="/projects/{{ project.id }}/paths/{{ p.id }}/revise" method="post" style="margin-top:10px; padding:12px; background:rgba(0,0,0,0.015); border:1px solid #e5e7eb; border-radius:6px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="form-group"><label class="form-label">Revision Reason * (required for audit trail)</label>
+        <input class="form-control" name="revision_reason" required maxlength="500" placeholder="e.g. Adjusted estimates based on stage findings"></div>
+      <div class="form-group"><label class="form-label">Path Name</label><input class="form-control" name="name" value="{{ p.name }}" maxlength="200"></div>
+      <div class="form-group"><label class="form-label">Strategic Rationale</label><textarea class="form-control" name="rationale" rows="2">{{ p.rationale }}</textarea></div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div class="form-group"><label class="form-label">Assumptions</label><textarea class="form-control" name="assumptions" rows="2">{{ p.assumptions or '' }}</textarea></div>
+        <div class="form-group"><label class="form-label">Risks</label><textarea class="form-control" name="risks" rows="2">{{ p.risks or '' }}</textarea></div>
+        <div class="form-group"><label class="form-label">Dependencies</label><textarea class="form-control" name="dependencies" rows="2">{{ p.dependencies or '' }}</textarea></div>
+        <div class="form-group"><label class="form-label">Resource Requirements</label><textarea class="form-control" name="resource_requirements" rows="2">{{ p.resource_requirements or '' }}</textarea></div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:12px;">
+        <div class="form-group"><label class="form-label">Est. Cost</label><input class="form-control" name="estimated_cost" value="{{ p.estimated_cost or '' }}" inputmode="decimal"></div>
+        <div class="form-group"><label class="form-label">Est. Effort (h)</label><input class="form-control" name="estimated_effort_hours" value="{{ p.estimated_effort_hours or '' }}" inputmode="decimal"></div>
+        <div class="form-group"><label class="form-label">Confidence (0-1)</label><input class="form-control" name="forecast_confidence" value="{{ p.forecast_confidence or '' }}" inputmode="decimal"></div>
+        <div class="form-group"><label class="form-label">Expected Outcome</label><input class="form-control" name="expected_outcome" value="{{ p.expected_outcome or '' }}"></div>
+      </div>
+      <button class="btn btn-secondary btn-sm" type="submit">Save Revision &amp; Snapshot Previous</button>
+    </form>
+  </details>
+  {% endif %}
 </div>
 {% endfor %}
 
@@ -312,13 +375,13 @@
 {% if tab == 'tasks' %}
 <div class="alert alert-info" style="margin-bottom:16px;">
   Project tasks are never queued directly. A task can be approved only when the project is active and the task traces to the
-  <strong>selected, active Path</strong> and a planned or active stage, with its purpose, expected output and completion criteria defined.
-  These checks run again at approval time.
+  <strong>selected, active Path</strong> and a planned or active stage, with its purpose, expected output, and completion criteria defined.
+  <strong>Milestone 2 enforcement:</strong> All declared prerequisite tasks must be in <em>completed</em> status before a task can be dispatched.
 </div>
 <div class="card" style="padding:0; margin-bottom:20px;">
   {% if tasks %}
   <div class="table-container"><table class="data-table">
-    <thead><tr><th>Status</th><th>Task</th><th>Path → Stage</th><th>Purpose / expected output</th><th>Traceability</th><th>Actions</th></tr></thead>
+    <thead><tr><th>Status</th><th>Task</th><th>Path → Stage</th><th>Deliverable &amp; Prereqs</th><th>Purpose / Expected Output</th><th>Traceability</th><th>Actions</th></tr></thead>
     <tbody>
     {% for t in tasks %}
       <tr>
@@ -326,20 +389,79 @@
         <td><a href="/tasks/{{ t.id }}" style="font-weight:600;">{{ t.title }}</a>
           <div style="font-size:0.72rem; color:var(--text-muted); font-family:var(--font-mono);">{{ t.id }}</div></td>
         <td style="font-size:0.82rem;">{{ path_names.get(t.path_id, '—') }} → {{ stage_names.get(t.stage_id, '—') }}</td>
-        <td style="font-size:0.82rem; max-width:280px;">{{ t.purpose or '—' }}<div style="color:var(--text-muted);">{{ t.expected_output or '' }}</div></td>
-        <td style="font-size:0.8rem; max-width:300px;">
+        <td style="font-size:0.8rem; max-width:240px;">
+          {% if t.deliverable_id %}
+            <div><strong>Deliverable:</strong> {{ deliverable_names.get(t.deliverable_id, t.deliverable_id) }}</div>
+          {% endif %}
+          <div style="margin-top:4px;"><strong>Prerequisites:</strong>
+            {% if t.dependencies %}
+              <ul style="margin:2px 0 4px 16px; padding:0;">
+                {% for dep in t.dependencies %}
+                  <li>{{ dep.title|truncate(30) }} {{ badge(dep.status) }}
+                    <form action="/projects/{{ project.id }}/tasks/{{ t.id }}/dependencies/remove" method="post" style="display:inline;">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="depends_on_task_id" value="{{ dep.id }}">
+                      <button type="submit" class="btn btn-secondary btn-sm" style="padding:0 3px; font-size:0.7rem; line-height:1;" title="Remove dependency">×</button>
+                    </form>
+                  </li>
+                {% endfor %}
+              </ul>
+            {% else %}<span style="color:var(--text-muted);">None</span>{% endif %}
+          </div>
+          {% if project.status not in ('completed','cancelled','archived') %}
+          <details style="margin-top:4px;"><summary style="cursor:pointer; font-size:0.75rem; color:var(--color-primary, #4f46e5);">+ Add prerequisite</summary>
+            <form action="/projects/{{ project.id }}/tasks/{{ t.id }}/dependencies/add" method="post" style="margin-top:4px; display:flex; gap:4px;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <select name="depends_on_task_id" class="form-control" style="padding:2px; font-size:0.75rem;" required>
+                <option value="">— select task —</option>
+                {% for cand in tasks if cand.id != t.id %}<option value="{{ cand.id }}">{{ cand.title|truncate(35) }} [{{ cand.status }}]</option>{% endfor %}
+              </select>
+              <button class="btn btn-secondary btn-sm" type="submit" style="padding:2px 6px; font-size:0.75rem;">Add</button>
+            </form>
+          </details>
+          {% endif %}
+        </td>
+        <td style="font-size:0.82rem; max-width:260px;">{{ t.purpose or '—' }}<div style="color:var(--text-muted);">{{ t.expected_output or '' }}</div></td>
+        <td style="font-size:0.8rem; max-width:240px;">
           {% if t.status in ('draft','awaiting_approval') %}
             {% if t.problems %}<ul style="margin:0; padding-left:16px; color:#b91c1c;">{% for pr in t.problems %}<li>{{ pr }}</li>{% endfor %}</ul>
             {% else %}<span class="badge badge-online">traceable</span>{% endif %}
-          {% else %}—{% endif %}
+          {% else %}<span class="badge badge-online">dispatched</span>{% endif %}
         </td>
-        <td>
+        <td style="min-width:180px;">
           {% if t.status == 'draft' %}
           <form action="/projects/{{ project.id }}/tasks/{{ t.id }}/submit" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button class="btn btn-secondary btn-sm" type="submit">Submit for approval</button></form>
           {% elif t.status == 'awaiting_approval' %}
           <form action="/projects/{{ project.id }}/tasks/{{ t.id }}/approve" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button class="btn btn-primary btn-sm" type="submit" {% if t.problems %}disabled title="Resolve traceability problems first"{% endif %}>Approve</button></form>
+            <button class="btn btn-primary btn-sm" type="submit" {% if t.problems %}disabled title="Resolve traceability &amp; dependency problems first"{% endif %}>Approve</button></form>
+          {% endif %}
+
+          <details style="margin-top:6px;"><summary style="cursor:pointer; font-size:0.78rem; color:var(--color-primary, #4f46e5);">Record Execution</summary>
+            <form action="/projects/{{ project.id }}/tasks/{{ t.id }}/execute" method="post" style="margin-top:6px; padding:8px; background:rgba(0,0,0,0.02); border:1px solid #e5e7eb; border-radius:4px; font-size:0.8rem;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <div class="form-group" style="margin-bottom:6px;"><label class="form-label" style="font-size:0.75rem;">Outcome *</label>
+                <select class="form-control" name="outcome" style="padding:2px 4px; font-size:0.78rem;" required>
+                  <option value="completed">Completed</option><option value="failed">Failed</option><option value="aborted">Aborted</option>
+                </select></div>
+              <div class="form-group" style="margin-bottom:6px;"><label class="form-label" style="font-size:0.75rem;">What was attempted *</label>
+                <textarea class="form-control" name="attempted" rows="2" style="font-size:0.78rem;" required></textarea></div>
+              <div class="form-group" style="margin-bottom:6px;"><label class="form-label" style="font-size:0.75rem;">Actual result *</label>
+                <textarea class="form-control" name="actual_result" rows="2" style="font-size:0.78rem;" required></textarea></div>
+              <div class="form-group" style="margin-bottom:6px;"><label class="form-label" style="font-size:0.75rem;">Evidence summary</label>
+                <input class="form-control" name="evidence_summary" style="font-size:0.78rem;"></div>
+              <div class="form-group" style="margin-bottom:6px;"><label class="form-label" style="font-size:0.75rem;">Assumptions feedback</label>
+                <input class="form-control" name="assumptions_feedback" style="font-size:0.78rem;"></div>
+              <div class="form-group" style="margin-bottom:6px;"><label class="form-label" style="font-size:0.75rem;">Reusable lessons</label>
+                <input class="form-control" name="reusable_lessons" style="font-size:0.78rem;"></div>
+              <div class="form-group" style="margin-bottom:6px;"><label style="font-size:0.75rem;"><input type="checkbox" name="create_knowledge_note" value="1" checked> Create durable vault note</label></div>
+              <button class="btn btn-secondary btn-sm" type="submit" style="width:100%; font-size:0.75rem;">Record Event</button>
+            </form>
+          </details>
+
+          {% if t.execution_events %}
+          <div style="font-size:0.72rem; color:var(--text-muted); margin-top:4px;">
+            Executions: {{ t.execution_events|length }} attempt(s).
+          </div>
           {% endif %}
         </td>
       </tr>
@@ -356,7 +478,7 @@
   <summary style="cursor:pointer; font-weight:600;">New project task</summary>
   <form action="/projects/{{ project.id }}/tasks/create" method="post" style="margin-top:14px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <div style="display:grid; grid-template-columns:2fr 1fr; gap:12px;">
+    <div style="display:grid; grid-template-columns:2fr 1fr 1fr; gap:12px;">
       <div class="form-group"><label class="form-label" for="nt_title">Title *</label><input class="form-control" id="nt_title" name="title" required maxlength="200"></div>
       <div class="form-group"><label class="form-label" for="nt_stage">Stage</label>
         <select class="form-control" id="nt_stage" name="stage_id"><option value="">— none (will be a draft) —</option>
@@ -366,6 +488,11 @@
             </optgroup>
           {% endfor %}
         </select></div>
+      <div class="form-group"><label class="form-label" for="nt_deliv">Deliverable (optional)</label>
+        <select class="form-control" id="nt_deliv" name="deliverable_id">
+          <option value="">— none —</option>
+          {% for d in deliverables %}<option value="{{ d.id }}">{{ d.name }} [{{ d.status }}]</option>{% endfor %}
+        </select></div>
     </div>
     <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
       <div class="form-group"><label class="form-label" for="nt_purpose">Purpose</label><textarea class="form-control" id="nt_purpose" name="purpose" rows="2" placeholder="How this advances the stage"></textarea></div>
@@ -374,6 +501,144 @@
     </div>
     <div class="form-group"><label class="form-label" for="nt_desc">Action description</label><textarea class="form-control" id="nt_desc" name="description" rows="2"></textarea></div>
     <button class="btn btn-primary" type="submit">Create task</button>
+  </form>
+</details>
+{% endif %}
+{% endif %}
+
+{# ============================ DELIVERABLES ============================ #}
+{% if tab == 'deliverables' %}
+<div class="alert alert-info" style="margin-bottom:16px;">
+  <strong>Deliverables vs Tasks:</strong> Task completion does not automatically constitute Deliverable acceptance.
+  Acceptance requires documented verification results, artifact references, and an explicit recorded human decision.
+  Stage completion gates require all associated deliverables to be <em>accepted</em>.
+</div>
+
+<div class="card" style="padding:0; margin-bottom:20px;">
+  <div style="padding:14px 16px 0;"><h3 class="card-title">Project Deliverables</h3>
+    <p class="card-subtitle">Formal deliverables tracked against stages and strategic paths.</p></div>
+  {% if deliverables %}
+  <div class="table-container"><table class="data-table">
+    <thead><tr><th>Status</th><th>Deliverable</th><th>Stage &amp; Path</th><th>Acceptance Criteria</th><th>Artifact References &amp; Results</th><th>Review &amp; Actions</th></tr></thead>
+    <tbody>
+    {% for d in deliverables %}
+      <tr>
+        <td>{{ badge(d.status) }}</td>
+        <td>
+          <strong style="font-size:0.95rem;">{{ d.name }}</strong>
+          <span class="badge badge-role" style="font-size:0.7rem; margin-left:4px;">{{ d.deliverable_type|replace('_',' ') }}</span>
+          <div style="font-size:0.72rem; color:var(--text-muted); font-family:var(--font-mono);">{{ d.id }}</div>
+          {% if d.description %}<div style="font-size:0.82rem; margin-top:2px;">{{ d.description }}</div>{% endif %}
+          {% if d.due_date %}<div style="font-size:0.75rem; color:var(--text-muted);">Due: {{ d.due_date }}</div>{% endif %}
+        </td>
+        <td style="font-size:0.82rem;">
+          {{ path_names.get(d.path_id, '—') }}
+          {% if d.stage_id %} → {{ stage_names.get(d.stage_id, d.stage_id) }}{% endif %}
+        </td>
+        <td style="font-size:0.82rem; max-width:240px;">
+          {{ d.acceptance_criteria or 'Not specified' }}
+          {% if d.accepted_by %}
+            <div style="font-size:0.75rem; color:var(--color-primary, #10b981); margin-top:4px;">
+              Accepted by {{ d.accepted_by }} at {{ d.accepted_at[:10] }}
+            </div>
+          {% endif %}
+        </td>
+        <td style="font-size:0.82rem; max-width:260px;">
+          {% if d.artifact_references %}
+            <div><strong>Artifacts:</strong> <span style="white-space:pre-wrap;">{{ d.artifact_references }}</span></div>
+          {% else %}<span style="color:var(--text-muted);">No artifacts submitted</span>{% endif %}
+          {% if d.verification_results %}
+            <div style="margin-top:4px;"><strong>Verification:</strong> <span style="white-space:pre-wrap;">{{ d.verification_results }}</span></div>
+          {% endif %}
+          {% if d.acceptance_decision %}
+            <div style="margin-top:4px; font-size:0.75rem; color:var(--text-muted);">
+              <strong>Latest Decision:</strong> “{{ d.acceptance_decision }}”
+            </div>
+          {% endif %}
+        </td>
+        <td style="min-width:200px;">
+          {% if d.status in ('planned', 'in_progress', 'changes_requested') %}
+          <details style="margin-bottom:6px;"><summary style="cursor:pointer; font-size:0.8rem; font-weight:600; color:var(--color-primary, #4f46e5);">Submit for Review</summary>
+            <form action="/projects/{{ project.id }}/deliverables/{{ d.id }}/submit" method="post" style="margin-top:6px; padding:8px; background:rgba(0,0,0,0.02); border:1px solid #e5e7eb; border-radius:4px; font-size:0.8rem;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <div class="form-group" style="margin-bottom:6px;"><label class="form-label" style="font-size:0.75rem;">Artifact References *</label>
+                <textarea class="form-control" name="artifact_references" rows="2" style="font-size:0.78rem;" placeholder="File paths, commit hashes, URLs, test outputs" required>{{ d.artifact_references }}</textarea></div>
+              <div class="form-group" style="margin-bottom:6px;"><label class="form-label" style="font-size:0.75rem;">Verification Results</label>
+                <textarea class="form-control" name="verification_results" rows="2" style="font-size:0.78rem;" placeholder="Test logs, benchmark metrics, validation summary">{{ d.verification_results }}</textarea></div>
+              <button class="btn btn-primary btn-sm" type="submit" style="width:100%; font-size:0.75rem;">Submit</button>
+            </form>
+          </details>
+          {% endif %}
+
+          {% if d.status == 'submitted' %}
+          <details style="margin-bottom:6px;" open><summary style="cursor:pointer; font-size:0.8rem; font-weight:600; color:var(--color-primary, #4f46e5);">Review Decision</summary>
+            <form action="/projects/{{ project.id }}/deliverables/{{ d.id }}/review" method="post" style="margin-top:6px; padding:8px; background:rgba(0,0,0,0.02); border:1px solid #e5e7eb; border-radius:4px; font-size:0.8rem;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <div class="form-group" style="margin-bottom:6px;"><label class="form-label" style="font-size:0.75rem;">Decision *</label>
+                <select class="form-control" name="decision" style="padding:2px 4px; font-size:0.78rem;" required>
+                  <option value="accept">Accept Deliverable</option>
+                  <option value="request_changes">Request Changes</option>
+                  <option value="reject">Reject</option>
+                </select></div>
+              <div class="form-group" style="margin-bottom:6px;"><label class="form-label" style="font-size:0.75rem;">Rationale *</label>
+                <textarea class="form-control" name="rationale" rows="2" style="font-size:0.78rem;" placeholder="Explain why criteria are met or what is missing" required></textarea></div>
+              <div class="form-group" style="margin-bottom:6px;"><label class="form-label" style="font-size:0.75rem;">Verification notes</label>
+                <input class="form-control" name="verification_results" value="{{ d.verification_results }}" style="font-size:0.78rem;"></div>
+              <button class="btn btn-primary btn-sm" type="submit" style="width:100%; font-size:0.75rem;">Record Decision</button>
+            </form>
+          </details>
+          {% endif %}
+
+          {% set drevs = deliverable_revisions.get(d.id, []) %}
+          {% if drevs %}
+          <details style="margin-top:4px;"><summary style="cursor:pointer; font-size:0.75rem; color:var(--text-muted);">Revisions ({{ drevs|length }})</summary>
+            <div style="font-size:0.75rem; margin-top:4px; max-height:160px; overflow-y:auto;">
+              {% for r in drevs %}
+                <div style="padding:3px 0; border-bottom:1px solid #f3f4f6;">
+                  <strong>#{{ r.revision_number }} [{{ r.status }}]</strong>: {{ r.decision_rationale }} ({{ r.decided_by }})
+                </div>
+              {% endfor %}
+            </div>
+          </details>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody></table></div>
+  {% else %}
+    <div class="empty-state" style="border:none;"><h3 class="empty-state-title">No deliverables planned</h3>
+      <p class="empty-state-text">Plan deliverables to define tangible outputs for project stages.</p></div>
+  {% endif %}
+</div>
+
+{% if project.status not in ('completed','cancelled','archived') %}
+<details class="card" {% if not deliverables %}open{% endif %}>
+  <summary style="cursor:pointer; font-weight:600;">Plan New Deliverable</summary>
+  <form action="/projects/{{ project.id }}/deliverables/create" method="post" style="margin-top:14px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div style="display:grid; grid-template-columns:2fr 1fr 1fr; gap:12px;">
+      <div class="form-group"><label class="form-label">Deliverable Name *</label><input class="form-control" name="name" required maxlength="200" placeholder="e.g. Migration script &amp; verification suite"></div>
+      <div class="form-group"><label class="form-label">Type</label>
+        <select class="form-control" name="deliverable_type">
+          {% for dt in deliverable_types %}<option value="{{ dt }}">{{ dt|replace('_',' ')|capitalize }}</option>{% endfor %}
+        </select></div>
+      <div class="form-group"><label class="form-label">Stage (optional)</label>
+        <select class="form-control" name="stage_id">
+          <option value="">— none —</option>
+          {% for p in paths %}
+            <optgroup label="{{ p.name }}">
+              {% for s in stages_by_path[p.id] %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+            </optgroup>
+          {% endfor %}
+        </select></div>
+    </div>
+    <div class="form-group"><label class="form-label">Acceptance Criteria</label>
+      <textarea class="form-control" name="acceptance_criteria" rows="2" placeholder="Clear, testable standards that must be satisfied for formal sign-off"></textarea></div>
+    <div style="display:grid; grid-template-columns:2fr 1fr; gap:12px;">
+      <div class="form-group"><label class="form-label">Description</label><textarea class="form-control" name="description" rows="2"></textarea></div>
+      <div class="form-group"><label class="form-label">Due Date</label><input class="form-control" type="date" name="due_date"></div>
+    </div>
+    <button class="btn btn-primary" type="submit">Plan Deliverable</button>
   </form>
 </details>
 {% endif %}
@@ -446,6 +711,20 @@
             </select>
             <button class="btn btn-secondary btn-sm" type="submit">Link</button>
           </form>
+          {% if k.trust_status in ('verified', 'accepted') %}
+          <div style="margin-top:6px; padding-top:6px; border-top:1px dashed #e5e7eb;">
+            {% if k.is_collective %}
+              <span class="badge badge-online">Collective Memory</span>
+              {% if k.promoted_at %}<span style="font-size:0.7rem; color:var(--text-muted);">promoted {{ k.promoted_at[:10] }} by {{ k.promoted_by }}</span>{% endif %}
+            {% else %}
+              <form action="/projects/{{ project.id }}/knowledge/{{ k.id }}/promote" method="post" style="display:inline-flex; gap:4px; align-items:center;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input class="form-control" name="rationale" placeholder="Promotion rationale" style="padding:2px 6px; font-size:0.75rem; width:130px;">
+                <button class="btn btn-secondary btn-sm" type="submit" style="padding:2px 6px; font-size:0.75rem;" title="Promote verified knowledge to Collective Memory">Promote</button>
+              </form>
+            {% endif %}
+          </div>
+          {% endif %}
         </td>
       </tr>
     {% endfor %}
@@ -455,6 +734,26 @@
       <p class="empty-state-text">Capture findings, sources, assumptions and decisions. Narrative is stored as Markdown in <code>{{ project.knowledge_dir }}/</code>.</p></div>
   {% endif %}
 </div>
+
+{% if collective_knowledge %}
+<div class="card" style="padding:0; margin-bottom:20px;">
+  <div style="padding:14px 16px 0;"><h3 class="card-title">Collective Memory</h3>
+    <p class="card-subtitle">Verified knowledge promoted from projects across the collective.</p></div>
+  <div class="table-container"><table class="data-table">
+    <thead><tr><th>Entry</th><th>Type</th><th>Source Project</th><th>Trust</th><th>Promoted</th></tr></thead>
+    <tbody>
+    {% for ck in collective_knowledge %}
+      <tr>
+        <td><a href="/knowledge/view?path={{ ck.note_path|urlencode }}" style="font-weight:600;">{{ ck.title }}</a></td>
+        <td style="font-size:0.82rem;">{{ ck.knowledge_type|replace('_',' ') }}</td>
+        <td style="font-size:0.82rem;">{{ ck.project_name or '—' }}</td>
+        <td>{{ badge(ck.trust_status) }}</td>
+        <td style="font-size:0.78rem; color:var(--text-muted);">{{ ck.promoted_at[:10] if ck.promoted_at else '—' }} by {{ ck.promoted_by }}</td>
+      </tr>
+    {% endfor %}
+    </tbody></table></div>
+</div>
+{% endif %}
 
 <div class="grid-cols-2" style="gap:20px;">
   <details class="card" open>
