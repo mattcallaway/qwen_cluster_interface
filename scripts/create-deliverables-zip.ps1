@@ -28,6 +28,7 @@ $reports = @(
     "TAILSCALE_DIAGNOSTIC_REPORT.md",
     "DEPLOYMENT_REPORT.md",
     "WINDOWS_DEPLOYMENT.md",
+    "WINDOWS_SERVICE_REPAIR_REPORT.md",
     "requirements-lock.txt"
 )
 
