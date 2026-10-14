@@ -38,10 +38,14 @@ foreach ($r in $reports) {
     }
 }
 
-# Copy Logs
 $testLog = Join-Path $projectRoot "pytest_test_run.log"
 if (Test-Path $testLog) {
     Copy-Item -Path $testLog -Destination (Join-Path $stagingDir "logs\pytest_test_run.log")
+}
+
+$auditLog = Join-Path $projectRoot "pip_audit_scan.log"
+if (Test-Path $auditLog) {
+    Copy-Item -Path $auditLog -Destination (Join-Path $stagingDir "logs\pip_audit_scan.log")
 }
 
 $serviceLogDir = Join-Path $projectRoot "service\logs"
