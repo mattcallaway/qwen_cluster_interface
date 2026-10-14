@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In - Qwen Collective</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <style>
+    body {
+      background-color: #0d121c;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .login-card {
+      background: #ffffff;
+      padding: 36px;
+      border-radius: 8px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+    }
+    .login-header {
+      margin-bottom: 24px;
+      text-align: center;
+    }
+    .login-title {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: #0f172a;
+      letter-spacing: 0.04em;
+    }
+    .login-desc {
+      font-size: 0.85rem;
+      color: #64748b;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <div class="login-header">
+      <div class="login-title">QWEN COLLECTIVE</div>
+      <div class="login-desc">Local AI Infrastructure Control Server</div>
+    </div>
+
+    {% if error %}
+      <div class="alert alert-error" style="margin-bottom: 16px;">
+        {{ error }}
+      </div>
+    {% endif %}
+
+    <form method="post" action="/auth/login">
+      <div class="form-group">
+        <label class="form-label" for="username">Username</label>
+        <input class="form-control" type="text" id="username" name="username" value="admin" required autofocus>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="password">Password</label>
+        <input class="form-control" type="password" id="password" name="password" required>
+        <div class="form-help">Default password is configured in QC_ADMIN_PASSWORD</div>
+      </div>
+
+      <div style="margin-top: 24px;">
+        <button type="submit" class="btn btn-primary" style="width: 100%; padding: 10px;">Sign In</button>
+      </div>
+    </form>
+  </div>
+</body>
+</html>

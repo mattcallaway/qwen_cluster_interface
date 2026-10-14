@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block title %}Knowledge Base - Qwen Collective{% endblock %}
+{% block page_title %}Persistent Knowledge Repository{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+  <div>
+    <h2 style="font-size: 1.25rem; font-weight: 600;">Durable Markdown Notes</h2>
+    <p style="font-size: 0.85rem; color: var(--text-muted);">
+      Obsidian-compatible plain Markdown files stored in <code>data/knowledge/</code>. Searchable via SQLite FTS5.
+    </p>
+  </div>
+  <div style="display: flex; gap: 10px;">
+    <form action="/knowledge/reindex" method="post" style="display:inline;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn btn-secondary">Rebuild Search Index</button>
+    </form>
+    <a href="/knowledge/new" class="btn btn-primary">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+      Create Note
+    </a>
+  </div>
+</div>
+
+<!-- Search Bar -->
+<div class="card" style="margin-bottom: 24px; padding: 16px;">
+  <form method="get" action="/knowledge" style="display: flex; gap: 12px;">
+    <input class="form-control" type="text" name="q" value="{{ query or '' }}" placeholder="Search full text across all notes (SQLite FTS5)...">
+    <button type="submit" class="btn btn-primary" style="padding: 0 20px;">Search</button>
+    {% if query %}
+      <a href="/knowledge" class="btn btn-secondary">Clear</a>
+    {% endif %}
+  </form>
+</div>
+
+{% if query %}
+  <!-- Search Results Mode -->
+  <div class="card">
+    <div class="card-title">
+      <span>Search Results for "{{ query }}"</span>
+      <span class="badge badge-role">{{ search_results|length }} found</span>
+    </div>
+
+    {% if search_results %}
+      <div style="display: flex; flex-direction: column; gap: 16px; margin-top: 14px;">
+        {% for r in search_results %}
+          <div style="padding: 14px; background: #f8fafc; border: 1px solid var(--border-color); border-radius: 6px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <a href="/knowledge/view?path={{ r.path }}" style="font-size: 1.05rem; font-weight: 600; color: var(--primary); text-decoration: none;">
+                {{ r.title }}
+              </a>
+              <span class="badge badge-role">{{ r.category }}</span>
+            </div>
+            <div style="font-size: 0.85rem; color: var(--text-main); margin-bottom: 6px; line-height: 1.5;">
+              {{ r.snippet|safe }}
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">
+              Path: {{ r.path }}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p style="font-size: 0.85rem; color: var(--text-muted);">No notes matched your search query.</p>
+    {% endif %}
+  </div>
+
+{% else %}
+  <!-- Category Browser Mode -->
+  <div style="display: flex; gap: 8px; margin-bottom: 20px; overflow-x: auto; padding-bottom: 6px;">
+    <a href="/knowledge" class="btn btn-sm {% if not current_cat %}btn-primary{% else %}btn-secondary{% endif %}">All Categories</a>
+    {% for cat in categories %}
+      <a href="/knowledge?category={{ cat }}" class="btn btn-sm {% if current_cat == cat %}btn-primary{% else %}btn-secondary{% endif %}">
+        {{ cat|capitalize }}
+      </a>
+    {% endfor %}
+  </div>
+
+  <div class="card">
+    <div class="card-title">
+      <span>Knowledge Files {% if current_cat %}({{ current_cat|capitalize }}){% endif %}</span>
+      <span class="badge badge-role">{{ notes|length }} notes</span>
+    </div>
+
+    {% if notes %}
+      <div class="table-container">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Category</th>
+              <th>Path</th>
+              <th>Size</th>
+              <th>Last Modified</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for n in notes %}
+              <tr>
+                <td>
+                  <a href="/knowledge/view?path={{ n.path }}" style="font-weight: 600; color: var(--primary); text-decoration: none;">
+                    {{ n.title }}
+                  </a>
+                </td>
+                <td><span class="badge badge-role">{{ n.category }}</span></td>
+                <td><code style="font-size: 0.8rem;">{{ n.path }}</code></td>
+                <td style="font-size: 0.8rem; color: var(--text-muted);">{{ (n.size_bytes / 1024)|round(1) }} KB</td>
+                <td style="font-size: 0.8rem; color: var(--text-muted);">{{ n.updated_at[:19] }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <h3 class="empty-state-title">No Notes in this Category</h3>
+        <p class="empty-state-text">Start documenting research, architectural decisions, and system logs.</p>
+        <a href="/knowledge/new" class="btn btn-primary btn-sm">Create Note</a>
+      </div>
+    {% endif %}
+  </div>
+{% endif %}
+{% endblock %}

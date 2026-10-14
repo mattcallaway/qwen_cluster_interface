@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+
+{% block title %}Add Machine Wizard - Qwen Collective{% endblock %}
+{% block page_title %}Add Machine Wizard{% endblock %}
+
+{% block content %}
+<div style="max-width: 800px; margin: 0 auto;">
+  <div style="margin-bottom: 24px;">
+    <a href="/machines" style="color: var(--text-muted); font-size: 0.85rem; text-decoration: none;">&larr; Back to Machine Registry</a>
+    <h2 style="font-size: 1.35rem; font-weight: 700; margin-top: 6px;">Register a Compute Machine</h2>
+    <p style="font-size: 0.85rem; color: var(--text-muted);">
+      Follow this 5-step guided process to identify, probe, and register an older laptop or server without automated changes.
+    </p>
+  </div>
+
+  <div class="card">
+    <form method="post" action="/machines/add">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+      <!-- STEP 1: IDENTIFY -->
+      <div style="border-bottom: 1px solid var(--border-color); padding-bottom: 20px; margin-bottom: 20px;">
+        <h3 style="font-size: 1rem; font-weight: 600; color: var(--primary); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+          <span style="background: var(--primary); color: #fff; border-radius: 50%; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.75rem;">1</span>
+          Step 1: Identify Target Machine
+        </h3>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+          <div class="form-group">
+            <label class="form-label" for="display_name">Display Name *</label>
+            <input class="form-control" type="text" id="display_name" name="display_name" placeholder="e.g. ThinkPad T430 (Worker 1)" required>
+            <div class="form-help">Human-friendly name for this node.</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="ip_address">Network Address (IP or Hostname) *</label>
+            <input class="form-control" type="text" id="ip_address" name="ip_address" placeholder="192.168.1.105 or node1.local" required>
+            <div class="form-help">Local network IP or Tailscale address.</div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+          <div class="form-group">
+            <label class="form-label" for="connection_type">Connection Method</label>
+            <select class="form-control" id="connection_type" name="connection_type">
+              <option value="ssh" selected>SSH (Authorized Key / Read-Only Probe)</option>
+              <option value="local">Local Host (Control Server)</option>
+              <option value="api">HTTP API Endpoint</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="role">Intended Role</label>
+            <select class="form-control" id="role" name="role">
+              <option value="distributed_worker" selected>Distributed Inference Worker (llama.cpp RPC)</option>
+              <option value="inference_coordinator">Inference Coordinator</option>
+              <option value="standalone_server">Standalone Inference Server (Ollama / llama-server)</option>
+              <option value="vps_worker">Online Execution Worker (VPS)</option>
+              <option value="general_worker">General-purpose Worker</option>
+              <option value="unassigned">Unassigned</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 2 & 3: CONNECTIVITY & SSH INSPECTION -->
+      <div style="border-bottom: 1px solid var(--border-color); padding-bottom: 20px; margin-bottom: 20px;">
+        <h3 style="font-size: 1rem; font-weight: 600; color: var(--primary); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+          <span style="background: var(--primary); color: #fff; border-radius: 50%; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.75rem;">2</span>
+          Steps 2 & 3: Connectivity & Hardware Inspection (Optional)
+        </h3>
+        
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 14px;">
+          You can test reachability now and inspect hardware specs using read-only SSH commands. Credentials are never logged or stored in plaintext.
+        </p>
+
+        <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: 6px; padding: 16px;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="form-group" style="margin-bottom: 8px;">
+              <label class="form-label" for="ssh_user">SSH Username</label>
+              <input class="form-control" type="text" id="ssh_user" name="ssh_user" placeholder="e.g. debian, ubuntu">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 8px;">
+              <label class="form-label" for="ssh_port">SSH Port</label>
+              <input class="form-control" type="number" id="ssh_port" name="ssh_port" value="22">
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label class="form-label" for="ssh_key_path">Private Key Path (optional, defaults to local agent/id_rsa)</label>
+            <input class="form-control" type="text" id="ssh_key_path" name="ssh_key_path" placeholder="~/.ssh/id_rsa">
+          </div>
+
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-test-reachability"
+                    hx-post="/api/machines/probe/ping"
+                    hx-target="#probe-results"
+                    hx-include="[name='ip_address'], [name='ssh_port'], [name='csrf_token']">
+              Test TCP Reachability
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-inspect-hardware"
+                    hx-post="/api/machines/probe/ssh"
+                    hx-target="#probe-results"
+                    hx-include="[name='ip_address'], [name='ssh_user'], [name='ssh_port'], [name='ssh_key_path'], [name='csrf_token']">
+              Inspect Hardware over SSH
+            </button>
+          </div>
+
+          <div id="probe-results" style="margin-top: 14px;">
+            <!-- Live HTMX feedback will render here -->
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 4 & 5: MANUAL SPECS OVERRIDE & CONFIRMATION -->
+      <div style="border-bottom: 1px solid var(--border-color); padding-bottom: 20px; margin-bottom: 20px;">
+        <h3 style="font-size: 1rem; font-weight: 600; color: var(--primary); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+          <span style="background: var(--primary); color: #fff; border-radius: 50%; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.75rem;">4</span>
+          Step 4 & 5: Review, Known Specs, & Registration
+        </h3>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+          <div class="form-group">
+            <label class="form-label" for="ram_total_mb">Total RAM (MB, if known)</label>
+            <input class="form-control" type="number" id="ram_total_mb" name="ram_total_mb" placeholder="e.g. 3892 for 4GB laptop">
+            <div class="form-help">Leave empty if unknown. Unknown values will remain unknown.</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="cpu_info">CPU Model / Architecture (optional)</label>
+            <input class="form-control" type="text" id="cpu_info" name="cpu_info" placeholder="e.g. Intel Core i5-3320M x86_64">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="notes">Notes / Observations</label>
+          <textarea class="form-control" id="notes" name="notes" placeholder="Battery health, physical location, intended quantization, etc."></textarea>
+        </div>
+
+        <div class="alert alert-info" style="margin-top: 12px; margin-bottom: 0;">
+          <strong>No Automatic Execution:</strong> Registering this machine saves its record locally. It will not execute privileged commands or install software remotely.
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 12px;">
+        <a href="/machines" class="btn btn-secondary">Cancel</a>
+        <button type="submit" class="btn btn-primary" style="padding: 10px 20px;">Confirm & Register Machine</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

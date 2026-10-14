@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block title %}Machines - Qwen Collective{% endblock %}
+{% block page_title %}Machine Registry{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+  <div>
+    <h2 style="font-size: 1.25rem; font-weight: 600;">Registered Compute Nodes</h2>
+    <p style="font-size: 0.85rem; color: var(--text-muted);">
+      Computers participating in the collective. Standalone nodes and distributed inference workers.
+    </p>
+  </div>
+  <div style="display: flex; gap: 10px;">
+    <a href="/inference" class="btn btn-secondary">
+      Distributed Groups
+    </a>
+    <a href="/machines/add" class="btn btn-primary">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+      Add Machine
+    </a>
+  </div>
+</div>
+
+{% if machines %}
+  <div class="card" style="padding: 0;">
+    <div class="table-container">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Display Name & ID</th>
+            <th>Address</th>
+            <th>Assigned Role</th>
+            <th>Hardware Specs</th>
+            <th>Last Checked</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in machines %}
+            <tr>
+              <td>
+                {% if m.connection_status == 'online' %}
+                  <span class="badge badge-online">Online</span>
+                {% elif m.connection_status == 'unreachable' or m.connection_status == 'offline' %}
+                  <span class="badge badge-offline">Offline</span>
+                {% elif m.connection_status == 'auth_failed' or m.connection_status == 'error' %}
+                  <span class="badge badge-error">Error</span>
+                {% else %}
+                  <span class="badge badge-warning">Unknown</span>
+                {% endif %}
+              </td>
+              <td>
+                <a href="/machines/{{ m.id }}" style="font-weight: 600; color: var(--primary); text-decoration: none;">
+                  {{ m.display_name }}
+                </a>
+                <div style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">{{ m.id }}</div>
+              </td>
+              <td>
+                <code>{{ m.ip_address }}</code>
+                {% if m.hostname %}
+                  <div style="font-size: 0.75rem; color: var(--text-muted);">{{ m.hostname }}</div>
+                {% endif %}
+              </td>
+              <td>
+                <span class="badge badge-role">
+                  {{ m.role|replace('_', ' ')|title }}
+                </span>
+              </td>
+              <td style="font-size: 0.85rem;">
+                {% if m.ram_total_mb %}
+                  <strong>{{ m.ram_total_mb }} MB RAM</strong>
+                  {% if m.cpu_info %}
+                    <div style="font-size: 0.75rem; color: var(--text-muted); max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                      {{ m.cpu_info }}
+                    </div>
+                  {% endif %}
+                {% else %}
+                  <span style="color: var(--text-muted);">Unknown Specs</span>
+                {% endif %}
+              </td>
+              <td style="font-size: 0.8rem; color: var(--text-muted);">
+                {{ m.last_checked_at[:19] if m.last_checked_at else "Never" }}
+              </td>
+              <td>
+                <div style="display: flex; gap: 6px;">
+                  <a href="/machines/{{ m.id }}" class="btn btn-secondary btn-sm">Inspect</a>
+                  <form action="/machines/{{ m.id }}/test-connection" method="post" style="display:inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn btn-secondary btn-sm" title="Test Reachability">Ping</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% else %}
+  <div class="empty-state">
+    <h3 class="empty-state-title">No Machines Registered Yet</h3>
+    <p class="empty-state-text">
+      The collective needs compute nodes. Connect your older Linux laptops or local servers to begin running standalone or distributed models.
+    </p>
+    <a href="/machines/add" class="btn btn-primary">Start Machine Registration Wizard</a>
+  </div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Create Note - Knowledge Base{% endblock %}
+{% block page_title %}Create New Knowledge Note{% endblock %}
+
+{% block content %}
+<div style="max-width: 800px; margin: 0 auto;">
+  <div style="margin-bottom: 20px;">
+    <a href="/knowledge" style="color: var(--text-muted); font-size: 0.85rem; text-decoration: none;">&larr; Back to Knowledge Base</a>
+  </div>
+
+  <div class="card">
+    <div class="card-title">
+      <span>New Knowledge Entry</span>
+      <span class="badge badge-primary">Durable Markdown</span>
+    </div>
+
+    <form action="/knowledge/create" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+      <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 16px;">
+        <div class="form-group">
+          <label class="form-label" for="title">Document Title *</label>
+          <input class="form-control" type="text" id="title" name="title" placeholder="e.g. Dual Laptop Distributed Inference Benchmark" required>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="category">Category *</label>
+          <select class="form-control" id="category" name="category">
+            <option value="system">System (Architecture & Ops)</option>
+            <option value="projects">Projects</option>
+            <option value="research" selected>Research</option>
+            <option value="sources">Sources & Reference</option>
+            <option value="decisions">Decisions (ADRs)</option>
+            <option value="journal">Journal / Logs</option>
+            <option value="inbox">Inbox (Staged findings)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="content">Markdown Body *</label>
+        <textarea class="form-control" id="content" name="content" rows="16" placeholder="# Context&#10;&#10;Write findings, hardware notes, or decisions here..." required></textarea>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 10px;">
+        <a href="/knowledge" class="btn btn-secondary">Cancel</a>
+        <button type="submit" class="btn btn-primary">Create Note</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

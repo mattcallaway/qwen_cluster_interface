@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+
+{% block title %}Tasks - Qwen Collective{% endblock %}
+{% block page_title %}Task Management & Queue{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+  <div>
+    <h2 style="font-size: 1.25rem; font-weight: 600;">Persistent Task Queue</h2>
+    <p style="font-size: 0.85rem; color: var(--text-muted);">
+      Asynchronous jobs, hardware probes, and research executions with strict approval gates.
+    </p>
+  </div>
+  <div>
+    <button type="button" class="btn btn-primary" onclick="document.getElementById('create-task-modal').style.display='block';">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+      New Task
+    </button>
+  </div>
+</div>
+
+<!-- Task Status Filters -->
+<div style="display: flex; gap: 8px; margin-bottom: 20px; overflow-x: auto;">
+  <a href="/tasks" class="btn btn-sm {% if not current_status %}btn-primary{% else %}btn-secondary{% endif %}">All Tasks</a>
+  <a href="/tasks?status=awaiting_approval" class="btn btn-sm {% if current_status == 'awaiting_approval' %}btn-primary{% else %}btn-secondary{% endif %}">
+    Awaiting Approval ({{ task_counts.awaiting_approval }})
+  </a>
+  <a href="/tasks?status=queued" class="btn btn-sm {% if current_status == 'queued' %}btn-primary{% else %}btn-secondary{% endif %}">
+    Queued ({{ task_counts.queued }})
+  </a>
+  <a href="/tasks?status=running" class="btn btn-sm {% if current_status == 'running' %}btn-primary{% else %}btn-secondary{% endif %}">
+    Running ({{ task_counts.running }})
+  </a>
+  <a href="/tasks?status=completed" class="btn btn-sm {% if current_status == 'completed' %}btn-primary{% else %}btn-secondary{% endif %}">
+    Completed ({{ task_counts.completed }})
+  </a>
+  <a href="/tasks?status=failed" class="btn btn-sm {% if current_status == 'failed' %}btn-primary{% else %}btn-secondary{% endif %}">
+    Failed ({{ task_counts.failed }})
+  </a>
+</div>
+
+<!-- Tasks Table Card -->
+<div class="card" style="padding: 0;">
+  {% if tasks %}
+    <div class="table-container">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Task Title & ID</th>
+            <th>Type</th>
+            <th>Assigned Worker</th>
+            <th>Attempts</th>
+            <th>Updated</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in tasks %}
+            <tr>
+              <td>
+                {% if t.status == 'completed' %}
+                  <span class="badge badge-online">Completed</span>
+                {% elif t.status == 'running' %}
+                  <span class="badge badge-role">Running</span>
+                {% elif t.status == 'queued' %}
+                  <span class="badge badge-primary">Queued</span>
+                {% elif t.status == 'awaiting_approval' %}
+                  <span class="badge badge-warning">Awaiting Approval</span>
+                {% elif t.status == 'failed' %}
+                  <span class="badge badge-error">Failed</span>
+                {% else %}
+                  <span class="badge badge-offline">{{ t.status|capitalize }}</span>
+                {% endif %}
+              </td>
+              <td>
+                <a href="/tasks/{{ t.id }}" style="font-weight: 600; color: var(--primary); text-decoration: none;">
+                  {{ t.title }}
+                </a>
+                <div style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">{{ t.id }}</div>
+              </td>
+              <td><span class="badge badge-role">{{ t.task_type }}</span></td>
+              <td style="font-size: 0.85rem;">{{ t.assigned_worker or "Local Controller" }}</td>
+              <td style="font-size: 0.85rem;">{{ t.attempt_count }}/{{ t.max_retries }}</td>
+              <td style="font-size: 0.8rem; color: var(--text-muted);">{{ t.updated_at[:19] }}</td>
+              <td>
+                <div style="display: flex; gap: 6px;">
+                  <a href="/tasks/{{ t.id }}" class="btn btn-secondary btn-sm">Details</a>
+                  {% if t.status == 'awaiting_approval' %}
+                    <form action="/tasks/{{ t.id }}/approve" method="post" style="display:inline;">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                      <button type="submit" class="btn btn-primary btn-sm">Approve</button>
+                    </form>
+                  {% endif %}
+                  {% if t.status in ('queued', 'running', 'awaiting_approval') %}
+                    <form action="/tasks/{{ t.id }}/cancel" method="post" style="display:inline;">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                      <button type="submit" class="btn btn-danger btn-sm">Cancel</button>
+                    </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty-state" style="border: none;">
+      <h3 class="empty-state-title">No Tasks Found</h3>
+      <p class="empty-state-text">No tasks matching the selected filter.</p>
+    </div>
+  {% endif %}
+</div>
+
+<!-- Create Task Modal -->
+<div id="create-task-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; align-items: center; justify-content: center;">
+  <div style="background: #fff; width: 100%; max-width: 550px; border-radius: 8px; padding: 24px; margin: 60px auto; box-shadow: var(--shadow-md);">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+      <h3 style="font-size: 1.15rem; font-weight: 600;">Create New Task</h3>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('create-task-modal').style.display='none';">&times;</button>
+    </div>
+
+    <form action="/tasks/create" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+      <div class="form-group">
+        <label class="form-label" for="task_title">Task Title *</label>
+        <input class="form-control" type="text" id="task_title" name="title" placeholder="e.g. Probe remote cluster memory or Index research" required>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="task_desc">Description</label>
+        <textarea class="form-control" id="task_desc" name="description" placeholder="Operational details..."></textarea>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+        <div class="form-group">
+          <label class="form-label" for="task_type">Task Type</label>
+          <select class="form-control" id="task_type" name="task_type">
+            <option value="general" selected>General Task</option>
+            <option value="probe">Hardware Probe</option>
+            <option value="research">Research & Sync</option>
+            <option value="vps_action">VPS Remote Action</option>
+            <option value="maintenance">Maintenance</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="approval_required">Approval Policy</label>
+          <select class="form-control" id="approval_required" name="approval_required">
+            <option value="0">Queue Immediately</option>
+            <option value="1" selected>Require Manual Approval</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('create-task-modal').style.display='none';">Cancel</button>
+        <button type="submit" class="btn btn-primary">Submit Task</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

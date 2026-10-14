@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}{{ group.name }} - Distributed Inference Group{% endblock %}
+{% block page_title %}Distributed Group: {{ group.name }}{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 20px;">
+  <a href="/inference" style="color: var(--text-muted); font-size: 0.85rem; text-decoration: none;">&larr; Back to Inference Management</a>
+</div>
+
+<div class="card" style="margin-bottom: 24px;">
+  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+    <div>
+      <h2 style="font-size: 1.35rem; font-weight: 700;">{{ group.name }}</h2>
+      <div style="font-size: 0.85rem; color: var(--text-muted); font-family: var(--font-mono); margin-top: 4px;">
+        ID: {{ group.id }} &bull; Backend: llama.cpp RPC
+      </div>
+    </div>
+    <div>
+      <span class="badge badge-role">{{ group.status|replace('_', ' ')|title }}</span>
+    </div>
+  </div>
+</div>
+
+<div class="grid-cols-2">
+  <!-- Group Specification -->
+  <div class="card">
+    <div class="card-title">
+      <span>Group Architecture</span>
+    </div>
+
+    <table class="data-table">
+      <tbody>
+        <tr>
+          <td style="width: 160px; color: var(--text-muted); font-weight: 600;">Coordinator Node</td>
+          <td>
+            {% if coordinator %}
+              <strong>{{ coordinator.display_name }}</strong> (<code>{{ coordinator.ip_address }}</code>)
+            {% else %}
+              <code>{{ group.coordinator_machine_id }}</code>
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <td style="color: var(--text-muted); font-weight: 600;">Model Target</td>
+          <td style="font-family: var(--font-mono); font-size: 0.85rem;">{{ group.model_file }}</td>
+        </tr>
+        <tr>
+          <td style="color: var(--text-muted); font-weight: 600;">Context Length</td>
+          <td>{{ group.context_window }} tokens</td>
+        </tr>
+        <tr>
+          <td style="color: var(--text-muted); font-weight: 600;">RPC Workers</td>
+          <td>
+            {% for rpc in group.rpc_endpoints %}
+              <div><code>{{ rpc }}</code></div>
+            {% endfor %}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Operational Requirements -->
+  <div class="card">
+    <div class="card-title">
+      <span>Prerequisites & Security</span>
+    </div>
+    <ul style="font-size: 0.85rem; color: var(--text-muted); margin-left: 20px; line-height: 1.8;">
+      <li>Ensure all RPC workers are running: <code>./build/bin/rpc-server -H 0.0.0.0 -p 50052</code></li>
+      <li>Verify network latency between coordinator and workers is minimal (wired Gigabit LAN or 5GHz Wi-Fi recommended).</li>
+      <li><strong>Security Notice:</strong> Keep RPC traffic on an isolated private subnet. RPC has no built-in encryption or authentication.</li>
+      <li>Verify identical Git commit hashes for llama.cpp builds across all nodes to avoid serialization errors.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- Generated Launch Command -->
+<div class="card" style="margin-bottom: 24px;">
+  <div class="card-title">
+    <span>Generated Launch Command (Run on Coordinator Node)</span>
+    <span class="badge badge-primary">Manual Execution</span>
+  </div>
+  <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">
+    Execute this command in the terminal of the designated coordinator machine:
+  </p>
+  <div class="code-block">{{ launch_command }}</div>
+  <div class="form-help">Once started, this server exposes an OpenAI-compatible HTTP API on port 8080. You can register <code>http://&lt;coordinator-ip&gt;:8080</code> as an active inference backend in Qwen Collective.</div>
+</div>
+{% endblock %}

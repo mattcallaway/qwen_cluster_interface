@@ -1,0 +1,313 @@
+{% extends "base.html" %}
+
+{% block title %}Inference Management - Qwen Collective{% endblock %}
+{% block page_title %}Inference Management & Distributed Models{% endblock %}
+
+{% block content %}
+<!-- Section A: Active & Configured Inference Backends -->
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+  <div>
+    <h2 style="font-size: 1.2rem; font-weight: 600;">Inference Backends</h2>
+    <p style="font-size: 0.85rem; color: var(--text-muted);">
+      Endpoints serving model inference (llama.cpp server or Ollama). Chat will route to the active verified endpoint.
+    </p>
+  </div>
+</div>
+
+<div class="grid-cols-2" style="margin-bottom: 28px;">
+  <!-- Backends List Card -->
+  <div class="card">
+    <div class="card-title">
+      <span>Configured Endpoints</span>
+      <span class="badge badge-role">{{ backends|length }} registered</span>
+    </div>
+
+    {% if backends %}
+      <div class="table-container">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Name & Type</th>
+              <th>Reported Model</th>
+              <th>URL</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for b in backends %}
+              <tr>
+                <td>
+                  {% if b.status == 'ready' %}
+                    <span class="badge badge-online">Ready</span>
+                  {% elif b.status == 'offline' %}
+                    <span class="badge badge-offline">Offline</span>
+                  {% elif b.status == 'error' %}
+                    <span class="badge badge-error">Error</span>
+                  {% else %}
+                    <span class="badge badge-warning">Untested</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <strong>{{ b.name }}</strong>
+                  <div style="font-size: 0.75rem; color: var(--text-muted);">{{ b.backend_type }}</div>
+                </td>
+                <td>
+                  <span style="font-size: 0.85rem; font-weight: 500;">
+                    {% if b.model_name %}{{ b.model_name }}{% else %}<span style="color: var(--text-muted);">None</span>{% endif %}
+                  </span>
+                </td>
+                <td><code style="font-size: 0.8rem;">{{ b.endpoint_url }}</code></td>
+                <td>
+                  <form action="/inference/backends/{{ b.id }}/test" method="post" style="display:inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn btn-secondary btn-sm">Verify</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p style="font-size: 0.85rem; color: var(--text-muted);">No inference backends configured yet.</p>
+    {% endif %}
+  </div>
+
+  <!-- Register Endpoint Card -->
+  <div class="card">
+    <div class="card-title">
+      <span>Register Inference Endpoint</span>
+    </div>
+
+    <form action="/inference/backends/add" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+      <div class="form-group">
+        <label class="form-label" for="name">Backend Display Name</label>
+        <input class="form-control" type="text" id="name" name="name" placeholder="e.g. Local Ollama or Laptop 1 llama-server" required>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+        <div class="form-group">
+          <label class="form-label" for="backend_type">Backend Runtime</label>
+          <select class="form-control" id="backend_type" name="backend_type">
+            <option value="llama_cpp" selected>llama.cpp server (OpenAI API)</option>
+            <option value="ollama">Ollama API</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="endpoint_url">Endpoint Base URL</label>
+          <input class="form-control" type="text" id="endpoint_url" name="endpoint_url" placeholder="http://192.168.1.100:8080" required>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="api_key">API Key (if required by reverse proxy / Tailscale)</label>
+        <input class="form-control" type="password" id="api_key" name="api_key" placeholder="Optional bearer key">
+      </div>
+
+      <div style="display: flex; justify-content: flex-end;">
+        <button type="submit" class="btn btn-primary btn-sm">Register & Test Backend</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Section B: Distributed Inference Groups (llama.cpp RPC) -->
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+  <div>
+    <h2 style="font-size: 1.2rem; font-weight: 600;">Distributed Inference Groups</h2>
+    <p style="font-size: 0.85rem; color: var(--text-muted);">
+      Pool RAM from multiple laptops (e.g. two 4GB machines) to run larger models using llama.cpp RPC.
+    </p>
+  </div>
+</div>
+
+<div class="grid-cols-2" style="margin-bottom: 28px;">
+  <!-- Groups List Card -->
+  <div class="card">
+    <div class="card-title">
+      <span>Defined Groups</span>
+      <span class="badge badge-role">{{ distributed_groups|length }}</span>
+    </div>
+
+    {% if distributed_groups %}
+      <div class="table-container">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Group Name</th>
+              <th>Model Target</th>
+              <th>RPC Workers</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for g in distributed_groups %}
+              <tr>
+                <td>
+                  <span class="badge badge-role">{{ g.status|replace('_', ' ')|title }}</span>
+                </td>
+                <td>
+                  <a href="/inference/groups/{{ g.id }}" style="font-weight: 600; color: var(--primary); text-decoration: none;">
+                    {{ g.name }}
+                  </a>
+                </td>
+                <td style="font-size: 0.85rem; font-family: var(--font-mono);">
+                  {{ g.model_file }}
+                </td>
+                <td>
+                  <span class="badge badge-role">{{ g.rpc_endpoints|length }} workers</span>
+                </td>
+                <td>
+                  <a href="/inference/groups/{{ g.id }}" class="btn btn-secondary btn-sm">View Config</a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p style="font-size: 0.85rem; color: var(--text-muted);">
+        No distributed inference groups created. You can define a group to pool compute across your registered laptops.
+      </p>
+    {% endif %}
+  </div>
+
+  <!-- Define New Group Form Card -->
+  <div class="card">
+    <div class="card-title">
+      <span>Define Distributed Inference Group</span>
+    </div>
+
+    <form action="/inference/groups/create" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+      <div class="form-group">
+        <label class="form-label" for="group_name">Group Name</label>
+        <input class="form-control" type="text" id="group_name" name="name" placeholder="e.g. Dual-ThinkPad Qwen-7B Collective" required>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+        <div class="form-group">
+          <label class="form-label" for="coordinator_id">Coordinator Machine</label>
+          <select class="form-control" id="coordinator_id" name="coordinator_machine_id">
+            {% for m in machines %}
+              <option value="{{ m.id }}">{{ m.display_name }} ({{ m.ip_address }})</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="context_window">Context Window</label>
+          <input class="form-control" type="number" id="context_window" name="context_window" value="4096">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="model_file">Model File (Path on Coordinator)</label>
+        <input class="form-control" type="text" id="model_file" name="model_file" value="models/qwen2.5-7b-instruct-q4_k_m.gguf" required>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="rpc_endpoints_raw">RPC Worker Addresses (comma-separated)</label>
+        <input class="form-control" type="text" id="rpc_endpoints_raw" name="rpc_endpoints_raw" placeholder="192.168.1.102:50052, 192.168.1.103:50052" required>
+        <div class="form-help">IP and port of worker machines running llama.cpp rpc-server.</div>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end;">
+        <button type="submit" class="btn btn-primary btn-sm">Save Group & Generate Commands</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Section C: Benchmark Results Recorder -->
+<div class="card">
+  <div class="card-title">
+    <span>Hardware Benchmark Log</span>
+    <span class="badge badge-role">{{ benchmarks|length }} records</span>
+  </div>
+  <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 16px;">
+    Record real, measured generation speed and prompt processing tokens/sec. Never populate fabricated benchmarks.
+  </p>
+
+  {% if benchmarks %}
+    <div class="table-container" style="margin-bottom: 20px;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Model & Quant</th>
+            <th>Machines Involved</th>
+            <th>Generation Speed</th>
+            <th>Prompt Speed</th>
+            <th>Memory (MB)</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for b in benchmarks %}
+            <tr>
+              <td style="font-size: 0.8rem; color: var(--text-muted);">{{ b.created_at[:10] }}</td>
+              <td><strong>{{ b.model_name }}</strong> ({{ b.quantization }})</td>
+              <td style="font-size: 0.85rem;">{{ b.machines_involved }}</td>
+              <td><strong>{{ b.gen_tokens_sec }} tok/s</strong></td>
+              <td>{{ b.prompt_tokens_sec }} tok/s</td>
+              <td>{{ b.memory_usage_mb or '-' }}</td>
+              <td style="font-size: 0.8rem; color: var(--text-muted);">{{ b.notes }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+  <!-- Record New Benchmark Form -->
+  <details>
+    <summary style="font-size: 0.9rem; font-weight: 600; color: var(--primary); cursor: pointer; margin-bottom: 12px;">+ Record New Measured Benchmark</summary>
+    <form action="/inference/benchmarks/add" method="post" style="background: #f8fafc; padding: 16px; border-radius: 6px; border: 1px solid var(--border-color); margin-top: 8px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px;">
+        <div class="form-group">
+          <label class="form-label" for="model_name">Model Name</label>
+          <input class="form-control" type="text" id="model_name" name="model_name" placeholder="Qwen2.5-7B-Instruct" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="quantization">Quantization</label>
+          <input class="form-control" type="text" id="quantization" name="quantization" placeholder="Q4_K_M" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="machines_involved">Machines Involved</label>
+          <input class="form-control" type="text" id="machines_involved" name="machines_involved" placeholder="2x ThinkPad T430 (RPC)" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="gen_tokens_sec">Generation (tok/s)</label>
+          <input class="form-control" type="number" step="0.01" id="gen_tokens_sec" name="gen_tokens_sec" placeholder="4.25" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="prompt_tokens_sec">Prompt (tok/s)</label>
+          <input class="form-control" type="number" step="0.01" id="prompt_tokens_sec" name="prompt_tokens_sec" placeholder="18.5" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="memory_usage_mb">Peak RAM (MB)</label>
+          <input class="form-control" type="number" step="0.1" id="memory_usage_mb" name="memory_usage_mb" placeholder="3400">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="bench_notes">Benchmark Notes</label>
+        <input class="form-control" type="text" id="bench_notes" name="notes" placeholder="e.g. 512 context length, thermal throttling observed after 10m">
+      </div>
+
+      <div style="display: flex; justify-content: flex-end;">
+        <button type="submit" class="btn btn-primary btn-sm">Save Benchmark Record</button>
+      </div>
+    </form>
+  </details>
+</div>
+{% endblock %}

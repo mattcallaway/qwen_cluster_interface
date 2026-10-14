@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Qwen Collective{% endblock %}
+{% block page_title %}System Overview{% endblock %}
+
+{% block content %}
+<!-- Top Metrics Row -->
+<div class="grid-cols-4">
+  <div class="card stat-widget">
+    <div class="stat-label">Control Server</div>
+    <div class="stat-value" style="color: var(--status-online);">Operational</div>
+    <div class="stat-sub">Host: {{ server_host }}:{{ server_port }}</div>
+  </div>
+
+  <div class="card stat-widget">
+    <div class="stat-label">Registered Machines</div>
+    <div class="stat-value">{{ total_machines }}</div>
+    <div class="stat-sub">
+      <span class="status-dot online"></span> {{ online_machines }} online &nbsp;
+      <span class="status-dot offline"></span> {{ offline_machines }} offline
+    </div>
+  </div>
+
+  <div class="card stat-widget">
+    <div class="stat-label">Inference Engine</div>
+    {% if active_backend %}
+      <div class="stat-value" style="font-size: 1.25rem; color: var(--primary);">{{ active_backend.name }}</div>
+      <div class="stat-sub">Model: {{ active_backend.model_name or "Reported Ready" }}</div>
+    {% else %}
+      <div class="stat-value" style="font-size: 1.25rem; color: var(--text-muted);">Unavailable</div>
+      <div class="stat-sub">No active verified endpoint</div>
+    {% endif %}
+  </div>
+
+  <div class="card stat-widget">
+    <div class="stat-label">VPS Worker</div>
+    {% if vps_node and vps_node.status == 'online' %}
+      <div class="stat-value" style="color: var(--status-online);">Reachable</div>
+      <div class="stat-sub">{{ vps_node.name }} (Connected)</div>
+    {% elif vps_node %}
+      <div class="stat-value" style="color: var(--status-offline);">{{ vps_node.status|capitalize }}</div>
+      <div class="stat-sub">{{ vps_node.name }}</div>
+    {% else %}
+      <div class="stat-value" style="color: var(--text-muted);">Unconfigured</div>
+      <div class="stat-sub">No remote VPS registered</div>
+    {% endif %}
+  </div>
+</div>
+
+{% if total_machines == 0 %}
+  <!-- Empty State Banner -->
+  <div class="empty-state" style="margin-bottom: 28px;">
+    <h3 class="empty-state-title">No Compute Machines Registered</h3>
+    <p class="empty-state-text">
+      The Control Server is running independently. To assemble your collective, connect your first Linux laptop or workstation using the guided registration wizard.
+    </p>
+    <a href="/machines/add" class="btn btn-primary">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+      Add First Machine
+    </a>
+  </div>
+{% endif %}
+
+<div class="grid-cols-2">
+  <!-- Tasks & Approvals Card -->
+  <div class="card">
+    <div class="card-title">
+      <span>Task Queue & Approvals</span>
+      <a href="/tasks" class="btn btn-secondary btn-sm">View All</a>
+    </div>
+    
+    <div style="display: flex; gap: 16px; margin-bottom: 16px;">
+      <div style="flex: 1; padding: 12px; background: #f8fafc; border-radius: 4px; border: 1px solid var(--border-color);">
+        <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Awaiting Approval</div>
+        <div style="font-size: 1.4rem; font-weight: 700; color: {% if task_counts.awaiting_approval > 0 %}var(--status-warning){% else %}var(--text-main){% endif %};">
+          {{ task_counts.awaiting_approval }}
+        </div>
+      </div>
+      <div style="flex: 1; padding: 12px; background: #f8fafc; border-radius: 4px; border: 1px solid var(--border-color);">
+        <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Queued / Running</div>
+        <div style="font-size: 1.4rem; font-weight: 700; color: var(--text-main);">
+          {{ task_counts.queued + task_counts.running }}
+        </div>
+      </div>
+      <div style="flex: 1; padding: 12px; background: #f8fafc; border-radius: 4px; border: 1px solid var(--border-color);">
+        <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Completed</div>
+        <div style="font-size: 1.4rem; font-weight: 700; color: var(--status-online);">
+          {{ task_counts.completed }}
+        </div>
+      </div>
+    </div>
+
+    {% if pending_tasks %}
+      <div class="table-container">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Task</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for t in pending_tasks %}
+              <tr>
+                <td>
+                  <strong>{{ t.title }}</strong>
+                  <div style="font-size: 0.75rem; color: var(--text-muted);">{{ t.task_type }} &bull; {{ t.id }}</div>
+                </td>
+                <td>
+                  {% if t.status == 'awaiting_approval' %}
+                    <span class="badge badge-warning">Awaiting Approval</span>
+                  {% elif t.status == 'queued' %}
+                    <span class="badge badge-role">Queued</span>
+                  {% elif t.status == 'running' %}
+                    <span class="badge badge-online">Running</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if t.status == 'awaiting_approval' %}
+                    <form action="/tasks/{{ t.id }}/approve" method="post" style="display:inline;">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                      <button type="submit" class="btn btn-primary btn-sm">Approve</button>
+                    </form>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p style="font-size: 0.85rem; color: var(--text-muted);">No pending tasks currently awaiting execution or approval.</p>
+    {% endif %}
+  </div>
+
+  <!-- Recent System Events Log -->
+  <div class="card">
+    <div class="card-title">
+      <span>Activity & Audit Trail</span>
+      <span class="badge badge-role">Recent Events</span>
+    </div>
+    <div class="card-subtitle">Transparent local log of machine probes, role changes, and actions.</div>
+
+    {% if recent_events %}
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        {% for ev in recent_events %}
+          <div style="padding: 10px 12px; background: #f8fafc; border-left: 3px solid var(--primary); border-radius: 4px; font-size: 0.85rem;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+              <strong>{{ ev.action }}</strong>
+              <span style="font-size: 0.75rem; color: var(--text-muted);">{{ ev.timestamp[:19] }}</span>
+            </div>
+            <div style="color: var(--text-muted); font-size: 0.8rem;">
+              Node: {{ ev.machine_id }} &bull; {{ ev.details }}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p style="font-size: 0.85rem; color: var(--text-muted);">No recorded system events yet.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}{{ note.title }} - Knowledge Base{% endblock %}
+{% block page_title %}{{ note.title }}{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+  <a href="/knowledge" style="color: var(--text-muted); font-size: 0.85rem; text-decoration: none;">&larr; Back to Knowledge Base</a>
+  <div style="font-size: 0.8rem; color: var(--text-muted); font-family: var(--font-mono);">
+    Path: {{ note.path }}
+  </div>
+</div>
+
+<div class="grid-cols-2">
+  <!-- Left Side: Rendered HTML Document -->
+  <div class="card" style="padding: 28px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 20px;">
+      <h1 style="font-size: 1.4rem; font-weight: 700; color: #0f172a;">{{ note.title }}</h1>
+      <span class="badge badge-role">{{ note.category }}</span>
+    </div>
+
+    {% if note.meta %}
+      <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 14px; margin-bottom: 20px; font-size: 0.8rem;">
+        <strong>Frontmatter Metadata:</strong>
+        <ul style="margin-left: 18px; margin-top: 4px; color: var(--text-muted);">
+          {% for k, v in note.meta.items() %}
+            <li><strong>{{ k }}</strong>: {{ v }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    <div class="markdown-body">
+      {{ note.rendered_html|safe }}
+    </div>
+  </div>
+
+  <!-- Right Side: Markdown Raw Editor -->
+  <div class="card">
+    <div class="card-title">
+      <span>Edit Markdown Document</span>
+      <span class="badge badge-primary">Atomic Write</span>
+    </div>
+
+    <form action="/knowledge/save" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="path" value="{{ note.path }}">
+
+      <div class="form-group">
+        <label class="form-label" for="content">Markdown Content</label>
+        <textarea class="form-control" id="content" name="content" rows="22" style="font-family: var(--font-mono); font-size: 0.85rem; line-height: 1.4;" required>{{ note.raw_content }}</textarea>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 0.75rem; color: var(--text-muted);">Saved atomically with SQLite FTS5 re-indexing.</span>
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

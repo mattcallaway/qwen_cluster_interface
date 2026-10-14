@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+
+{% block title %}Settings & VPS - Qwen Collective{% endblock %}
+{% block page_title %}Settings & Remote VPS Integration{% endblock %}
+
+{% block content %}
+<!-- Section A: Remote VPS Integration -->
+<div style="margin-bottom: 24px;">
+  <h2 style="font-size: 1.25rem; font-weight: 600;">Layer C: Online Execution Worker (VPS)</h2>
+  <p style="font-size: 0.85rem; color: var(--text-muted);">
+    Internet-connected VPS executing web research, downloads, and external tasks under software-enforced permission barriers.
+  </p>
+</div>
+
+<div class="grid-cols-2" style="margin-bottom: 28px;">
+  <!-- Registered VPS Node Status Card -->
+  <div class="card">
+    <div class="card-title">
+      <span>Configured VPS Worker</span>
+      {% if vps_node %}
+        {% if vps_node.status == 'online' %}
+          <span class="badge badge-online">Online</span>
+        {% elif vps_node.status == 'offline' %}
+          <span class="badge badge-offline">Offline</span>
+        {% else %}
+          <span class="badge badge-error">{{ vps_node.status|capitalize }}</span>
+        {% endif %}
+      {% else %}
+        <span class="badge badge-warning">Unconfigured</span>
+      {% endif %}
+    </div>
+
+    {% if vps_node %}
+      <table class="data-table" style="margin-bottom: 16px;">
+        <tbody>
+          <tr>
+            <td style="width: 140px; color: var(--text-muted); font-weight: 600;">Name</td>
+            <td><strong>{{ vps_node.name }}</strong></td>
+          </tr>
+          <tr>
+            <td style="color: var(--text-muted); font-weight: 600;">Endpoint URL</td>
+            <td><code>{{ vps_node.endpoint_url }}</code></td>
+          </tr>
+          <tr>
+            <td style="color: var(--text-muted); font-weight: 600;">Permission Policy</td>
+            <td><span class="badge badge-role">{{ vps_node.permission_policy|replace('_', ' ')|title }}</span></td>
+          </tr>
+          <tr>
+            <td style="color: var(--text-muted); font-weight: 600;">Capabilities</td>
+            <td style="font-size: 0.85rem;">
+              {% for c in vps_node.capabilities %}
+                <span class="badge badge-primary" style="margin-right: 4px;">{{ c }}</span>
+              {% endfor %}
+            </td>
+          </tr>
+          <tr>
+            <td style="color: var(--text-muted); font-weight: 600;">Last Checked</td>
+            <td style="font-size: 0.8rem; color: var(--text-muted);">{{ vps_node.last_checked_at[:19] if vps_node.last_checked_at else "Never" }}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div style="display: flex; gap: 8px;">
+        <form action="/settings/vps/probe" method="post" style="display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="vps_id" value="{{ vps_node.id }}">
+          <button type="submit" class="btn btn-secondary btn-sm">Test VPS Health</button>
+        </form>
+
+        <form action="/settings/vps/test-task" method="post" style="display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="vps_id" value="{{ vps_node.id }}">
+          <button type="submit" class="btn btn-primary btn-sm">Dispatch Harmless Test Task</button>
+        </form>
+      </div>
+    {% else %}
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 16px;">
+        No VPS worker registered. The Control Server is functioning in offline local-only mode.
+      </p>
+    {% endif %}
+  </div>
+
+  <!-- Register or Update VPS Node Card -->
+  <div class="card">
+    <div class="card-title">
+      <span>Register / Update VPS Node</span>
+    </div>
+
+    <form action="/settings/vps/register" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+      <div class="form-group">
+        <label class="form-label" for="vps_name">VPS Node Name</label>
+        <input class="form-control" type="text" id="vps_name" name="name" placeholder="e.g. Hetzner Research Worker" value="{{ vps_node.name if vps_node else '' }}" required>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="vps_url">Private Network Endpoint URL</label>
+        <input class="form-control" type="text" id="vps_url" name="endpoint_url" placeholder="http://100.x.y.z:8081 (Tailscale recommended)" value="{{ vps_node.endpoint_url if vps_node else '' }}" required>
+        <div class="form-help">Do NOT expose companion worker on public unencrypted interfaces.</div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="auth_token">Bearer Authentication Token</label>
+        <input class="form-control" type="password" id="auth_token" name="auth_token" placeholder="Matching QC_AUTH_TOKEN on the VPS" required>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="permission_policy">Permission Policy</label>
+        <select class="form-control" id="permission_policy" name="permission_policy">
+          <option value="approval_required" {% if vps_node and vps_node.permission_policy == 'approval_required' %}selected{% endif %}>Approval Required for All External Actions</option>
+          <option value="automatically_permitted" {% if vps_node and vps_node.permission_policy == 'automatically_permitted' %}selected{% endif %}>Automatically Permitted (Read-only)</option>
+          <option value="disabled" {% if vps_node and vps_node.permission_policy == 'disabled' %}selected{% endif %}>Disabled</option>
+        </select>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end;">
+        <button type="submit" class="btn btn-primary btn-sm">Save VPS Configuration</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Section B: System Environment & Backup -->
+<div class="grid-cols-2">
+  <div class="card">
+    <div class="card-title">
+      <span>System & Storage Paths</span>
+    </div>
+
+    <table class="data-table">
+      <tbody>
+        <tr>
+          <td style="color: var(--text-muted); font-weight: 600;">Data Directory</td>
+          <td><code style="font-size: 0.8rem;">{{ config_paths.data_dir }}</code></td>
+        </tr>
+        <tr>
+          <td style="color: var(--text-muted); font-weight: 600;">SQLite Database</td>
+          <td><code style="font-size: 0.8rem;">{{ config_paths.db_path }}</code></td>
+        </tr>
+        <tr>
+          <td style="color: var(--text-muted); font-weight: 600;">Knowledge Folder</td>
+          <td><code style="font-size: 0.8rem;">{{ config_paths.knowledge_dir }}</code></td>
+        </tr>
+        <tr>
+          <td style="color: var(--text-muted); font-weight: 600;">Server Binding</td>
+          <td><code>{{ config_paths.host }}:{{ config_paths.port }}</code> (Localhost)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-title">
+      <span>Backup & Durability</span>
+    </div>
+    <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">
+      All persistent state lives in the <code>data/</code> folder. Backing up the system is as simple as copying this folder:
+    </p>
+    <div class="code-block"># Create atomic backup of database and knowledge notes
+sqlite3 data/qwen_collective.db ".backup data/backup_collective.db"
+tar -czvf qwen_collective_backup_$(date +%F).tar.gz data/knowledge data/backup_collective.db</div>
+  </div>
+</div>
+{% endblock %}

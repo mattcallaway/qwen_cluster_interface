@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}Task Details - {{ task.title }}{% endblock %}
+{% block page_title %}Task: {{ task.title }}{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 20px;">
+  <a href="/tasks" style="color: var(--text-muted); font-size: 0.85rem; text-decoration: none;">&larr; Back to Task Queue</a>
+</div>
+
+<div class="card" style="margin-bottom: 24px;">
+  <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
+    <div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <h2 style="font-size: 1.35rem; font-weight: 700;">{{ task.title }}</h2>
+        {% if task.status == 'completed' %}
+          <span class="badge badge-online">Completed</span>
+        {% elif task.status == 'running' %}
+          <span class="badge badge-role">Running</span>
+        {% elif task.status == 'queued' %}
+          <span class="badge badge-primary">Queued</span>
+        {% elif task.status == 'awaiting_approval' %}
+          <span class="badge badge-warning">Awaiting Approval</span>
+        {% elif task.status == 'failed' %}
+          <span class="badge badge-error">Failed</span>
+        {% else %}
+          <span class="badge badge-offline">{{ task.status|capitalize }}</span>
+        {% endif %}
+      </div>
+      <div style="font-size: 0.85rem; color: var(--text-muted); font-family: var(--font-mono); margin-top: 4px;">
+        ID: {{ task.id }} &bull; Type: {{ task.task_type }}
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div style="display: flex; gap: 8px;">
+      {% if task.status == 'awaiting_approval' %}
+        <form action="/tasks/{{ task.id }}/approve" method="post" style="display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="btn btn-primary">Approve Task</button>
+        </form>
+      {% endif %}
+      {% if task.status in ('queued', 'running', 'awaiting_approval') %}
+        <form action="/tasks/{{ task.id }}/cancel" method="post" style="display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="btn btn-danger">Cancel Task</button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="grid-cols-2">
+  <!-- Task Metadata Card -->
+  <div class="card">
+    <div class="card-title">
+      <span>Task Parameters</span>
+    </div>
+
+    <table class="data-table">
+      <tbody>
+        <tr>
+          <td style="width: 160px; color: var(--text-muted); font-weight: 600;">Description</td>
+          <td>{{ task.description or "No description provided." }}</td>
+        </tr>
+        <tr>
+          <td style="color: var(--text-muted); font-weight: 600;">Assigned Worker</td>
+          <td>{{ task.assigned_worker or "Local Controller" }}</td>
+        </tr>
+        <tr>
+          <td style="color: var(--text-muted); font-weight: 600;">Approval Policy</td>
+          <td>
+            {% if task.approval_required %}
+              <span class="badge badge-warning">Requires Explicit Approval</span>
+            {% else %}
+              <span class="badge badge-role">Auto-queued</span>
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <td style="color: var(--text-muted); font-weight: 600;">Attempts</td>
+          <td>{{ task.attempt_count }} of max {{ task.max_retries }}</td>
+        </tr>
+        <tr>
+          <td style="color: var(--text-muted); font-weight: 600;">Created At</td>
+          <td style="font-size: 0.85rem;">{{ task.created_at[:19] }}</td>
+        </tr>
+        <tr>
+          <td style="color: var(--text-muted); font-weight: 600;">Last Updated</td>
+          <td style="font-size: 0.85rem;">{{ task.updated_at[:19] }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Task Payload & Results -->
+  <div class="card">
+    <div class="card-title">
+      <span>Input & Result Data</span>
+    </div>
+
+    <div style="margin-bottom: 14px;">
+      <h4 style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 4px;">Input Payload</h4>
+      <div class="code-block">{{ task.input_data_json }}</div>
+    </div>
+
+    {% if task.error_details %}
+      <div style="margin-bottom: 14px;">
+        <h4 style="font-size: 0.85rem; font-weight: 600; color: var(--status-error); margin-bottom: 4px;">Error Details</h4>
+        <div class="alert alert-error">{{ task.error_details }}</div>
+      </div>
+    {% endif %}
+
+    <div>
+      <h4 style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 4px;">Result Output</h4>
+      <div class="code-block">{{ task.result_data_json }}</div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+
+{% block title %}{{ machine.display_name }} - Machine Details{% endblock %}
+{% block page_title %}Machine: {{ machine.display_name }}{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 20px;">
+  <a href="/machines" style="color: var(--text-muted); font-size: 0.85rem; text-decoration: none;">&larr; Back to Machine Registry</a>
+</div>
+
+<!-- Header Card -->
+<div class="card" style="margin-bottom: 24px;">
+  <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
+    <div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <h2 style="font-size: 1.4rem; font-weight: 700;">{{ machine.display_name }}</h2>
+        {% if machine.connection_status == 'online' %}
+          <span class="badge badge-online">Online</span>
+        {% elif machine.connection_status == 'offline' or machine.connection_status == 'unreachable' %}
+          <span class="badge badge-offline">Offline</span>
+        {% elif machine.connection_status == 'error' or machine.connection_status == 'auth_failed' %}
+          <span class="badge badge-error">{{ machine.connection_status|replace('_', ' ')|title }}</span>
+        {% else %}
+          <span class="badge badge-warning">Unknown</span>
+        {% endif %}
+
+        {% if not machine.is_enabled %}
+          <span class="badge badge-offline">Disabled</span>
+        {% endif %}
+      </div>
+      <div style="font-size: 0.85rem; color: var(--text-muted); font-family: var(--font-mono); margin-top: 4px;">
+        ID: {{ machine.id }} &bull; Address: {{ machine.ip_address }} {% if machine.hostname %}({{ machine.hostname }}){% endif %}
+      </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div style="display: flex; gap: 8px;">
+      <form action="/machines/{{ machine.id }}/test-connection" method="post" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn-secondary">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
+          Test Reachability
+        </button>
+      </form>
+
+      <form action="/machines/{{ machine.id }}/toggle-status" method="post" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        {% if machine.is_enabled %}
+          <button type="submit" class="btn btn-secondary">Disable</button>
+        {% else %}
+          <button type="submit" class="btn btn-secondary">Enable</button>
+        {% endif %}
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="grid-cols-2">
+  <!-- Hardware Profile Card -->
+  <div class="card">
+    <div class="card-title">
+      <span>Hardware Profile</span>
+      <span class="badge badge-role">{{ machine.connection_type|upper }}</span>
+    </div>
+
+    <table class="data-table" style="margin-top: 8px;">
+      <tbody>
+        <tr>
+          <td style="width: 140px; color: var(--text-muted); font-weight: 600;">Total Memory</td>
+          <td>
+            {% if machine.ram_total_mb %}
+              <strong>{{ machine.ram_total_mb }} MB</strong>
+              {% if machine.ram_avail_mb %}
+                <span style="color: var(--text-muted); font-size: 0.8rem;">(~{{ machine.ram_avail_mb }} MB available)</span>
+              {% endif %}
+            {% else %}
+              <span style="color: var(--text-muted);">Unknown (Not probed)</span>
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <td style="color: var(--text-muted); font-weight: 600;">CPU Architecture</td>
+          <td>
+            {% if machine.cpu_info %}{{ machine.cpu_info }}{% else %}<span style="color: var(--text-muted);">Unknown</span>{% endif %}
+          </td>
+        </tr>
+        <tr>
+          <td style="color: var(--text-muted); font-weight: 600;">Operating System</td>
+          <td>
+            {% if machine.os_info %}{{ machine.os_info }}{% else %}<span style="color: var(--text-muted);">Unknown</span>{% endif %}
+          </td>
+        </tr>
+        <tr>
+          <td style="color: var(--text-muted); font-weight: 600;">Storage Devices</td>
+          <td style="font-size: 0.85rem; font-family: var(--font-mono);">
+            {% if machine.disk_info %}{{ machine.disk_info }}{% else %}<span style="color: var(--text-muted);">Unknown</span>{% endif %}
+          </td>
+        </tr>
+        <tr>
+          <td style="color: var(--text-muted); font-weight: 600;">Last Seen</td>
+          <td style="font-size: 0.85rem;">
+            {{ machine.last_successful_connection[:19] if machine.last_successful_connection else "Never" }}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Re-probe with SSH -->
+    <div style="margin-top: 20px; padding: 14px; background: #f8fafc; border-radius: 6px; border: 1px solid var(--border-color);">
+      <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: 8px;">Refresh Specs via SSH</h4>
+      <form action="/machines/{{ machine.id }}/inspect-ssh" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <input class="form-control" type="text" name="ssh_user" placeholder="SSH Username (e.g. debian)" required style="flex: 1;">
+          <input class="form-control" type="number" name="ssh_port" value="22" style="width: 80px;">
+          <button type="submit" class="btn btn-secondary btn-sm" style="white-space: nowrap;">Run Inspection</button>
+        </div>
+        <div class="form-help">Runs safe read-only queries (`free`, `lscpu`, `uname`). Credentials are never saved.</div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Role & Configuration Management -->
+  <div class="card">
+    <div class="card-title">
+      <span>Assigned Role & Policy</span>
+      <span class="badge badge-primary">{{ machine.role|replace('_', ' ')|title }}</span>
+    </div>
+
+    <form action="/machines/{{ machine.id }}/update-role" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      
+      <div class="form-group">
+        <label class="form-label" for="role">Change Assigned Role</label>
+        <select class="form-control" id="role" name="role">
+          <option value="distributed_worker" {% if machine.role == 'distributed_worker' %}selected{% endif %}>Distributed Inference Worker (llama.cpp RPC)</option>
+          <option value="inference_coordinator" {% if machine.role == 'inference_coordinator' %}selected{% endif %}>Distributed Inference Coordinator</option>
+          <option value="standalone_server" {% if machine.role == 'standalone_server' %}selected{% endif %}>Standalone Inference Server (Ollama/llama-server)</option>
+          <option value="vps_worker" {% if machine.role == 'vps_worker' %}selected{% endif %}>Online Execution Worker (VPS)</option>
+          <option value="general_worker" {% if machine.role == 'general_worker' %}selected{% endif %}>General-purpose Worker</option>
+          <option value="unassigned" {% if machine.role == 'unassigned' %}selected{% endif %}>Unassigned</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="notes">Operational Notes</label>
+        <textarea class="form-control" id="notes" name="notes">{{ machine.notes }}</textarea>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end;">
+        <button type="submit" class="btn btn-primary btn-sm">Save Role & Notes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Setup Instructions Card -->
+<div class="card" style="margin-bottom: 24px;">
+  <div class="card-title">
+    <span>Manual Setup Instructions for: {{ instructions.summary }}</span>
+    <span class="badge badge-role">Manual & Idempotent</span>
+  </div>
+  <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">
+    {{ instructions.description }}
+  </p>
+
+  {% if instructions.warning %}
+    <div class="alert alert-warning">
+      <div>{{ instructions.warning }}</div>
+    </div>
+  {% endif %}
+
+  <div class="code-block">{{ instructions.commands }}</div>
+  <div class="form-help">Copy and run these commands directly on the target machine terminal. Qwen Collective does not execute installations automatically.</div>
+</div>
+
+<!-- Audit Trail Card -->
+<div class="card">
+  <div class="card-title">
+    <span>Node Audit Trail & Action History</span>
+    <span class="badge badge-role">{{ audits|length }} records</span>
+  </div>
+
+  {% if audits %}
+    <div class="table-container">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th style="width: 180px;">Timestamp</th>
+            <th style="width: 160px;">Action</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in audits %}
+            <tr>
+              <td style="font-size: 0.8rem; color: var(--text-muted);">{{ a.timestamp[:19] }}</td>
+              <td><strong>{{ a.action }}</strong></td>
+              <td style="font-size: 0.85rem;">{{ a.details }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p style="font-size: 0.85rem; color: var(--text-muted);">No audit events recorded for this machine yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

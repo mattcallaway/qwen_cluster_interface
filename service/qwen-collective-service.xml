@@ -1,0 +1,55 @@
+<service>
+  <!-- Service Identity -->
+  <id>QwenCollective</id>
+  <name>Qwen Collective Control Server</name>
+  <description>Private, Modular, Distributed AI Infrastructure Control Server</description>
+  
+  <!-- Startup Mode: Automatic startup after Windows boots -->
+  <startmode>Automatic</startmode>
+
+  <!-- Executable and Arguments -->
+  <executable>%BASE%\..\.venv\Scripts\python.exe</executable>
+  <arguments>-m uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level info</arguments>
+  <workingdirectory>%BASE%\..</workingdirectory>
+
+  <!-- Environment Configuration: Secrets loaded from protected external file -->
+  <env name="QC_ENV" value="production"/>
+  <env name="QC_HOST" value="127.0.0.1"/>
+  <env name="QC_PORT" value="8000"/>
+  <env name="QC_DATA_DIR" value="C:\Users\Matt C\.qwen-collective\data"/>
+  <env name="QC_CONFIG_FILE" value="C:\Users\Matt C\.qwen-collective\qwen-collective.env"/>
+  <env name="QC_SESSION_EXPIRE_HOURS" value="72"/>
+  <env name="QC_LOG_LEVEL" value="INFO"/>
+
+  <!-- Rotating Logs: Roll by size, max 10MB per file, keep 5 archives -->
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>5</keepFiles>
+  </log>
+  <logpath>%BASE%\logs</logpath>
+
+  <!-- Graceful Shutdown -->
+  <stoptimeout>15 sec</stoptimeout>
+  
+  <!-- Restart Policy on Failure -->
+  <onfailure action="restart" delay="5 sec"/>
+  <onfailure action="restart" delay="15 sec"/>
+  <onfailure action="restart" delay="30 sec"/>
+  <resetfailure>1 hour</resetfailure>
+
+  <!-- Priority and Permissions -->
+  <priority>Normal</priority>
+  
+  <!--
+    Security & Service Identity:
+    To run under an unprivileged dedicated account rather than LocalSystem,
+    configure the credentials below or leave commented to run under standard service account:
+    <serviceaccount>
+      <domain>.</domain>
+      <user>qwen-service</user>
+      <password>PasswordHere</password>
+    </serviceaccount>
+  -->
+</service>
+
+
