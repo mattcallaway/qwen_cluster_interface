@@ -1,13 +1,57 @@
+import html
 import os
 import re
 import sqlite3
 import tempfile
 import markdown
+from markdown.treeprocessors import Treeprocessor
+from markdown.extensions import Extension
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from app.config import settings
 from app.database import get_db_connection
+
+# --- Safe Markdown rendering -------------------------------------------------
+# Vault content can originate from external sources or the VPS worker and must be
+# treated as untrusted. Raw HTML is disabled and link/image URLs are allow-listed.
+_SAFE_URL_RE = re.compile(r"^(https?:|mailto:|#|/(?!/)|\./|\.\./|[\w\-./]+$)", re.IGNORECASE)
+
+
+class _UrlSanitizer(Treeprocessor):
+    def run(self, root):
+        for el in root.iter():
+            for attr in ("href", "src"):
+                val = el.get(attr)
+                if val is None:
+                    continue
+                cleaned = "".join(ch for ch in val if ch.isprintable() and not ch.isspace())
+                if not _SAFE_URL_RE.match(cleaned):
+                    el.set(attr, "#unsafe-url-removed")
+        return root
+
+
+class _SafeMarkdownExtension(Extension):
+    def extendMarkdown(self, md):
+        # Treat raw HTML blocks and inline HTML as literal text (escaped on output).
+        md.preprocessors.deregister("html_block")
+        md.inlinePatterns.deregister("html")
+        md.treeprocessors.register(_UrlSanitizer(md), "qc_url_sanitizer", 0)
+
+
+def render_markdown_safe(text: str) -> str:
+    """Render untrusted Markdown to HTML with raw HTML disabled and unsafe URLs removed."""
+    return markdown.markdown(
+        text,
+        extensions=["tables", "fenced_code", "nl2br", _SafeMarkdownExtension()],
+    )
+
+
+def _iter_vault_markdown(cat_dir: Path):
+    """Yield Markdown files under a category directory, including nested project folders."""
+    for file in cat_dir.rglob("*.md"):
+        if file.is_file():
+            yield file
 
 def parse_frontmatter(content: str) -> Dict[str, Any]:
     """Parse YAML-like frontmatter if present between --- delimiters."""
@@ -37,7 +81,7 @@ def list_all_notes(category: Optional[str] = None) -> List[Dict[str, Any]]:
         cat_dir = base_dir / cat
         if not cat_dir.exists():
             continue
-        for file in cat_dir.glob("*.md"):
+        for file in _iter_vault_markdown(cat_dir):
             try:
                 stat = file.stat()
                 with open(file, "r", encoding="utf-8", errors="replace") as f:
@@ -45,7 +89,7 @@ def list_all_notes(category: Optional[str] = None) -> List[Dict[str, Any]]:
                 parsed = parse_frontmatter(content)
                 title = parsed["meta"].get("title") or file.stem.replace("_", " ").replace("-", " ").title()
                 notes.append({
-                    "path": f"{cat}/{file.name}",
+                    "path": file.relative_to(base_dir).as_posix(),
                     "filename": file.name,
                     "title": title,
                     "category": cat,
@@ -71,10 +115,7 @@ def read_note(rel_path: str) -> Optional[Dict[str, Any]]:
             content = f.read()
             
         parsed = parse_frontmatter(content)
-        rendered_html = markdown.markdown(
-            parsed["body"],
-            extensions=["tables", "fenced_code", "nl2br"]
-        )
+        rendered_html = render_markdown_safe(parsed["body"])
         stat = full_path.stat()
         parts = safe_path.split("/", 1)
         category = parts[0] if len(parts) > 1 else "inbox"
@@ -154,9 +195,9 @@ def rebuild_knowledge_index() -> int:
         cat_dir = settings.knowledge_dir / cat
         if not cat_dir.exists():
             continue
-        for file in cat_dir.glob("*.md"):
+        for file in _iter_vault_markdown(cat_dir):
             try:
-                rel_path = f"{cat}/{file.name}"
+                rel_path = file.relative_to(settings.knowledge_dir).as_posix()
                 with open(file, "r", encoding="utf-8", errors="replace") as f:
                     content = f.read()
                 parsed = parse_frontmatter(content)
@@ -187,15 +228,22 @@ def search_knowledge(query: str) -> List[Dict[str, Any]]:
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
+        # Highlight with control-character sentinels, escape the whole snippet, then
+        # restore <mark>. The template renders `snippet|safe`, so the snippet must be
+        # HTML-safe here: note bodies are untrusted.
         cursor.execute("""
-        SELECT path, title, category, snippet(knowledge_fts, 3, '<mark>', '</mark>', '...', 20) as snippet, updated_at
+        SELECT path, title, category, snippet(knowledge_fts, 3, char(2), char(3), '...', 20) as snippet, updated_at
         FROM knowledge_fts
         WHERE knowledge_fts MATCH ?
         ORDER BY rank
         LIMIT 30;
         """, (fts_query,))
         rows = cursor.fetchall()
-        results = [dict(row) for row in rows]
+        results = []
+        for row in rows:
+            d = dict(row)
+            d["snippet"] = html.escape(d["snippet"] or "").replace("\x02", "<mark>").replace("\x03", "</mark>")
+            results.append(d)
     except sqlite3.OperationalError:
         # Fallback to simple LIKE if syntax issue
         like_query = f"%{query.strip()}%"
@@ -206,7 +254,11 @@ def search_knowledge(query: str) -> List[Dict[str, Any]]:
         LIMIT 30;
         """, (like_query, like_query))
         rows = cursor.fetchall()
-        results = [dict(row) for row in rows]
+        results = []
+        for row in rows:
+            d = dict(row)
+            d["snippet"] = html.escape(d["snippet"] or "")
+            results.append(d)
     finally:
         conn.close()
         
