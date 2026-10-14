@@ -1,9 +1,10 @@
 import sqlite3
 import json
 import logging
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 from app.config import settings
 
 logger = logging.getLogger("qwen_collective.db")
@@ -16,9 +17,44 @@ def get_db_connection() -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
 
-def init_db():
-    """Initialize database tables and full-text search indexes."""
+
+@contextmanager
+def db_transaction() -> Iterator[sqlite3.Connection]:
+    """Yield a connection inside BEGIN IMMEDIATE; commit on success, roll back on any error."""
     conn = get_db_connection()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def init_db():
+    """Create the baseline schema, back up an existing DB if migrations are pending, then migrate."""
+    from app.migrations import apply_migrations, backup_before_migration, current_version, latest_version
+
+    db_existed = settings.db_path.exists() and settings.db_path.stat().st_size > 0
+    create_baseline_schema()
+
+    conn = get_db_connection()
+    try:
+        if db_existed and current_version(conn) < latest_version():
+            backup_before_migration(conn, settings.db_path)
+        apply_migrations(conn)
+    finally:
+        conn.close()
+    logger.info("Database initialized successfully.")
+
+
+def create_baseline_schema(conn: Optional[sqlite3.Connection] = None):
+    """Schema version 0: the original tables. Do not modify; add migrations instead."""
+    own_conn = conn is None
+    if own_conn:
+        conn = get_db_connection()
     cursor = conn.cursor()
     
     # 1. Users table for authentication
@@ -214,5 +250,5 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_login_attempts ON login_attempts(key_type, key_value, attempt_time);")
     
     conn.commit()
-    conn.close()
-    logger.info("Database initialized successfully.")
+    if own_conn:
+        conn.close()
