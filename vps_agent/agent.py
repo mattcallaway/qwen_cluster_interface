@@ -52,6 +52,9 @@ class VPSWorkerAgent:
         self.token = self.config.worker_token
         self.is_registered = False
         self.last_heartbeat = 0.0
+        self.auth_failed = False
+        self.enrollment_failed = False
+        self.consecutive_auth_failures = 0
 
     def _headers(self) -> Dict[str, str]:
         headers = {"Content-Type": "application/json"}
@@ -63,6 +66,12 @@ class VPSWorkerAgent:
 
     def register(self) -> bool:
         """Register the worker node and obtain/verify authentication token."""
+        if self.enrollment_failed and not self.token:
+            logger.warning(
+                "Enrollment token was rejected (HTTP 403); aborting registration attempt until a fresh token is configured."
+            )
+            return False
+
         url = f"{self.config.controller_url}/api/v1/worker/register"
         hardware_info = discover_local_hardware()
         payload = {
@@ -92,12 +101,39 @@ class VPSWorkerAgent:
                     self.token = data["worker_token"]
                     self.config.worker_token = self.token
                     save_worker_token(self.config, self.token)
+                    # Clear single-use enrollment token from memory and scrub config file
+                    self.config.enrollment_token = ""
+                    from vps_agent.config import scrub_enrollment_token
+                    scrub_enrollment_token()
                     logger.info("Provisioned and securely persisted new worker token for node %s", self.config.worker_id)
                 self.is_registered = True
+                self.auth_failed = False
+                self.enrollment_failed = False
+                self.consecutive_auth_failures = 0
                 logger.info("Successfully registered worker node %s with controller", self.config.worker_id)
                 return True
+            elif resp.status_code == 401:
+                self.is_registered = False
+                self.auth_failed = True
+                self.consecutive_auth_failures += 1
+                logger.error("Controller rejected registration credentials (HTTP 401: unauthorized).")
+                return False
+            elif resp.status_code == 403:
+                self.is_registered = False
+                self.auth_failed = True
+                self.consecutive_auth_failures += 1
+                if self.config.enrollment_token and not self.token:
+                    self.enrollment_failed = True
+                    self.config.enrollment_token = ""
+                    logger.error(
+                        "Controller rejected enrollment token (HTTP 403: %s). Discarding single-use enrollment token.",
+                        resp.text[:200],
+                    )
+                else:
+                    logger.error("Controller rejected registration (HTTP 403: %s).", resp.text[:200])
+                return False
             else:
-                logger.error("Registration failed with status %s: %s", resp.status_code, resp.text)
+                logger.error("Registration failed with status %s: %s", resp.status_code, resp.text[:200])
                 return False
         except Exception as e:
             logger.warning("Could not contact controller for registration: %s", e)
@@ -105,6 +141,9 @@ class VPSWorkerAgent:
 
     def send_heartbeat(self) -> bool:
         """Send health heartbeat to the controller."""
+        if not self.is_registered or not self.token:
+            return False
+
         url = f"{self.config.controller_url}/api/v1/worker/heartbeat"
         hardware_info = discover_local_hardware()
         payload = {
@@ -119,9 +158,12 @@ class VPSWorkerAgent:
             if resp.status_code == 200:
                 self.last_heartbeat = time.time()
                 return True
-            elif resp.status_code == 401:
-                logger.warning("Heartbeat returned 401 Unauthorized; re-registering...")
-                self.register()
+            elif resp.status_code in (401, 403):
+                logger.warning("Heartbeat returned HTTP %s; worker token invalid or revoked. Marking unregistered.", resp.status_code)
+                self.is_registered = False
+                self.auth_failed = True
+                self.consecutive_auth_failures += 1
+                return False
             return False
         except Exception as e:
             logger.debug("Heartbeat ping failed: %s", e)
@@ -138,6 +180,10 @@ class VPSWorkerAgent:
         - Network drop: retain and retry later.
         - Unknown 200 ack: retain for review.
         """
+        if not self.is_registered or not self.token:
+            logger.debug("Skipping buffer flush: worker not registered and authenticated")
+            return 0
+
         pending = self.buffer.get_pending_submissions(limit=10)
         flushed_count = 0
         for item in pending:
@@ -159,8 +205,10 @@ class VPSWorkerAgent:
                         logger.warning("Unrecognized 200 ack status '%s' for task %s; retaining for review", ack_status, task_id)
                         break
                 elif resp.status_code in (401, 403):
-                    logger.warning("Authentication rejected (%s) while flushing buffer; suspending retries", resp.status_code)
+                    logger.warning("Authentication rejected (HTTP %s) while flushing buffer; suspending retries", resp.status_code)
                     self.is_registered = False
+                    self.auth_failed = True
+                    self.consecutive_auth_failures += 1
                     break
                 elif resp.status_code in (400, 422):
                     logger.error("Controller rejected buffer submission #%s as invalid payload (HTTP %s); quarantining", item["id"], resp.status_code)
@@ -178,6 +226,10 @@ class VPSWorkerAgent:
 
     def poll_and_execute_task(self) -> Optional[Dict[str, Any]]:
         """Lease one task from controller, execute it, and submit results."""
+        if not self.is_registered or not self.token:
+            logger.warning("Task polling denied: worker is not registered and authenticated")
+            return None
+
         url = f"{self.config.controller_url}/api/v1/worker/tasks/lease"
         payload = {
             "worker_id": self.config.worker_id,
@@ -190,6 +242,12 @@ class VPSWorkerAgent:
 
         try:
             resp = self.session.post(url, json=payload, headers=self._headers(), timeout=10)
+            if resp.status_code in (401, 403):
+                logger.warning("Task lease poll returned HTTP %s; worker token invalid or revoked. Marking unregistered.", resp.status_code)
+                self.is_registered = False
+                self.auth_failed = True
+                self.consecutive_auth_failures += 1
+                return None
             if resp.status_code != 200:
                 return None
             data = resp.json()
@@ -252,6 +310,21 @@ class VPSWorkerAgent:
                     logger.info("Submitted task %s results to controller (ack: %s)", task_id, ack_status)
                 else:
                     logger.warning("Unexpected 200 ack status '%s' for task %s; buffering for review", ack_status, task_id)
+            elif submit_resp.status_code in (401, 403):
+                logger.warning(
+                    "Task submission returned HTTP %s (auth failure); buffering locally and marking unregistered.",
+                    submit_resp.status_code,
+                )
+                self.is_registered = False
+                self.auth_failed = True
+                self.consecutive_auth_failures += 1
+                self.buffer.buffer_submission(
+                    task_id=task_id,
+                    lease_id=lease_id,
+                    idempotency_key=idempotency_key,
+                    submission_payload=submission,
+                )
+                return exec_outcome
             elif submit_resp.status_code in (400, 422):
                 logger.error("Controller rejected task %s submission as invalid (HTTP %s); buffering and quarantining", task_id, submit_resp.status_code)
                 self.buffer.buffer_submission(
@@ -279,20 +352,58 @@ class VPSWorkerAgent:
         return exec_outcome
 
     def run_cycle(self) -> Dict[str, Any]:
-        """Perform one complete poll/heartbeat/sync cycle."""
-        # 1. Ensure registration
+        """
+        Perform one complete poll/heartbeat/sync cycle.
+        Strictly enforces authentication gating:
+        Failed registration immediately halts execution before heartbeat,
+        buffer submission, or task leasing.
+        """
+        # 1. Enforce authentication and registration before any activity
         if not self.is_registered:
-            self.register()
+            if self.enrollment_failed and not self.token:
+                logger.warning("Cannot run cycle: enrollment token was rejected (HTTP 403) and no worker token exists.")
+                return {
+                    "registered": False,
+                    "flushed_buffer_count": 0,
+                    "executed_task": False,
+                    "pending_buffer_count": self.buffer.count_pending(),
+                    "status": "enrollment_rejected",
+                }
+            reg_ok = self.register()
+            if not reg_ok:
+                return {
+                    "registered": False,
+                    "flushed_buffer_count": 0,
+                    "executed_task": False,
+                    "pending_buffer_count": self.buffer.count_pending(),
+                    "status": "registration_failed",
+                }
 
-        # 2. Flush any offline buffered results
+        # 2. Flush offline buffer (only when registered)
         flushed = self.flush_offline_buffer()
+        if not self.is_registered:
+            return {
+                "registered": False,
+                "flushed_buffer_count": flushed,
+                "executed_task": False,
+                "pending_buffer_count": self.buffer.count_pending(),
+                "status": "auth_lost_during_buffer_flush",
+            }
 
-        # 3. Heartbeat if due
+        # 3. Heartbeat if due (only when registered)
         now = time.time()
         if now - self.last_heartbeat >= self.config.heartbeat_interval:
             self.send_heartbeat()
+            if not self.is_registered:
+                return {
+                    "registered": False,
+                    "flushed_buffer_count": flushed,
+                    "executed_task": False,
+                    "pending_buffer_count": self.buffer.count_pending(),
+                    "status": "auth_lost_during_heartbeat",
+                }
 
-        # 4. Poll and execute available task
+        # 4. Poll and execute task (strictly authenticated)
         executed_task = self.poll_and_execute_task()
 
         return {
@@ -300,4 +411,5 @@ class VPSWorkerAgent:
             "flushed_buffer_count": flushed,
             "executed_task": executed_task is not None,
             "pending_buffer_count": self.buffer.count_pending(),
+            "status": "active" if self.is_registered else "unregistered",
         }

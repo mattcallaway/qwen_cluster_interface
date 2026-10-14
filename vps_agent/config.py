@@ -5,6 +5,7 @@ Loads settings from environment variables or a local configuration file.
 
 import os
 from pathlib import Path
+from typing import Optional, Tuple
 from pydantic import BaseModel, Field
 
 
@@ -91,7 +92,120 @@ def save_worker_token(config: AgentConfig, token: str) -> Path:
     return token_path
 
 
-def load_config() -> AgentConfig:
+def scrub_enrollment_token(config_path: Optional[Path] = None) -> bool:
+    """
+    Remove or comment out QC_ENROLLMENT_TOKEN from the configuration file
+    after successful registration so single-use credentials do not linger on disk.
+    Preserves file permissions (0600 on Linux).
+    """
+    if config_path is None:
+        custom_file = os.getenv("QC_CONFIG_FILE")
+        if custom_file:
+            config_path = Path(custom_file)
+        elif Path("/etc/qwen-collective/worker.env").exists():
+            config_path = Path("/etc/qwen-collective/worker.env")
+
+    if not config_path or not config_path.exists():
+        return False
+
+    try:
+        lines = config_path.read_text(encoding="utf-8").splitlines(keepends=True)
+        modified = False
+        new_lines = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("QC_ENROLLMENT_TOKEN=") or stripped.startswith("export QC_ENROLLMENT_TOKEN="):
+                new_lines.append("# QC_ENROLLMENT_TOKEN consumed and scrubbed after successful registration\n")
+                modified = True
+            else:
+                new_lines.append(line)
+
+        if modified:
+            tmp_path = config_path.with_suffix(".tmp")
+            flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            mode = 0o600
+            fd = os.open(str(tmp_path), flags, mode)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.writelines(new_lines)
+                f.flush()
+                os.fsync(f.fileno())
+            if os.name != "nt":
+                try:
+                    os.chmod(tmp_path, 0o600)
+                except OSError:
+                    pass
+            tmp_path.replace(config_path)
+            if os.name != "nt":
+                try:
+                    os.chmod(config_path, 0o600)
+                except OSError:
+                    pass
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def validate_config(config: AgentConfig) -> tuple[bool, Optional[str]]:
+    """
+    Validate agent configuration for production readiness.
+    Returns (True, None) if valid, or (False, error_message) on failure.
+    Never exposes token values in error messages.
+    """
+    # 1. Controller URL validation
+    url = (config.controller_url or "").strip().rstrip("/")
+    if not url:
+        return False, "QC_CONTROLLER_URL is empty. A valid HTTP(S) URL is required."
+    if not (url.startswith("http://") or url.startswith("https://")):
+        return False, f"QC_CONTROLLER_URL '{url}' is invalid. Must begin with http:// or https://"
+
+    # 2. Worker ID validation
+    worker_id = (config.worker_id or "").strip()
+    if not worker_id:
+        return False, "QC_WORKER_ID is empty. A valid worker identifier is required."
+    if any(c.isspace() for c in worker_id):
+        return False, f"QC_WORKER_ID '{worker_id}' contains invalid whitespace characters."
+
+    # 3. Intervals validation
+    if config.poll_interval < 1:
+        return False, f"QC_POLL_INTERVAL ({config.poll_interval}) must be at least 1 second."
+    if config.heartbeat_interval < 1:
+        return False, f"QC_HEARTBEAT_INTERVAL ({config.heartbeat_interval}) must be at least 1 second."
+    if config.lease_duration < 10:
+        return False, f"QC_LEASE_DURATION ({config.lease_duration}) must be at least 10 seconds."
+
+    # 4. Credential presence check
+    has_token = bool(config.worker_token) or config.token_file_path.exists()
+    has_enrollment = bool(config.enrollment_token)
+    if not has_token and not has_enrollment:
+        return False, (
+            "No worker authentication token or enrollment token found. "
+            "Please provide QC_WORKER_TOKEN, QC_ENROLLMENT_TOKEN, or place a valid "
+            f"worker_token.json in '{config.token_file_path}'."
+        )
+
+    return True, None
+
+
+def load_config(config_file: Optional[Path] = None) -> AgentConfig:
+    # 1. Load from explicit config file or well-known location if present
+    target_env_file = config_file
+    if target_env_file is None:
+        custom_file = os.getenv("QC_CONFIG_FILE")
+        if custom_file and Path(custom_file).exists():
+            target_env_file = Path(custom_file)
+        elif Path("/etc/qwen-collective/worker.env").exists():
+            target_env_file = Path("/etc/qwen-collective/worker.env")
+
+    if target_env_file and target_env_file.exists():
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(dotenv_path=target_env_file)
+        except ImportError:
+            pass
+
     config = AgentConfig()
     config.data_dir.mkdir(parents=True, exist_ok=True)
     if os.name != "nt":
@@ -99,6 +213,7 @@ def load_config() -> AgentConfig:
             os.chmod(config.data_dir, 0o700)
         except OSError:
             pass
+
     # If worker_token not in env, load from secure token persistence file
     if not config.worker_token and config.token_file_path.exists():
         try:
