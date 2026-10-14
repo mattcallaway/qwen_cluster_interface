@@ -219,53 +219,91 @@ def validate_probe_target(host: str, port: int) -> Tuple[bool, str]:
 
     return True, "Target is valid."
 
+def resolve_and_pin_endpoint_url(url: str, allow_localhost: bool = True) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """
+    Validate and pin an endpoint URL to its resolved IP address.
+    Eliminates TOCTOU DNS rebinding by providing pre-resolved IP connection info.
+    """
+    cleaned_url = url.strip()
+    if not cleaned_url:
+        return False, "URL cannot be empty.", None
+
+    try:
+        parsed = urlparse(cleaned_url)
+    except Exception as e:
+        return False, f"Malformed URL: {str(e)}", None
+
+    if parsed.scheme not in ("http", "https"):
+        return False, f"Unsupported URL scheme '{parsed.scheme}'. Only http:// and https:// are permitted.", None
+
+    if parsed.username or parsed.password:
+        return False, "URLs with embedded username/password credentials are prohibited.", None
+
+    hostname = parsed.hostname
+    if not hostname:
+        return False, "URL must contain a valid hostname or IP address.", None
+
+    hostname_clean = hostname.strip().lower().strip("[]")
+    if not hostname_clean or "\0" in hostname_clean or "/" in hostname_clean:
+        return False, "Invalid characters in target hostname.", None
+
+    if is_cloud_metadata(hostname_clean):
+        return False, "Access to cloud metadata services (169.254.169.254) is strictly prohibited.", None
+
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    if port not in ALLOWED_ENDPOINT_PORTS:
+        return False, f"Port {port} is prohibited for service endpoints. Allowed: {sorted(ALLOWED_ENDPOINT_PORTS)}.", None
+
+    # Resolve and validate ALL destination IPs
+    success, ips_or_err = resolve_hostname_ips(hostname_clean, port)
+    if not success:
+        return False, str(ips_or_err), None
+
+    for ip_obj in ips_or_err:
+        valid, reason = validate_destination_ip(ip_obj, port, allow_localhost=allow_localhost)
+        if not valid:
+            return False, f"Destination IP {ip_obj} rejected: {reason}", None
+
+    # Pin to the first validated IP address
+    pinned_ip = ips_or_err[0]
+    pinned_ip_str = str(pinned_ip)
+
+    host_header = hostname_clean
+    if (parsed.scheme == "http" and port != 80) or (parsed.scheme == "https" and port != 443):
+        host_header = f"{hostname_clean}:{port}"
+
+    path_and_query = parsed.path
+    if not path_and_query:
+        path_and_query = "/"
+    if parsed.query:
+        path_and_query += f"?{parsed.query}"
+
+    if isinstance(pinned_ip, ipaddress.IPv6Address):
+        pinned_netloc = f"[{pinned_ip_str}]:{port}"
+    else:
+        pinned_netloc = f"{pinned_ip_str}:{port}"
+
+    pinned_url = f"{parsed.scheme}://{pinned_netloc}{path_and_query}"
+
+    pin_info = {
+        "original_url": cleaned_url,
+        "pinned_url": pinned_url,
+        "pinned_ip": pinned_ip_str,
+        "hostname": hostname_clean,
+        "port": port,
+        "host_header": host_header,
+        "is_https": parsed.scheme == "https"
+    }
+
+    return True, "URL is valid and pinned.", pin_info
+
 def validate_endpoint_url(url: str, allow_localhost: bool = True) -> Tuple[bool, str]:
     """
     Validate inference and VPS endpoint URLs against SSRF, cloud metadata, and DNS-rebinding risks.
     Resolves all destination IPs and validates against destination policy.
     """
-    cleaned_url = url.strip()
-    if not cleaned_url:
-        return False, "URL cannot be empty."
-
-    try:
-        parsed = urlparse(cleaned_url)
-    except Exception as e:
-        return False, f"Malformed URL: {str(e)}"
-
-    if parsed.scheme not in ("http", "https"):
-        return False, f"Unsupported URL scheme '{parsed.scheme}'. Only http:// and https:// are permitted."
-
-    # Strictly reject URLs containing user-info credentials (e.g. http://user:pass@host)
-    if parsed.username or parsed.password:
-        return False, "URLs with embedded username/password credentials are prohibited."
-
-    hostname = parsed.hostname
-    if not hostname:
-        return False, "URL must contain a valid hostname or IP address."
-
-    hostname_clean = hostname.strip().lower().strip("[]")
-    if not hostname_clean or "\0" in hostname_clean or "/" in hostname_clean:
-        return False, "Invalid characters in target hostname."
-
-    if is_cloud_metadata(hostname_clean):
-        return False, "Access to cloud metadata services (169.254.169.254) is strictly prohibited."
-
-    port = parsed.port or (443 if parsed.scheme == "https" else 80)
-    if port not in ALLOWED_ENDPOINT_PORTS:
-        return False, f"Port {port} is prohibited for service endpoints. Allowed: {sorted(ALLOWED_ENDPOINT_PORTS)}."
-
-    # Resolve and validate ALL destination IPs
-    success, ips_or_err = resolve_hostname_ips(hostname_clean, port)
-    if not success:
-        return False, str(ips_or_err)
-
-    for ip_obj in ips_or_err:
-        valid, reason = validate_destination_ip(ip_obj, port, allow_localhost=allow_localhost)
-        if not valid:
-            return False, f"Destination IP {ip_obj} rejected: {reason}"
-
-    return True, "URL is valid."
+    is_safe, reason, _ = resolve_and_pin_endpoint_url(url, allow_localhost=allow_localhost)
+    return is_safe, reason
 
 async def safe_execute_http(
     client: httpx.AsyncClient,
@@ -275,26 +313,40 @@ async def safe_execute_http(
     **kwargs
 ) -> httpx.Response:
     """
-    Executes an HTTP request with strict SSRF revalidation on every redirect hop.
-    Prevents open redirect bypasses and enforces destination policy.
+    Executes an HTTP request with strict DNS-rebinding (TOCTOU) defense and redirect revalidation.
+    Pins the socket connection directly to the pre-validated IP address, while preserving
+    Host header and TLS Server Name Indication (SNI).
     """
     current_url = url
     for _ in range(max_redirects + 1):
-        is_safe, reason = validate_endpoint_url(current_url, allow_localhost=True)
-        if not is_safe:
+        is_safe, reason, pin_info = resolve_and_pin_endpoint_url(current_url, allow_localhost=True)
+        if not is_safe or not pin_info:
             raise ValueError(f"Outbound request blocked by SSRF policy: {reason}")
 
-        # Always enforce follow_redirects=False on individual request
-        resp = await client.request(method, current_url, follow_redirects=False, **kwargs)
+        headers = dict(kwargs.get("headers", {}))
+        if "Host" not in headers and "host" not in headers:
+            headers["Host"] = pin_info["host_header"]
+
+        req_kwargs = dict(kwargs)
+        req_kwargs["headers"] = headers
+
+        if pin_info["is_https"]:
+            extensions = dict(req_kwargs.get("extensions", {}))
+            extensions["sni_hostname"] = pin_info["hostname"]
+            req_kwargs["extensions"] = extensions
+
+        resp = await client.request(
+            method,
+            pin_info["pinned_url"],
+            follow_redirects=False,
+            **req_kwargs
+        )
         
-        # Check for redirect status codes
         if resp.status_code in (301, 302, 303, 307, 308):
             location = resp.headers.get("Location")
             if not location:
                 return resp
-            # Resolve relative redirect against current URL
             current_url = urljoin(current_url, location)
-            # Revalidate next hop
             continue
         return resp
 

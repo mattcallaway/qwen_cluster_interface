@@ -107,3 +107,39 @@ async def test_safe_execute_http_blocks_redirect_to_metadata(monkeypatch):
         # Initial request should be revalidated on redirect and blocked
         with pytest.raises(ValueError, match="SSRF policy"):
             await safe_execute_http(client, "GET", "http://127.0.0.1:8000/redirector")
+
+@pytest.mark.anyio
+async def test_safe_execute_http_pins_ip_defeating_dns_rebinding(monkeypatch):
+    """
+    Behavioral test: Proves that DNS changes between address validation and socket
+    connection cannot hijack the connection. Outbound requests connect directly
+    to the pre-validated pinned IP literal, ignoring subsequent DNS changes.
+    """
+    call_count = 0
+    def rebinding_dns(host, port, proto=0):
+        nonlocal call_count
+        call_count += 1
+        # First call (validation): legitimate private IP
+        if call_count == 1:
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.168.1.100", port))]
+        # Subsequent calls (simulated rebinding attack): AWS cloud metadata
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("169.254.169.254", port))]
+
+    monkeypatch.setattr(socket, "getaddrinfo", rebinding_dns)
+
+    received_requests = []
+    class PinnedInspectionTransport(httpx.AsyncBaseTransport):
+        async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+            received_requests.append(request)
+            return httpx.Response(200, text="pinned_ok")
+
+    async with httpx.AsyncClient(transport=PinnedInspectionTransport()) as client:
+        resp = await safe_execute_http(client, "GET", "http://rebind-victim.local:8080/status")
+        assert resp.status_code == 200
+
+        # Verify the actual socket request was pinned to the validated IP, NEVER the rebound metadata!
+        assert len(received_requests) == 1
+        req = received_requests[0]
+        assert str(req.url) == "http://192.168.1.100:8080/status"
+        assert req.headers.get("Host") == "rebind-victim.local:8080"
+        assert "169.254.169.254" not in str(req.url)
