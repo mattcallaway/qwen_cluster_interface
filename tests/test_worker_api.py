@@ -445,6 +445,8 @@ def test_vps_agent_persists_token_and_authenticates_on_restart(client, tmp_path,
     if os.name != "nt":
         stat_mode = token_file.stat().st_mode & 0o777
         assert stat_mode == 0o600
+        parent_mode = token_file.parent.stat().st_mode & 0o777
+        assert parent_mode == 0o700
 
     # 3. Simulate agent restart: new config WITHOUT enrollment token, pointing to same data_dir
     monkeypatch.setenv("QC_WORKER_ID", node_id)

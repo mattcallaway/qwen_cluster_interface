@@ -55,11 +55,17 @@ def _detect_os_isolation_mechanism() -> Optional[str]:
     """
     Detect enforced OS-level execution isolation mechanism.
     Priority:
-    1. 'systemd_transient': systemd-run transient unit with DynamicUser=yes, ProtectSystem=strict, etc.
-    2. 'bubblewrap': bwrap unprivileged container sandbox
-    3. 'restricted_subprocess': only in development/test fallback mode
-    4. None: if no enforceable OS isolation boundary is present
+    1. 'scoped_runner': /usr/local/bin/qwen-sandbox-runner (scoped privileged launcher)
+    2. 'systemd_transient': systemd-run transient unit with DynamicUser=yes, ProtectSystem=strict, etc.
+    3. 'bubblewrap': bwrap unprivileged container sandbox
+    4. 'restricted_subprocess': only in development/test fallback mode
+    5. None: if no enforceable OS isolation boundary is present (fails closed)
     """
+    custom_runner = os.getenv("QC_SANDBOX_RUNNER")
+    if custom_runner and (os.path.exists(custom_runner) or os.name != "nt"):
+        return "scoped_runner"
+    if os.path.exists("/usr/local/bin/qwen-sandbox-runner") or shutil.which("qwen-sandbox-runner"):
+        return "scoped_runner"
     if shutil.which("systemd-run"):
         return "systemd_transient"
     if shutil.which("bwrap"):
@@ -78,7 +84,24 @@ def _build_isolation_command(
     tasks_max: int = 64,
 ) -> List[str]:
     """Build the command line for enforcing the OS isolation boundary."""
-    if isolation_mech == "systemd_transient":
+    if isolation_mech == "scoped_runner":
+        runner_bin = (
+            os.getenv("QC_SANDBOX_RUNNER")
+            or shutil.which("qwen-sandbox-runner")
+            or "/usr/local/bin/qwen-sandbox-runner"
+        )
+        cmd = [
+            "sudo",
+            runner_bin,
+            "--workspace", str(work_dir),
+            "--entrypoint", str(script_path),
+            "--memory-mb", str(memory_limit_mb),
+            "--tasks-max", str(tasks_max),
+        ]
+        if network_access:
+            cmd.append("--allow-network")
+        return cmd
+    elif isolation_mech == "systemd_transient":
         network_flags = [] if network_access else ["-p", "IPAddressDeny=any"]
         return [
             "systemd-run",
@@ -307,20 +330,31 @@ def execute_task(
                 },
             }
 
-        # Create isolated workspace directory for this execution
-        work_dir = tempfile.mkdtemp(prefix="qc_worker_exec_")
+        # Create isolated workspace directory for this execution.
+        # Prefer designated shared workspace directory (/opt/qwen-collective/workspaces)
+        # to ensure visibility across PrivateTmp namespaces between worker service and transient units.
+        ws_base = os.getenv("QC_WORKER_WORKSPACE_DIR")
+        if ws_base and Path(ws_base).exists():
+            work_dir = tempfile.mkdtemp(prefix="qc_worker_exec_", dir=ws_base)
+        elif Path("/opt/qwen-collective/workspaces").exists():
+            work_dir = tempfile.mkdtemp(prefix="qc_worker_exec_", dir="/opt/qwen-collective/workspaces")
+        else:
+            work_dir = tempfile.mkdtemp(prefix="qc_worker_exec_")
+
+        # DynamicUser=yes assigns an ephemeral UID (61184-65519) to the sandboxed execution.
+        # work_dir must have 0777 mode so the dynamic user can enter, read entrypoint, and write output artifacts.
         if os.name != "nt":
             try:
-                os.chmod(work_dir, 0o700)
+                os.chmod(work_dir, 0o777)
             except Exception:
                 pass
 
-        # Write script to isolated entrypoint file (mode 0500) rather than exposing on command line
+        # Write script to isolated entrypoint file (mode 0555: readable/executable by dynamic user, non-writable)
         script_file = Path(work_dir) / "task_entrypoint.py"
         script_file.write_text(script_code, encoding="utf-8")
         if os.name != "nt":
             try:
-                os.chmod(script_file, 0o500)
+                os.chmod(script_file, 0o555)
             except Exception:
                 pass
 

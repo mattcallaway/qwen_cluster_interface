@@ -44,11 +44,19 @@ class AgentConfig(BaseModel):
 def save_worker_token(config: AgentConfig, token: str) -> Path:
     """
     Securely persist worker token to disk with restrictive 0600 permissions.
+    Ensures parent directory has restrictive 0700 permissions.
     Never logs or leaks credentials.
     """
     import json
     token_path = config.token_file_path
-    token_path.parent.mkdir(parents=True, exist_ok=True)
+    token_dir = token_path.parent
+    token_dir.mkdir(parents=True, exist_ok=True)
+    if os.name != "nt":
+        try:
+            os.chmod(token_dir, 0o700)
+        except OSError:
+            pass
+
     payload = {
         "worker_id": config.worker_id,
         "worker_token": token,
@@ -86,6 +94,11 @@ def save_worker_token(config: AgentConfig, token: str) -> Path:
 def load_config() -> AgentConfig:
     config = AgentConfig()
     config.data_dir.mkdir(parents=True, exist_ok=True)
+    if os.name != "nt":
+        try:
+            os.chmod(config.data_dir, 0o700)
+        except OSError:
+            pass
     # If worker_token not in env, load from secure token persistence file
     if not config.worker_token and config.token_file_path.exists():
         try:
