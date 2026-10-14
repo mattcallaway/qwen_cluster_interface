@@ -31,13 +31,18 @@
       <span class="badge badge-role">{{ project.priority }} priority</span></h2>
     <div style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">{{ project.id }}</div>
   </div>
+  <div style="display:flex; gap:8px;">
+    <a id="inspect-context-btn" href="/projects/{{ project.id }}/context-packet" class="btn btn-sm btn-secondary" target="_blank">
+      🔍 Inspect Context Packet
+    </a>
+  </div>
 </div>
 
 <div style="display:flex; gap:8px; margin-bottom:20px;">
-  {% for t in ['overview','paths','tasks','deliverables','knowledge','metrics'] %}
+  {% for t in ['overview','paths','tasks','deliverables','knowledge','metrics','proposals'] %}
     <a id="tab-{{ t }}" href="/projects/{{ project.id }}?tab={{ t }}" class="btn btn-sm {% if tab == t %}btn-primary{% else %}btn-secondary{% endif %}">
       {{ t|capitalize }}
-      {% if t == 'paths' %}({{ paths|length }}){% elif t == 'tasks' %}({{ tasks|length }}){% elif t == 'deliverables' %}({{ deliverables|length }}){% elif t == 'knowledge' %}({{ knowledge|length }}){% elif t == 'metrics' %}({{ metrics|length }}){% endif %}
+      {% if t == 'paths' %}({{ paths|length }}){% elif t == 'tasks' %}({{ tasks|length }}){% elif t == 'deliverables' %}({{ deliverables|length }}){% elif t == 'knowledge' %}({{ knowledge|length }}){% elif t == 'metrics' %}({{ metrics|length }}){% elif t == 'proposals' %}({{ proposals|length }}){% endif %}
     </a>
   {% endfor %}
 </div>
@@ -1134,6 +1139,210 @@
     </details>
   </div>
   {% endfor %}
+</div>
+{# ============================ PROPOSALS ============================ #}
+{% elif tab == 'proposals' %}
+<div class="card" style="margin-bottom:20px; border-left:4px solid var(--color-role, #6366f1);">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px;">
+    <div>
+      <h3 style="font-size:1.1rem; font-weight:600; margin:0 0 6px 0;">AI Planning Proposals & Human Authorization</h3>
+      <p style="font-size:0.85rem; color:var(--text-muted); margin:0;">
+        <strong>The model proposes; the human decides.</strong> Draft proposals remain strictly proposals until explicitly authorized by a human operator. The model cannot silently alter project goals, activate paths, delete decisions, or approve its own deliverables.
+      </p>
+    </div>
+    <div>
+      <a href="/projects/{{ project.id }}/context-packet" target="_blank" class="btn btn-sm btn-secondary">
+        🔍 Inspect Context Packet
+      </a>
+    </div>
+  </div>
+</div>
+
+{# Generator Cards Grid #}
+<div class="grid-cols-3" style="gap:16px; margin-bottom:24px;">
+  <!-- Generate Path Proposal -->
+  <div class="card">
+    <h4 style="font-size:0.95rem; font-weight:600; margin:0 0 8px 0;">✨ Strategic Path Proposal</h4>
+    <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:12px;">
+      Propose a new strategic Path alternative complete with delivery stages and completion gates.
+    </p>
+    <form action="/projects/{{ project.id }}/proposals/generate-path" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="form-group" style="margin-bottom:8px;">
+        <label class="form-label" style="font-size:0.75rem;">Strategic Guidance</label>
+        <input type="text" name="user_guidance" class="form-control" style="font-size:0.8rem;" placeholder="e.g. Prioritize early risk reduction">
+      </div>
+      <div class="form-group" style="margin-bottom:12px;">
+        <label class="form-label" style="font-size:0.75rem;">Token Budget</label>
+        <select name="token_budget" class="form-control" style="font-size:0.8rem;">
+          <option value="2000">2,000 tokens</option>
+          <option value="4000" selected>4,000 tokens</option>
+          <option value="8000">8,000 tokens</option>
+        </select>
+      </div>
+      <button type="submit" class="btn btn-sm btn-primary" style="width:100%;">Generate Path Proposal</button>
+    </form>
+  </div>
+
+  <!-- Generate Task Decomposition -->
+  <div class="card">
+    <h4 style="font-size:0.95rem; font-weight:600; margin:0 0 8px 0;">✨ Task Decomposition</h4>
+    <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:12px;">
+      Decompose an approved stage into bounded, traceable tasks with verifiable completion criteria.
+    </p>
+    <form action="/projects/{{ project.id }}/proposals/generate-tasks" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="form-group" style="margin-bottom:8px;">
+        <label class="form-label" style="font-size:0.75rem;">Target Stage *</label>
+        <select name="stage_id" class="form-control" style="font-size:0.8rem;" required>
+          {% for p in paths %}
+            {% for s in stages_by_path.get(p.id, []) %}
+              <option value="{{ s.id }}">{{ p.name }} → {{ s.name }} ({{ s.status }})</option>
+            {% endfor %}
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom:8px;">
+        <label class="form-label" style="font-size:0.75rem;">Decomposition Focus</label>
+        <input type="text" name="user_guidance" class="form-control" style="font-size:0.8rem;" placeholder="e.g. Focus on prerequisite diagnostics">
+      </div>
+      <button type="submit" class="btn btn-sm btn-primary" style="width:100%;">Decompose Stage</button>
+    </form>
+  </div>
+
+  <!-- Generate Path Review -->
+  <div class="card">
+    <h4 style="font-size:0.95rem; font-weight:600; margin:0 0 8px 0;">✨ Stage Boundary Path Review</h4>
+    <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:12px;">
+      Evaluate current deliverables and metrics to recommend advance, continue, or reforecast.
+    </p>
+    <form action="/projects/{{ project.id }}/proposals/generate-review" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="form-group" style="margin-bottom:12px;">
+        <label class="form-label" style="font-size:0.75rem;">Target Path</label>
+        <select name="path_id" class="form-control" style="font-size:0.8rem;">
+          <option value="">Default (Selected Active Path)</option>
+          {% for p in paths %}
+            <option value="{{ p.id }}">{{ p.name }} ({{ p.status }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn btn-sm btn-primary" style="width:100%;">Generate Path Review</button>
+    </form>
+  </div>
+</div>
+
+{# Proposals History & Review Workflow #}
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <h3 class="card-title" style="margin:0;">Proposals Queue & Decision Audit ({{ proposals|length }})</h3>
+  </div>
+
+  {% if not proposals %}
+    <div style="padding:24px; text-align:center; color:var(--text-muted); font-size:0.9rem;">
+      No AI proposals recorded yet. Use the generators above to request strategic planning assistance.
+    </div>
+  {% else %}
+    <div style="display:flex; flex-direction:column; gap:16px;">
+      {% for prop in proposals %}
+      <div class="card" style="background:var(--bg-secondary); border:1px solid var(--border-color); margin-bottom:0;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+          <div>
+            <div style="font-size:0.75rem; font-family:var(--font-mono); color:var(--text-muted);">
+              {{ prop.id }} · {{ prop.created_at[:16] }} · Model: {{ prop.ai_model }} · Context: {{ prop.prompt_tokens or '—' }} tokens
+            </div>
+            <h4 style="font-size:1.05rem; font-weight:600; margin:4px 0 0 0;">
+              {{ prop.title }} {{ badge(prop.status) }} <span class="badge badge-role">{{ prop.proposal_type|replace('_', ' ') }}</span>
+            </h4>
+          </div>
+        </div>
+
+        {% if prop.summary %}
+        <p style="font-size:0.85rem; margin:6px 0 10px 0; color:var(--text-main);">
+          {{ prop.summary }}
+        </p>
+        {% endif %}
+
+        {# Structured Details Preview #}
+        <details style="margin-bottom:12px; font-size:0.85rem;">
+          <summary style="cursor:pointer; color:var(--color-primary); font-weight:500;">
+            View Proposed Structural Data
+          </summary>
+          <div style="margin-top:8px; padding:10px; background:var(--bg-main); border-radius:4px; font-size:0.8rem;">
+            {% if prop.proposal_type == 'path_proposal' and prop.proposed_data.stages %}
+              <strong>Proposed Stages ({{ prop.proposed_data.stages|length }}):</strong>
+              <ul style="margin:4px 0 0 16px; padding:0;">
+                {% for stg in prop.proposed_data.stages %}
+                  <li style="margin-bottom:4px;">
+                    <strong>{{ stg.name }}</strong>: {{ stg.objective }}
+                    <span style="color:var(--text-muted);">(Expected Output: {{ stg.expected_outputs }})</span>
+                  </li>
+                {% endfor %}
+              </ul>
+            {% elif prop.proposal_type == 'task_decomposition' and prop.proposed_data.tasks %}
+              <strong>Proposed Tasks ({{ prop.proposed_data.tasks|length }}):</strong>
+              <ul style="margin:4px 0 0 16px; padding:0;">
+                {% for tsk in prop.proposed_data.tasks %}
+                  <li style="margin-bottom:4px;">
+                    <strong>[{{ tsk.task_type }}] {{ tsk.title }}</strong>: {{ tsk.purpose }}
+                    <span style="color:var(--text-muted);">(Criteria: {{ tsk.completion_criteria }})</span>
+                  </li>
+                {% endfor %}
+              </ul>
+            {% elif prop.proposal_type == 'path_review' %}
+              <div><strong>Path Evaluated:</strong> {{ prop.proposed_data.path_name }}</div>
+              <div><strong>Recommendation:</strong> <span class="badge badge-primary">{{ prop.proposed_data.recommendation }}</span></div>
+              <div><strong>Summary:</strong> {{ prop.proposed_data.summary }}</div>
+              {% if prop.proposed_data.suggested_actions %}
+                <ul style="margin:4px 0 0 16px;">
+                  {% for act in prop.proposed_data.suggested_actions %}
+                    <li>{{ act }}</li>
+                  {% endfor %}
+                </ul>
+              {% endif %}
+            {% else %}
+              <pre style="margin:0; font-family:var(--font-mono); font-size:0.75rem; white-space:pre-wrap;">{{ prop.proposed_data_json }}</pre>
+            {% endif %}
+          </div>
+        </details>
+
+        {# Review Workflow Controls #}
+        {% if prop.status == 'proposed' %}
+        <div style="display:flex; gap:12px; align-items:flex-end; padding-top:10px; border-top:1px solid var(--border-color); flex-wrap:wrap;">
+          <!-- Accept Form -->
+          <form action="/projects/{{ project.id }}/proposals/{{ prop.id }}/review" method="post" style="display:flex; gap:8px; align-items:center; flex:1; min-width:300px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="action" value="accept">
+            <input type="text" name="review_notes" class="form-control" style="font-size:0.8rem;" placeholder="Approval notes (optional)">
+            <button type="submit" class="btn btn-sm btn-online">Authorize & Apply</button>
+          </form>
+
+          <!-- Reject Form -->
+          <form action="/projects/{{ project.id }}/proposals/{{ prop.id }}/review" method="post" style="display:flex; gap:8px; align-items:center;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="action" value="reject">
+            <input type="text" name="review_notes" class="form-control" style="font-size:0.8rem; width:180px;" placeholder="Rejection reason *" required>
+            <button type="submit" class="btn btn-sm btn-error">Reject</button>
+          </form>
+
+          <!-- Cancel Form -->
+          <form action="/projects/{{ project.id }}/proposals/{{ prop.id }}/review" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="action" value="cancel">
+            <button type="submit" class="btn btn-sm btn-secondary">Dismiss</button>
+          </form>
+        </div>
+        {% else %}
+        <div style="padding-top:8px; border-top:1px solid var(--border-color); font-size:0.8rem; color:var(--text-muted);">
+          Reviewed by <strong>{{ prop.reviewed_by or 'operator' }}</strong> on {{ prop.reviewed_at[:16] if prop.reviewed_at else '—' }}
+          {% if prop.review_notes %} · Note: <em>"{{ prop.review_notes }}"</em>{% endif %}
+        </div>
+        {% endif %}
+
+      </div>
+      {% endfor %}
+    </div>
+  {% endif %}
 </div>
 {% endif %}
 {% endblock %}

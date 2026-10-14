@@ -1,9 +1,10 @@
-# Project Data Model (Milestones 1, 2 & 3, schema version 3)
+# Project Data Model (Milestones 1, 2, 3 & 4, schema version 4)
 
 This describes the schema that **exists** on `feature/project-intelligence`. Source of truth:
 [`app/migrations.py`](app/migrations.py). Business rules: [`app/services/projects.py`](app/services/projects.py),
 [`app/services/tasks.py`](app/services/tasks.py), [`app/services/deliverables.py`](app/services/deliverables.py),
-[`app/services/knowledge_meta.py`](app/services/knowledge_meta.py), [`app/services/metrics.py`](app/services/metrics.py).
+[`app/services/knowledge_meta.py`](app/services/knowledge_meta.py), [`app/services/metrics.py`](app/services/metrics.py),
+[`app/services/context_packet.py`](app/services/context_packet.py), [`app/services/proposals.py`](app/services/proposals.py).
 
 ## Schema versioning
 
@@ -13,6 +14,7 @@ This describes the schema that **exists** on `feature/project-intelligence`. Sou
 | 1 | Migration 1: Project intelligence foundation (projects, paths, stages, knowledge_metadata, knowledge_relations, project_decisions). |
 | 2 | Migration 2: Execution and evidence (deliverables, deliverable_revisions, task_dependencies, task_execution_events, path_revisions, collective knowledge). |
 | 3 | Migration 3: Measurement and forecasting (project_metrics, metric_observations, path_forecasts, forecast_evaluations). |
+| 4 | Migration 4: Project-aware intelligence and human authorization (project_proposals, proposal_acceptance decision type). |
 
 * The version lives in `PRAGMA user_version`.
 * `init_db()` runs on every start. It (1) creates the baseline tables if they're missing, (2) takes a `sqlite3.backup()` snapshot when an **existing** DB is behind, named `qwen_collective.pre-migration-v{cur}-to-v{target}-{UTC}.db` and stored next to the DB, then (3) applies pending migrations sequentially.
@@ -189,10 +191,54 @@ Records historical accuracy and variance assessments comparing predictions again
 * `accuracy_score`: normalized accuracy between 0.0 and 1.0
 * `status_assessment`: `on_target · ahead_of_forecast · behind_forecast · at_risk · insufficient_data`
 
+### `project_proposals` (Milestone 4)
+Supports AI-assisted planning where the model proposes and a human operator authorizes.
+
+| Column | Notes |
+| :--- | :--- |
+| `id` | `prop_<12 hex>` |
+| `project_id` | FK → `projects` (ON DELETE CASCADE) |
+| `path_id` | Optional FK → `project_paths` |
+| `stage_id` | Optional FK → `path_stages` |
+| `proposal_type` | `path_proposal · task_decomposition · metric_suggestion · path_review` |
+| `title` | 1–200 characters |
+| `summary` | Natural-language summary of what is proposed |
+| `proposed_data_json` | Valid JSON object with structured proposed parameters (e.g. stages, tasks, metrics) |
+| `status` | `proposed · under_review · accepted · rejected · cancelled` |
+| `ai_model` | Inference model identifier (e.g. `qwen`, `fallback_heuristic`) |
+| `prompt_tokens`, `completion_tokens` | Token usage tracking |
+| `context_packet_summary` | Record of context packet size and sections used during generation |
+| `review_notes` | Required reason on rejection; optional notes on acceptance |
+| `reviewed_by`, `reviewed_at` | Operator identity and review timestamp |
+| `created_by`, `created_at`, `updated_at` | Audit timestamps |
+
+**Human Approval Workflow Rules:**
+* The model proposes; the human decides.
+* The model cannot silently alter project goals, activate paths, delete decisions, alter measurements, or approve its own deliverables.
+* Accepting a `path_proposal` creates durable `project_paths` and `path_stages` records and logs an append-only `proposal_acceptance` decision.
+* Accepting a `task_decomposition` creates draft tasks linked to the stage.
+* Accepting a `metric_suggestion` creates active `project_metrics`.
+* Rejecting a proposal updates status to `rejected` with recorded reason and creates zero application records.
+
 ### `project_decisions` (append-only)
 Expanded CHECK constraint allows:
-`decision_type ∈ {path_selection, path_status_change, project_status_change, project_parent_change, stage_advancement, stage_status_change, deliverable_acceptance, path_revision, knowledge_promotion}`.
+`decision_type ∈ {path_selection, path_status_change, project_status_change, project_parent_change, stage_advancement, stage_status_change, deliverable_acceptance, path_revision, knowledge_promotion, proposal_acceptance}`.
 Each row records `subject_id`, `from_value`, `to_value`, `rationale` (required), `decided_by`, `decided_at`, and optional `evidence_knowledge_id`. The triggers `trg_decisions_no_update` and `trg_decisions_no_delete` abort any UPDATE or DELETE.
+
+## Project Context Packet Hierarchy
+
+Prompt retrieval adheres to an explicit priority ordering under a strict token budget:
+
+1. **User Instruction / Directive:** Exact current user prompt or operational request.
+2. **Project Definition & Bounds (Required):** Goal, scope, constraints, and success criteria.
+3. **Strategic Path & Stage Context:** Active strategy, objectives, prerequisites, and completion criteria.
+4. **Key Decisions & Deliverables:** Past decisions, accepted deliverables, and current gate status.
+5. **Active Work & Task State:** Work in progress, dependencies, and execution history.
+6. **Metrics & Forecast Tracking:** Targets, current observations, variance, and forecast models.
+7. **Project Supporting Knowledge:** Verified and captured notes in the project knowledge dir.
+8. **Cross-Project Lessons & Shared Notes:** Collective wisdom and promoted insights.
+
+When token budget limits are reached, sections are pruned from lowest priority (8 and 7 first) with explicit omission notices injected into the rendered prompt. Security separation labels (`[TRUSTED_PROJECT_BOUNDS]`, `[VERIFIED_RECORDS]`, `[EXTERNAL_UNTRUSTED]`) clearly separate verified project data from untrusted user content.
 
 ## Integrity guarantees and their limits
 
@@ -210,6 +256,7 @@ Each row records `subject_id`, `from_value`, `to_value`, `rationale` (required),
 | Deliverables immutable once accepted/rejected | Service transition rules |
 | Observations immutable | Triggers (abort on update/delete; corrections supersede) |
 | Forecasts versioned and immutable | Triggers (abort on update/delete) |
+| AI proposals require human approval | Human-in-the-loop review service & status check |
 | Unique metric names per project | UNIQUE index |
 | Relation targets exist and belong to the scoped project | Service polymorphic validation |
 

@@ -7,17 +7,19 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import get_csrf_token, get_current_user, verify_csrf
+from app.services import context_packet as cp_svc
 from app.services import deliverables as ds
 from app.services import knowledge_meta as km
 from app.services import metrics as met_svc
 from app.services import projects as ps
+from app.services import proposals as prop_svc
 from app.services import tasks as ts
 from app.services.knowledge import list_all_notes
 
 router = APIRouter(tags=["projects"])
 templates = Jinja2Templates(directory="app/templates")
 
-TABS = ("overview", "paths", "tasks", "deliverables", "knowledge", "metrics")
+TABS = ("overview", "paths", "tasks", "deliverables", "knowledge", "metrics", "proposals")
 
 
 def _to(pid: Optional[str] = None, tab: str = "overview", err: str = "", msg: str = "") -> RedirectResponse:
@@ -108,6 +110,8 @@ def project_detail(request: Request, project_id: str, tab: str = "overview",
     forecasts_by_metric = {m["id"]: met_svc.list_path_forecasts(m["id"]) for m in raw_metrics}
     evaluations_by_metric = {m["id"]: met_svc.list_forecast_evaluations(metric_id=m["id"]) for m in raw_metrics}
 
+    proposals = prop_svc.list_project_proposals(project_id)
+
     return templates.TemplateResponse(request=request, name="projects/detail.html", context={
         "active_nav": "projects", "current_user": user, "csrf_token": get_csrf_token(request),
         "project": project, "summary": ps.project_summary(project), "tab": tab,
@@ -138,6 +142,9 @@ def project_detail(request: Request, project_id: str, tab: str = "overview",
         "directions_of_improvement": met_svc.DIRECTIONS_OF_IMPROVEMENT,
         "forecast_methods": met_svc.FORECAST_METHODS,
         "confidence_levels": met_svc.CONFIDENCE_LEVELS,
+        "proposals": proposals,
+        "proposal_types": prop_svc.PROPOSAL_TYPES,
+        "proposal_statuses": prop_svc.PROPOSAL_STATUSES,
         "alert": _alert(err, msg),
     })
 
@@ -808,5 +815,154 @@ def project_forecast_evaluate(
             notes=evaluation_notes,
         ),
         "Forecast evaluated against actual performance."
+    )
+
+
+# --- Milestone 4: Context Packets and AI Proposals -------------------------
+
+@router.get("/projects/{project_id}/context-packet", response_class=HTMLResponse)
+def project_context_packet_inspect(
+    request: Request,
+    project_id: str,
+    user_instruction: str = "",
+    token_budget: int = 4000,
+    path_id: Optional[str] = None,
+    stage_id: Optional[str] = None,
+):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/auth/login", status_code=status.HTTP_302_FOUND)
+    project = ps.get_project(project_id)
+    if not project:
+        return _to(err="Project not found.")
+
+    packet = cp_svc.build_project_context_packet(
+        project_id=project_id,
+        user_instruction=user_instruction,
+        path_id=path_id,
+        stage_id=stage_id,
+        token_budget=int(token_budget),
+    )
+
+    paths = ps.list_paths(project_id)
+    stages = ps.list_stages(path_id) if path_id else []
+
+    return templates.TemplateResponse(request=request, name="projects/context_packet.html", context={
+        "active_nav": "projects",
+        "current_user": user,
+        "csrf_token": get_csrf_token(request),
+        "project": project,
+        "packet": packet,
+        "user_instruction": user_instruction,
+        "token_budget": int(token_budget),
+        "path_id": path_id or "",
+        "stage_id": stage_id or "",
+        "paths": paths,
+        "stages": stages,
+    })
+
+
+@router.post("/projects/{project_id}/proposals/generate-path")
+def project_proposal_generate_path(
+    request: Request,
+    project_id: str,
+    csrf_token: str = Form(...),
+    user_guidance: str = Form(""),
+    token_budget: int = Form(4000),
+):
+    user = _guard(request, csrf_token)
+    if not user:
+        return _to(project_id, "proposals", err="Session expired or invalid form token.")
+
+    return _run(
+        project_id,
+        "proposals",
+        lambda: prop_svc.generate_path_proposals(
+            project_id=project_id,
+            user_guidance=user_guidance,
+            token_budget=token_budget,
+            created_by=user,
+        ),
+        "AI Path proposal generated for review. Inspect and authorize below."
+    )
+
+
+@router.post("/projects/{project_id}/proposals/generate-tasks")
+def project_proposal_generate_tasks(
+    request: Request,
+    project_id: str,
+    csrf_token: str = Form(...),
+    stage_id: str = Form(...),
+    user_guidance: str = Form(""),
+    token_budget: int = Form(4000),
+):
+    user = _guard(request, csrf_token)
+    if not user:
+        return _to(project_id, "proposals", err="Session expired or invalid form token.")
+
+    return _run(
+        project_id,
+        "proposals",
+        lambda: prop_svc.generate_task_decomposition(
+            project_id=project_id,
+            stage_id=stage_id,
+            user_guidance=user_guidance,
+            token_budget=token_budget,
+            created_by=user,
+        ),
+        "AI Task decomposition generated for review. Inspect and authorize below."
+    )
+
+
+@router.post("/projects/{project_id}/proposals/generate-review")
+def project_proposal_generate_review(
+    request: Request,
+    project_id: str,
+    csrf_token: str = Form(...),
+    path_id: str = Form(""),
+    stage_id: str = Form(""),
+    token_budget: int = Form(4000),
+):
+    user = _guard(request, csrf_token)
+    if not user:
+        return _to(project_id, "proposals", err="Session expired or invalid form token.")
+
+    return _run(
+        project_id,
+        "proposals",
+        lambda: prop_svc.generate_path_review(
+            project_id=project_id,
+            path_id=path_id.strip() or None,
+            stage_id=stage_id.strip() or None,
+            token_budget=token_budget,
+            created_by=user,
+        ),
+        "AI Path review proposal generated. Inspect evaluation and recommendations below."
+    )
+
+
+@router.post("/projects/{project_id}/proposals/{proposal_id}/review")
+def project_proposal_review(
+    request: Request,
+    project_id: str,
+    proposal_id: str,
+    csrf_token: str = Form(...),
+    action: str = Form(...),
+    review_notes: str = Form(""),
+):
+    user = _guard(request, csrf_token)
+    if not user:
+        return _to(project_id, "proposals", err="Session expired or invalid form token.")
+
+    return _run(
+        project_id,
+        "proposals",
+        lambda: prop_svc.review_proposal(
+            proposal_id=proposal_id,
+            action=action,
+            reviewed_by=user,
+            review_notes=review_notes,
+        ),
+        f"Proposal successfully {action}ed."
     )
 

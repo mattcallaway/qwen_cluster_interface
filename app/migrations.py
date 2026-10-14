@@ -513,10 +513,76 @@ _M3: List[str] = [
     "CREATE INDEX idx_eval_forecast ON forecast_evaluations(forecast_id)",
 ]
 
+# ---------------------------------------------------------------------------
+# Migration 4 — Project-aware intelligence (Milestone 4)
+# ---------------------------------------------------------------------------
+_M4: List[str] = [
+    # --- Project proposals (AI proposals requiring human authorization) ----
+    """
+    CREATE TABLE project_proposals (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id),
+        path_id TEXT REFERENCES project_paths(id),
+        stage_id TEXT REFERENCES path_stages(id),
+        proposal_type TEXT NOT NULL CHECK (proposal_type IN (
+            'path_proposal','task_decomposition','metric_suggestion','path_review')),
+        title TEXT NOT NULL CHECK (length(trim(title)) BETWEEN 1 AND 200),
+        summary TEXT NOT NULL DEFAULT '',
+        proposed_data_json TEXT NOT NULL DEFAULT '{}',
+        status TEXT NOT NULL DEFAULT 'proposed' CHECK (status IN (
+            'proposed','under_review','accepted','rejected','cancelled')),
+        ai_model TEXT NOT NULL DEFAULT 'qwen',
+        prompt_tokens INTEGER,
+        completion_tokens INTEGER,
+        context_packet_summary TEXT NOT NULL DEFAULT '',
+        review_notes TEXT NOT NULL DEFAULT '',
+        reviewed_by TEXT,
+        reviewed_at TEXT,
+        created_by TEXT NOT NULL DEFAULT 'ai_assistant',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_prop_project ON project_proposals(project_id, status)",
+    "CREATE INDEX idx_prop_type ON project_proposals(project_id, proposal_type)",
+
+    # --- Rebuild project_decisions with proposal_acceptance ---
+    """
+    CREATE TABLE project_decisions_m4 (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id),
+        decision_type TEXT NOT NULL CHECK (decision_type IN (
+            'path_selection','path_status_change','project_status_change','project_parent_change',
+            'stage_advancement','stage_status_change','deliverable_acceptance','path_revision','knowledge_promotion',
+            'proposal_acceptance')),
+        subject_id TEXT,
+        from_value TEXT,
+        to_value TEXT,
+        rationale TEXT NOT NULL CHECK (length(trim(rationale)) > 0),
+        decided_by TEXT NOT NULL,
+        decided_at TEXT NOT NULL,
+        evidence_knowledge_id TEXT REFERENCES knowledge_metadata(id)
+    )
+    """,
+    "INSERT INTO project_decisions_m4 SELECT * FROM project_decisions",
+    "DROP TABLE project_decisions",
+    "ALTER TABLE project_decisions_m4 RENAME TO project_decisions",
+    "CREATE INDEX idx_decisions_project ON project_decisions(project_id, decided_at)",
+    """
+    CREATE TRIGGER trg_decisions_no_update BEFORE UPDATE ON project_decisions
+    BEGIN SELECT RAISE(ABORT, 'project_decisions is append-only'); END
+    """,
+    """
+    CREATE TRIGGER trg_decisions_no_delete BEFORE DELETE ON project_decisions
+    BEGIN SELECT RAISE(ABORT, 'project_decisions is append-only'); END
+    """,
+]
+
 MIGRATIONS: List[Migration] = [
     (1, "project intelligence foundation", _M1),
     (2, "execution and evidence", _M2),
     (3, "measurement and forecasting", _M3),
+    (4, "project-aware intelligence", _M4),
 ]
 
 

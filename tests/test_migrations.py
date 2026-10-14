@@ -34,13 +34,14 @@ def test_fresh_database_reaches_latest_version(tmp_path):
     conn = _connect(tmp_path / "fresh.db")
     create_baseline_schema(conn)
     applied = mig.apply_migrations(conn)
-    assert applied == [1, 2, 3]
+    assert applied == [1, 2, 3, 4]
     assert mig.current_version(conn) == mig.latest_version()
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     for t in ("projects", "project_paths", "path_stages", "knowledge_metadata",
               "knowledge_relations", "project_decisions", "task_dependencies",
               "deliverables", "deliverable_revisions", "task_execution_events", "path_revisions",
-              "project_metrics", "metric_observations", "path_forecasts", "forecast_evaluations"):
+              "project_metrics", "metric_observations", "path_forecasts", "forecast_evaluations",
+              "project_proposals"):
         assert t in tables
 
 
@@ -69,13 +70,13 @@ def test_fts5_still_works_after_migration(tmp_path):
 def test_migrations_are_idempotent(tmp_path):
     conn = _connect(tmp_path / "idem.db")
     create_baseline_schema(conn)
-    assert mig.apply_migrations(conn) == [1, 2, 3]
+    assert mig.apply_migrations(conn) == [1, 2, 3, 4]
     assert mig.apply_migrations(conn) == []
     create_baseline_schema(conn)  # startup re-runs baseline CREATE IF NOT EXISTS safely
-    assert mig.current_version(conn) == 3
+    assert mig.current_version(conn) == 4
 
 
-def test_upgrade_from_v1_to_v2_to_v3(tmp_path):
+def test_upgrade_from_v1_to_v2_to_v3_to_v4(tmp_path):
     conn = _connect(tmp_path / "v1.db")
     create_baseline_schema(conn)
     # Apply only M1
@@ -90,8 +91,8 @@ def test_upgrade_from_v1_to_v2_to_v3(tmp_path):
 
     # Now upgrade with full migrations suite
     applied2 = mig.apply_migrations(conn)
-    assert applied2 == [2, 3]
-    assert mig.current_version(conn) == 3
+    assert applied2 == [2, 3, 4]
+    assert mig.current_version(conn) == 4
 
     # Verify M1 data preserved and new decision types allowed
     assert conn.execute("SELECT name FROM projects WHERE id='prj-1'").fetchone()[0] == "P1"
@@ -106,6 +107,12 @@ def test_upgrade_from_v1_to_v2_to_v3(tmp_path):
     conn.execute("INSERT INTO metric_observations (id, metric_id, value, measured_at, recorded_at, created_by) VALUES ('obs-1','met-1',99.9,'2026-01-01','2026-01-01','admin')")
     conn.commit()
     assert conn.execute("SELECT count(*) FROM metric_observations WHERE metric_id='met-1'").fetchone()[0] == 1
+
+    # Insert M4 proposal and proposal_acceptance decision
+    conn.execute("INSERT INTO project_proposals (id, project_id, proposal_type, title, proposed_data_json, status, created_by, created_at, updated_at) VALUES ('prop-1','prj-1','path_proposal','New Path','{}','proposed','ai_assistant','2026-01-01','2026-01-01')")
+    conn.execute("INSERT INTO project_decisions (id, project_id, decision_type, rationale, decided_by, decided_at, subject_id) VALUES ('dec-3','prj-1','proposal_acceptance','accepted proposal','admin','2026-01-03','prop-1')")
+    conn.commit()
+    assert conn.execute("SELECT count(*) FROM project_proposals WHERE project_id='prj-1'").fetchone()[0] == 1
     assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
     assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 

@@ -1,10 +1,10 @@
 # Project Intelligence — Status
 
-**Current milestone: 3 (Measurement and forecasting). Implemented and verified with 194 tests (100% passing).**
+**Current milestone: 4 (Project-aware intelligence). Implemented and verified with 207 tests (100% passing).**
 Branch: `feature/project-intelligence`.
 * **Milestone 1:** Deployed to production Windows service (port 8000, DB `user_version = 1`, service wrapper active).
-* **Milestone 2:** Deployed to production codebase (`scratch\qwen-collective`), merged into `fix/security-reliability-audit` (`22a66bc`), pending elevated service restart `Restart-Service QwenCollective` to trigger automatic Migration 2 upgrade.
-* **Milestone 3:** Completed in development worktree (`scratch\qwen-collective-dev`), fully covered by unit and HTTP route test suites (194 tests passing). Ready for review.
+* **Milestone 2:** Deployed to production Windows service (port 8000, DB `user_version = 2`, service wrapper active).
+* **Milestone 3 & 4:** Completed in development worktree (`scratch\qwen-collective-dev`), fully covered by unit and HTTP route test suites (207 tests passing). Ready for production deployment.
 
 ## What works now (verified)
 
@@ -27,7 +27,12 @@ Branch: `feature/project-intelligence`.
 | **Transparent Forecasting Algorithms:** Least-squares linear trend extrapolation, rolling averages, and interval rate extrapolation with explicit "insufficient data" states | Metrics engine, `/projects/{pid}/metrics/{mid}/forecasts/generate` | `test_milestone3.py`, `test_milestone3_routes.py` |
 | **Forecast Evaluation & Accuracy Tracking:** Compares forecasts against actual observations; calculates directional variance, absolute error, percentage error, and normalized accuracy score | Metrics tab, `/projects/{pid}/metrics/{mid}/forecasts/{fid}/evaluate` | `test_milestone3.py`, `test_milestone3_routes.py` |
 | **Status Assessments:** Identifies whether metrics/paths are on target, ahead of forecast, behind forecast, at risk, or awaiting data based on improvement direction | Metrics tab overview cards & badges | `test_milestone3.py`, `test_milestone3_routes.py` |
-| **Migration 3:** Schema version upgraded to 3 with automatic pre-migration backup and clean foreign key/integrity checks | `app/migrations.py` | `test_migrations.py` |
+| **Project Context Packet Builder:** Token-budgeted prompt assembler following 8-tier priority hierarchy with explicit pruning omission notices and trust boundary tagging | Inspector view, `/projects/{pid}/context-packet` | `test_milestone4.py`, `test_milestone4_routes.py` |
+| **AI Path Alternative Proposals:** Generates strategic path options complete with planned stages, deliverables, and completion criteria with deterministic fallback | Proposals tab, `/projects/{pid}/proposals/generate-path` | `test_milestone4.py`, `test_milestone4_routes.py` |
+| **AI Task Decomposition:** Deconstructs approved stages into bounded, traceable tasks with diagnostic prerequisites and verification gates | Proposals tab, `/projects/{pid}/proposals/generate-tasks` | `test_milestone4.py`, `test_milestone4_routes.py` |
+| **Stage Boundary Path Reviews:** Evaluates deliverables and metric health to recommend advance, continue, or reforecast | Proposals tab, `/projects/{pid}/proposals/generate-review` | `test_milestone4.py`, `test_milestone4_routes.py` |
+| **Human-in-the-Loop Authorization Workflow:** The model proposes, human authorizes. Authorization creates durable DB records and logs `proposal_acceptance` decisions; rejection records reasons with zero state alteration | Proposals tab, `/projects/{pid}/proposals/{id}/review` | `test_milestone4.py`, `test_milestone4_routes.py` |
+| **Migration 4:** Schema version upgraded to 4 with `project_proposals` table, expanded decision constraints, and automatic backup | `app/migrations.py` | `test_migrations.py` |
 
 ## Test Suite Summary
 
@@ -36,20 +41,18 @@ Branch: `feature/project-intelligence`.
 | Security, Auth, SSRF, & Web Isolation | 63 | Passed |
 | Tasks & UI States | 7 | Passed |
 | Machines & VPS Diagnostics | 12 | Passed |
-| Migrations (Baseline, M1, M2, M3, Idempotency, Upgrades) | 8 | Passed |
+| Migrations (Baseline, M1, M2, M3, M4, Idempotency, Upgrades) | 8 | Passed |
 | Milestone 1 Project Intelligence & Knowledge | 49 | Passed |
 | Milestone 2 Execution, Evidence & Dependencies | 8 | Passed |
 | Milestone 2 HTTP Routes (Deliverables, Gates, Events, Revisions) | 6 | Passed |
 | Milestone 3 Metrics, Forecasts, Observations & Accuracy | 9 | Passed |
 | Milestone 3 HTTP Routes (Metrics, Forecasts, Calculations) | 6 | Passed |
+| Milestone 4 Project-Aware Intelligence & Context Packets | 6 | Passed |
+| Milestone 4 HTTP Routes (Proposals, Reviews, Context Inspector) | 7 | Passed |
 | Markdown Safety & Knowledge Core | 7 | Passed |
-| **Total Test Suite** | **194 passed** | **100% SUCCESS (0 failed)** |
+| **Total Test Suite** | **207 passed** | **100% SUCCESS (0 failed)** |
 
 ## Production deployment status
 * **Milestone 1:** Successfully deployed and verified live in production (`scratch\qwen-collective`, port 8000).
-* **Milestone 2:** Codebase merged and pushed to `origin/fix/security-reliability-audit`. To activate on Windows service:
-  ```powershell
-  Restart-Service QwenCollective
-  ```
-  On restart, `init_db()` will automatically snapshot `qwen_collective.pre-migration-v1-to-v2-<UTC>.db`, apply Migration 2, and bump DB version to 2.
-* **Milestone 3:** Ready in development worktree (`scratch\qwen-collective-dev`). All 194 tests pass cleanly. Ready for deployment upon authorization.
+* **Milestone 2:** Live in production (`Restart-Service QwenCollective` completed, DB `user_version = 2`).
+* **Milestones 3 & 4:** Completed in development worktree (`scratch\qwen-collective-dev`). All 207 tests pass cleanly. Ready for deployment upon authorization.

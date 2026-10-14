@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block title %}Context Packet Inspector - {{ project.name }} - Qwen Collective{% endblock %}
+{% block page_title %}Context Packet: {{ project.name }}{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:16px;">
+  <div style="font-size:0.85rem; margin-bottom:8px;">
+    <a href="/projects/{{ project.id }}" style="color:var(--text-muted);">← Back to {{ project.name }}</a>
+  </div>
+  <div style="display:flex; justify-content:space-between; align-items:center;">
+    <div>
+      <h2 style="font-size:1.3rem; font-weight:600; margin:0;">AI Project Context Packet Inspector</h2>
+      <p style="font-size:0.85rem; color:var(--text-muted); margin:4px 0 0 0;">
+        Deterministic, token-budgeted prompt assembly with priority-based pruning and explicit trust boundary labels.
+      </p>
+    </div>
+    <div>
+      <span class="badge badge-primary">{{ packet.estimated_tokens }} / {{ token_budget }} tokens</span>
+    </div>
+  </div>
+</div>
+
+{# Interactive Parameter Form #}
+<div class="card" style="margin-bottom:20px;">
+  <form method="get" action="/projects/{{ project.id }}/context-packet" style="display:flex; flex-direction:column; gap:12px;">
+    <div style="display:grid; grid-template-columns: 1fr 200px 200px auto; gap:12px; align-items:flex-end;">
+      <div>
+        <label class="form-label">User Directive / Guidance (Priority 1)</label>
+        <input type="text" name="user_instruction" class="form-control" value="{{ user_instruction }}" placeholder="e.g. Propose next development steps or review stage deliverables">
+      </div>
+      <div>
+        <label class="form-label">Token Budget</label>
+        <select name="token_budget" class="form-control">
+          {% for b in [500, 1000, 2000, 4000, 8000, 16000] %}
+            <option value="{{ b }}" {% if token_budget == b %}selected{% endif %}>{{ b }} tokens</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Active Strategy Path</label>
+        <select name="path_id" class="form-control">
+          <option value="">Default (Selected Path)</option>
+          {% for p in paths %}
+            <option value="{{ p.id }}" {% if path_id == p.id %}selected{% endif %}>{{ p.name }} ({{ p.status }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <button type="submit" class="btn btn-primary">Recompute</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+{# Budget and Section Health #}
+<div class="grid-cols-4" style="margin-bottom:20px;">
+  <div class="stat-widget">
+    <div class="stat-label">Estimated Token Usage</div>
+    <div class="stat-value" style="font-size:1.1rem;">{{ packet.estimated_tokens }}</div>
+    <div class="stat-sub">{{ ((packet.estimated_tokens / token_budget) * 100)|round(1) }}% of {{ token_budget }} budget</div>
+  </div>
+  <div class="stat-widget">
+    <div class="stat-label">Included Sections</div>
+    <div class="stat-value" style="font-size:1.1rem; color:var(--color-online, #10b981);">{{ packet.sections|length }}</div>
+    <div class="stat-sub">Adhering to priority order</div>
+  </div>
+  <div class="stat-widget">
+    <div class="stat-label">Omitted Sections</div>
+    <div class="stat-value" style="font-size:1.1rem; {% if packet.omitted_info %}color:var(--color-warning, #f59e0b);{% endif %}">{{ packet.omitted_info|length }}</div>
+    <div class="stat-sub">Pruned due to token budget</div>
+  </div>
+  <div class="stat-widget">
+    <div class="stat-label">Security Boundaries</div>
+    <div class="stat-value" style="font-size:1.1rem; color:var(--color-role, #6366f1);">Strict Tagging</div>
+    <div class="stat-sub">Bounds vs Records vs Untrusted</div>
+  </div>
+</div>
+
+{# Omissions Warning Banner if any #}
+{% if packet.omitted_info %}
+<div class="card" style="border-left:4px solid var(--color-warning, #f59e0b); margin-bottom:20px;">
+  <h4 style="font-size:0.95rem; font-weight:600; margin:0 0 8px 0; color:var(--color-warning, #f59e0b);">
+    ⚠️ Context Budget Warning: {{ packet.omitted_info|length }} Section(s) Omitted
+  </h4>
+  <p style="font-size:0.85rem; margin:0 0 10px 0;">
+    The following sections could not fit within the {{ token_budget }} token limit and were omitted according to the system priority hierarchy:
+  </p>
+  <table class="table" style="font-size:0.85rem;">
+    <thead>
+      <tr>
+        <th>Priority</th>
+        <th>Section</th>
+        <th>Estimated Tokens Needed</th>
+        <th>Reason</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for o in packet.omitted_info %}
+      <tr>
+        <td><span class="badge badge-offline">P{{ o.priority }}</span></td>
+        <td><strong>{{ o.section }}</strong></td>
+        <td>{{ o.tokens_needed }}</td>
+        <td>{{ o.reason }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{# Priority Sections Breakdown #}
+<div class="card" style="margin-bottom:20px;">
+  <h3 class="card-title">Token Allocation by Priority Hierarchy</h3>
+  <table class="table" style="font-size:0.85rem;">
+    <thead>
+      <tr>
+        <th style="width:80px;">Priority</th>
+        <th>Section Name</th>
+        <th style="width:120px;">Tokens</th>
+        <th style="width:120px;">Required</th>
+        <th style="width:120px;">Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in packet.sections %}
+      <tr>
+        <td><span class="badge badge-primary">P{{ s.priority }}</span></td>
+        <td><strong>{{ s.name }}</strong></td>
+        <td>{{ s.tokens }}</td>
+        <td>{% if s.required %}<span class="badge badge-warning">Required</span>{% else %}<span class="badge badge-offline">Optional</span>{% endif %}</td>
+        <td><span class="badge badge-online">Included</span></td>
+      </tr>
+      {% endfor %}
+      {% for o in packet.omitted_info %}
+      <tr style="opacity:0.6;">
+        <td><span class="badge badge-offline">P{{ o.priority }}</span></td>
+        <td>{{ o.section }}</td>
+        <td>{{ o.tokens_needed }}</td>
+        <td><span class="badge badge-offline">Optional</span></td>
+        <td><span class="badge badge-error">Omitted</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{# Rendered Prompt Preview #}
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+    <h3 class="card-title" style="margin:0;">Rendered Model Prompt</h3>
+    <button onclick="navigator.clipboard.writeText(document.getElementById('prompt-text').innerText); alert('Prompt copied to clipboard!');" class="btn btn-sm btn-secondary">
+      📋 Copy Full Prompt
+    </button>
+  </div>
+  <pre id="prompt-text" style="background:var(--bg-main, #0f172a); color:var(--text-main, #f8fafc); padding:16px; border-radius:6px; font-family:var(--font-mono); font-size:0.85rem; line-height:1.5; white-space:pre-wrap; max-height:600px; overflow-y:auto; border:1px solid var(--border-color, #334155);">{{ packet.rendered_prompt }}</pre>
+</div>
+{% endblock %}
