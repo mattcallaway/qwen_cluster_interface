@@ -1,6 +1,6 @@
 # Project Intelligence — Implementation Plan
 
-Status: **Milestone 1 in progress** on branch `feature/project-intelligence`
+Status: **Milestone 1 implemented and tested; awaiting review.** Branch `feature/project-intelligence`. Not deployed. See `PROJECT_INTELLIGENCE_STATUS.md`.
 Base commit: `6786203` (`fix/security-reliability-audit`)
 
 ---
@@ -35,7 +35,7 @@ Both become reachable by untrusted input as soon as external or VPS-extracted kn
 | **The live service would load feature code on its next restart.** Migrations run in `init_db()`, so a crash, a reboot, or SCM recovery would migrate the production DB with unreviewed code. | Development happens in a separate **git worktree** at `scratch/qwen-collective-dev`. The service's directory stays on `fix/security-reliability-audit`. Nothing is deployed without approval. |
 | An ALTER on `tasks` could lose data. | `ALTER TABLE ADD COLUMN` only (nullable columns, no table rebuild). A test migrates a populated v0 DB and checks the rows are preserved. |
 | A partial migration leaves the schema inconsistent. | Each migration runs inside an explicit `BEGIN IMMEDIATE … COMMIT`, with `PRAGMA user_version` bumped in the same transaction. A test injects a failing migration and checks for a full rollback. |
-| Production DB loss during migration. | `init_db()` writes a `sqlite3.backup()` snapshot (`qwen_collective.pre-migration-v{N}.db`) before applying migrations to a DB that already has tables. |
+| Production DB loss during migration. | `init_db()` writes a `sqlite3.backup()` snapshot (`qwen_collective.pre-migration-v{cur}-to-v{target}-{UTC stamp}.db`, next to the DB) before applying migrations to a DB that already existed. |
 | Making vault indexing recursive surfaces notes that weren't indexed before. | Production has one note. The change is additive, and `read_note` already handles nested paths. |
 | Polymorphic knowledge relations can't use FKs. | Target existence is validated in the service layer, and the target type is restricted by a `CHECK` constraint. Documented in `PROJECT_DATA_MODEL.md`. |
 
@@ -68,5 +68,5 @@ The Deliverables and Metrics tabs are **not shown** until their milestones exist
 ## 4. Rollback
 
 - **Code:** don't merge `feature/project-intelligence`. The service directory never leaves `fix/security-reliability-audit`.
-- **Data (after any future approved deployment):** stop the service, then restore either `qwen_collective.pre-migration-v{N}.db` or the latest `backups\qwen_collective_backup_*.zip`.
+- **Data (after any future approved deployment):** stop the service, then restore either `qwen_collective.pre-migration-v0-to-v1-*.db` or the latest `backups\qwen_collective_backup_*.zip`.
 - The pre-development production backup is `backups\qwen_collective_backup_2026-10-14_010900.zip`. It has been verified: it extracts, `integrity_check = ok`, and the user row and vault note are present.
