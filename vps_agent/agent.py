@@ -16,7 +16,7 @@ import requests
 
 from vps_agent.buffer import OfflineBuffer
 from vps_agent.capabilities import discover_local_hardware
-from vps_agent.config import AgentConfig, load_config
+from vps_agent.config import AgentConfig, load_config, save_worker_token
 from vps_agent.executor import execute_task
 
 logger = logging.getLogger("qwen_collective.worker_agent")
@@ -90,7 +90,9 @@ class VPSWorkerAgent:
                 data = resp.json()
                 if "worker_token" in data:
                     self.token = data["worker_token"]
-                    logger.info("Provisioned new worker token for node %s", self.config.worker_id)
+                    self.config.worker_token = self.token
+                    save_worker_token(self.config, self.token)
+                    logger.info("Provisioned and securely persisted new worker token for node %s", self.config.worker_id)
                 self.is_registered = True
                 logger.info("Successfully registered worker node %s with controller", self.config.worker_id)
                 return True

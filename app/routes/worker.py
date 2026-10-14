@@ -150,29 +150,7 @@ def register_worker(
     new_worker_token = None
     token_id = None
 
-    # 1. Update node in infrastructure registry first so foreign key constraints are satisfied
-    reg_result = worker_svc.register_worker_node(
-        node_id=req.node_id,
-        name=req.name,
-        role=req.role,
-        hostname=req.hostname,
-        os_name=req.os_name,
-        os_version=req.os_version,
-        architecture=req.architecture,
-        cpu_count=req.cpu_count,
-        ram_total_mb=req.ram_total_mb,
-        ram_available_mb=req.ram_available_mb,
-        disk_total_gb=req.disk_total_gb,
-        disk_free_gb=req.disk_free_gb,
-        ip_addresses=req.ip_addresses,
-        tailscale_ip=req.tailscale_ip,
-        agent_version=req.agent_version,
-        installed_runtimes=req.installed_runtimes,
-        registered_services=req.registered_services,
-        declared_capabilities=req.declared_capabilities,
-    )
-
-    # Case 1: Existing authenticated worker token
+    # Case 1: Existing authenticated worker token (inventory update)
     if raw_worker_token:
         token_info = worker_svc.verify_worker_token(raw_worker_token)
         if not token_info:
@@ -197,12 +175,10 @@ def register_worker(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Enrollment token rejected: {msg}",
             )
-        token_id, new_worker_token = worker_svc.create_worker_token(req.node_id)
         token_status = "provisioned"
 
     # Case 3: Administrator session
     elif get_current_user(request):
-        token_id, new_worker_token = worker_svc.create_worker_token(req.node_id)
         token_status = "provisioned"
 
     # Case 4: No valid enrollment authorization
@@ -215,6 +191,32 @@ def register_worker(
                 "via the 'X-Enrollment-Token' header or authenticate with an administrator session."
             ),
         )
+
+    # 2. Update node in infrastructure registry only after authorization is validated
+    reg_result = worker_svc.register_worker_node(
+        node_id=req.node_id,
+        name=req.name,
+        role=req.role,
+        hostname=req.hostname,
+        os_name=req.os_name,
+        os_version=req.os_version,
+        architecture=req.architecture,
+        cpu_count=req.cpu_count,
+        ram_total_mb=req.ram_total_mb,
+        ram_available_mb=req.ram_available_mb,
+        disk_total_gb=req.disk_total_gb,
+        disk_free_gb=req.disk_free_gb,
+        ip_addresses=req.ip_addresses,
+        tailscale_ip=req.tailscale_ip,
+        agent_version=req.agent_version,
+        installed_runtimes=req.installed_runtimes,
+        registered_services=req.registered_services,
+        declared_capabilities=req.declared_capabilities,
+    )
+
+    # 3. Create persistent worker Bearer token for newly enrolled nodes
+    if token_status == "provisioned":
+        token_id, new_worker_token = worker_svc.create_worker_token(req.node_id)
 
     reg_result["token_id"] = token_id
     reg_result["token_status"] = token_status
@@ -272,6 +274,19 @@ def revoke_enrollment_token(token_id: str, request: Request):
     success = worker_svc.revoke_enrollment_token(token_id)
     if not success:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Enrollment token not found.")
+    return {"status": "revoked", "token_id": token_id}
+
+
+@router.delete("/tokens/{token_id}")
+def revoke_worker_token_route(token_id: str, request: Request):
+    """Revoke an active worker Bearer token (admin only)."""
+    admin_user = get_current_user(request)
+    if not admin_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Administrator login required.")
+
+    success = worker_svc.revoke_worker_token(token_id)
+    if not success:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Worker token not found.")
     return {"status": "revoked", "token_id": token_id}
 
 

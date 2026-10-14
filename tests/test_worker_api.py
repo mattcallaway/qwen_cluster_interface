@@ -269,3 +269,244 @@ def test_task_leasing_and_submission_api_flow(client, db_conn):
     assert len(executions) >= 1
     assert executions[0]["task_id"] == task_id
     assert executions[0]["status"] == "success"
+
+
+def test_unauthorized_registration_has_no_database_side_effects(client, db_conn):
+    """
+    Verify that unauthenticated registration attempts and invalid/expired enrollment tokens
+    have ZERO side effects on the database: no rows created in infrastructure_nodes or worker_auth_tokens.
+    """
+    # Count rows before
+    nodes_before = db_conn.execute("SELECT COUNT(*) FROM infrastructure_nodes").fetchone()[0]
+    tokens_before = db_conn.execute("SELECT COUNT(*) FROM worker_auth_tokens").fetchone()[0]
+
+    # 1. Unauthenticated request (no token)
+    resp1 = client.post(
+        "/api/v1/worker/register",
+        json={"node_id": "rogue-node-1", "name": "Rogue 1", "role": "vps_worker"}
+    )
+    assert resp1.status_code == 401
+
+    # 2. Invalid enrollment token
+    resp2 = client.post(
+        "/api/v1/worker/register",
+        json={"node_id": "rogue-node-2", "name": "Rogue 2", "role": "vps_worker"},
+        headers={"X-Enrollment-Token": "qcwe_completely_invalid_token"}
+    )
+    assert resp2.status_code == 403
+
+    # 3. Expired enrollment token
+    _, expired_tok = worker_svc.create_enrollment_token(expires_in_seconds=-60)
+    resp3 = client.post(
+        "/api/v1/worker/register",
+        json={"node_id": "rogue-node-3", "name": "Rogue 3", "role": "vps_worker"},
+        headers={"X-Enrollment-Token": expired_tok}
+    )
+    assert resp3.status_code == 403
+
+    # Verify database counts are completely untouched
+    nodes_after = db_conn.execute("SELECT COUNT(*) FROM infrastructure_nodes").fetchone()[0]
+    tokens_after = db_conn.execute("SELECT COUNT(*) FROM worker_auth_tokens").fetchone()[0]
+    assert nodes_after == nodes_before
+    assert tokens_after == tokens_before
+
+    # Verify no rogue node rows exist
+    rogue_nodes = db_conn.execute("SELECT id FROM infrastructure_nodes WHERE id LIKE 'rogue-node%'").fetchall()
+    assert len(rogue_nodes) == 0
+
+
+def test_worker_token_revocation_invalidates_all_operations(client, db_conn):
+    """
+    Revoking an active worker Bearer token immediately invalidates:
+    - Heartbeat ping
+    - Task leasing
+    - Re-registration / inventory update
+    """
+    node_id = "vps-revocation-test-node"
+    _, enr_token = worker_svc.create_enrollment_token(allowed_node_id=node_id)
+    reg_resp = client.post(
+        "/api/v1/worker/register",
+        json={"node_id": node_id, "name": "Revocation Test Node"},
+        headers={"X-Enrollment-Token": enr_token}
+    )
+    assert reg_resp.status_code == 200
+    token_id = reg_resp.json()["token_id"]
+    raw_token = reg_resp.json()["worker_token"]
+    headers = {"Authorization": f"Bearer {raw_token}"}
+
+    # Heartbeat works before revocation
+    hb_resp = client.post("/api/v1/worker/heartbeat", json={"node_id": node_id}, headers=headers)
+    assert hb_resp.status_code == 200
+
+    # Revoke the token
+    revoked = worker_svc.revoke_worker_token(token_id)
+    assert revoked is True
+
+    # 1. Heartbeat immediately rejected
+    hb_revoked = client.post("/api/v1/worker/heartbeat", json={"node_id": node_id}, headers=headers)
+    assert hb_revoked.status_code == 401
+    assert "invalid or revoked" in hb_revoked.json()["detail"].lower()
+
+    # 2. Task lease immediately rejected
+    lease_revoked = client.post(
+        "/api/v1/worker/tasks/lease",
+        json={"worker_id": node_id, "supported_categories": ["python_execution"]},
+        headers=headers
+    )
+    assert lease_revoked.status_code == 401
+
+    # 3. Registration with revoked token rejected
+    reg_revoked = client.post(
+        "/api/v1/worker/register",
+        json={"node_id": node_id, "name": "Revocation Test Node Update"},
+        headers=headers
+    )
+    assert reg_revoked.status_code == 401
+
+
+def test_invalid_and_mismatched_worker_credentials(client, db_conn):
+    """Verify that node mismatches, malformed tokens, and unknown tokens are rejected."""
+    # Enroll node X
+    _, enr_x = worker_svc.create_enrollment_token(allowed_node_id="node-x")
+    reg_x = client.post(
+        "/api/v1/worker/register",
+        json={"node_id": "node-x", "name": "Node X"},
+        headers={"X-Enrollment-Token": enr_x}
+    )
+    token_x = reg_x.json()["worker_token"]
+
+    # 1. Node mismatch: token for node-x sent with node_id=node-y
+    mismatch_resp = client.post(
+        "/api/v1/worker/register",
+        json={"node_id": "node-y", "name": "Node Y"},
+        headers={"Authorization": f"Bearer {token_x}"}
+    )
+    assert mismatch_resp.status_code == 403
+    assert "mismatch" in mismatch_resp.json()["detail"].lower()
+
+    # 2. Malformed token prefix
+    bad_prefix_resp = client.post(
+        "/api/v1/worker/heartbeat",
+        json={"node_id": "node-x"},
+        headers={"Authorization": "Bearer bad_prefix_token_12345"}
+    )
+    assert bad_prefix_resp.status_code == 401
+
+    # 3. Non-existent token with valid prefix
+    fake_token_resp = client.post(
+        "/api/v1/worker/heartbeat",
+        json={"node_id": "node-x"},
+        headers={"Authorization": "Bearer qcw_nonexistent_token_string_12345"}
+    )
+    assert fake_token_resp.status_code == 401
+
+
+def test_vps_agent_persists_token_and_authenticates_on_restart(client, tmp_path, monkeypatch):
+    """
+    Test the complete VPS agent token lifecycle:
+    1. Agent enrolls with single-use enrollment token.
+    2. Agent securely persists returned worker_token to disk (mode 0600 on Linux).
+    3. Agent restarts (simulated with fresh VPSWorkerAgent instance reading persisted file).
+    4. Restarted agent authenticates and updates inventory via Bearer token without needing enrollment token.
+    """
+    from vps_agent.config import AgentConfig, load_config
+    from vps_agent.agent import VPSWorkerAgent
+
+    node_id = "vps-restart-test-node"
+    _, enr_token = worker_svc.create_enrollment_token(allowed_node_id=node_id)
+
+    # Configure agent with temporary data dir
+    data_dir = tmp_path / "worker_data"
+    cfg = AgentConfig(
+        worker_id=node_id,
+        worker_name="Restart Test Node",
+        enrollment_token=enr_token,
+        data_dir=data_dir,
+    )
+
+    # Use test client for HTTP requests
+    agent1 = VPSWorkerAgent(config=cfg)
+    agent1.session = client
+
+    # 1. Initial registration consumes enrollment token
+    success1 = agent1.register()
+    assert success1 is True
+    assert agent1.is_registered is True
+    assert agent1.token.startswith("qcw_")
+
+    # 2. Verify token file was written to disk
+    token_file = cfg.token_file_path
+    assert token_file.exists()
+    token_content = token_file.read_text(encoding="utf-8")
+    assert agent1.token in token_content
+
+    # Verify POSIX permissions if on Linux/POSIX
+    import os
+    if os.name != "nt":
+        stat_mode = token_file.stat().st_mode & 0o777
+        assert stat_mode == 0o600
+
+    # 3. Simulate agent restart: new config WITHOUT enrollment token, pointing to same data_dir
+    monkeypatch.setenv("QC_WORKER_ID", node_id)
+    monkeypatch.setenv("QC_WORKER_DATA_DIR", str(data_dir))
+    monkeypatch.delenv("QC_WORKER_TOKEN", raising=False)
+    monkeypatch.delenv("QC_ENROLLMENT_TOKEN", raising=False)
+
+    cfg2 = load_config()
+    # Confirm worker_token was loaded from disk
+    assert cfg2.worker_token == agent1.token
+
+    # 4. Restarted agent registers using the loaded token
+    agent2 = VPSWorkerAgent(config=cfg2)
+    agent2.session = client
+
+    success2 = agent2.register()
+    assert success2 is True
+    assert agent2.is_registered is True
+    assert agent2.token == agent1.token
+
+    # 5. Heartbeat succeeds on restarted agent
+    hb_resp = client.post(
+        "/api/v1/worker/heartbeat",
+        json={"node_id": node_id},
+        headers=agent2._headers()
+    )
+    assert hb_resp.status_code == 200
+
+
+def test_admin_can_revoke_worker_token_via_api(client, db_conn):
+    """Administrator can revoke a worker token via DELETE /api/v1/worker/tokens/{token_id}."""
+    from app.routes.auth import create_session_token
+
+    # Enroll worker
+    node_id = "vps-admin-revocation-node"
+    _, enr_tok = worker_svc.create_enrollment_token(allowed_node_id=node_id)
+    reg_resp = client.post(
+        "/api/v1/worker/register",
+        json={"node_id": node_id, "name": "Admin Revocation Test"},
+        headers={"X-Enrollment-Token": enr_tok}
+    )
+    token_id = reg_resp.json()["token_id"]
+    worker_token = reg_resp.json()["worker_token"]
+
+    # Non-admin cannot revoke
+    resp_unauth = client.delete(f"/api/v1/worker/tokens/{token_id}")
+    assert resp_unauth.status_code == 401
+
+    # Admin revokes token
+    admin_session = create_session_token("admin")
+    client.cookies.set("qc_session", admin_session)
+
+    resp_revoke = client.delete(f"/api/v1/worker/tokens/{token_id}")
+    assert resp_revoke.status_code == 200
+    assert resp_revoke.json()["status"] == "revoked"
+
+    # Worker can no longer authenticate
+    client.cookies.clear()
+    hb_resp = client.post(
+        "/api/v1/worker/heartbeat",
+        json={"node_id": node_id},
+        headers={"Authorization": f"Bearer {worker_token}"}
+    )
+    assert hb_resp.status_code == 401
+
