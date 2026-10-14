@@ -17,6 +17,7 @@ from app.routes import (
     tasks,
     projects,
     infrastructure,
+    worker,
     settings as settings_route
 )
 
@@ -60,6 +61,7 @@ app.include_router(knowledge.router)
 app.include_router(tasks.router)
 app.include_router(projects.router)
 app.include_router(infrastructure.router)
+app.include_router(worker.router)
 app.include_router(settings_route.router)
 
 if __name__ == "__main__":

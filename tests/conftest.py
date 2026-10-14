@@ -28,3 +28,14 @@ def setup_test_environment():
     yield
     # Cleanup
     shutil.rmtree(test_dir, ignore_errors=True)
+
+
+@pytest.fixture
+def db_conn():
+    from app.database import get_db_connection
+    conn = get_db_connection()
+    try:
+        yield conn
+    finally:
+        conn.close()
+

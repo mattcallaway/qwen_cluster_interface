@@ -794,6 +794,83 @@ _M6 = [
     "CREATE INDEX idx_infra_verif_cap ON infrastructure_verifications(capability_id, verified_at)",
 ]
 
+# ---------------------------------------------------------------------------
+# Migration 7 — VPS Worker Communication, Task Leasing & Execution History (Milestone 2)
+# ---------------------------------------------------------------------------
+_M7: List[str] = [
+    # 1. Dedicated Worker Authentication Tokens (Scoped Bearer Tokens per Machine)
+    """
+    CREATE TABLE worker_auth_tokens (
+        id TEXT PRIMARY KEY,
+        node_id TEXT NOT NULL REFERENCES infrastructure_nodes(id) ON DELETE CASCADE,
+        token_hash TEXT NOT NULL,
+        token_prefix TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        last_used_at TEXT,
+        revoked INTEGER NOT NULL DEFAULT 0 CHECK (revoked IN (0, 1))
+    )
+    """,
+    "CREATE INDEX idx_worker_tokens_node ON worker_auth_tokens(node_id)",
+    "CREATE INDEX idx_worker_tokens_hash ON worker_auth_tokens(token_hash)",
+
+    # 2. Worker Task Leases (Durable, Atomic Leasing Protocol)
+    """
+    CREATE TABLE worker_task_leases (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        worker_id TEXT NOT NULL REFERENCES infrastructure_nodes(id) ON DELETE CASCADE,
+        idempotency_key TEXT UNIQUE NOT NULL,
+        status TEXT NOT NULL DEFAULT 'leased' CHECK (status IN (
+            'leased', 'active', 'completed', 'failed', 'expired', 'cancelled'
+        )),
+        leased_at TEXT NOT NULL,
+        lease_expires_at TEXT NOT NULL,
+        heartbeat_at TEXT NOT NULL,
+        attempt_count INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_task_leases_task ON worker_task_leases(task_id)",
+    "CREATE INDEX idx_task_leases_worker ON worker_task_leases(worker_id)",
+    "CREATE INDEX idx_task_leases_status ON worker_task_leases(status, lease_expires_at)",
+
+    # 3. Worker Execution Records (Auditable History of Completed Operations)
+    """
+    CREATE TABLE worker_executions (
+        id TEXT PRIMARY KEY,
+        task_id TEXT,
+        worker_id TEXT NOT NULL REFERENCES infrastructure_nodes(id) ON DELETE CASCADE,
+        lease_id TEXT REFERENCES worker_task_leases(id) ON DELETE SET NULL,
+        idempotency_key TEXT,
+        status TEXT NOT NULL CHECK (status IN ('success', 'error', 'timeout', 'cancelled')),
+        exit_code INTEGER,
+        started_at TEXT NOT NULL,
+        completed_at TEXT NOT NULL,
+        runtime_seconds REAL NOT NULL DEFAULT 0.0,
+        cpu_percent REAL,
+        memory_mb REAL,
+        stdout_summary TEXT NOT NULL DEFAULT '',
+        stderr_summary TEXT NOT NULL DEFAULT '',
+        error_category TEXT,
+        deliverable_ids_json TEXT NOT NULL DEFAULT '[]',
+        result_payload_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_worker_exec_worker ON worker_executions(worker_id, started_at)",
+    "CREATE INDEX idx_worker_exec_task ON worker_executions(task_id)",
+    "CREATE INDEX idx_worker_exec_status ON worker_executions(status)",
+    """
+    CREATE TRIGGER trg_worker_exec_no_update BEFORE UPDATE ON worker_executions
+    BEGIN SELECT RAISE(ABORT, 'worker_executions is append-only'); END
+    """,
+    """
+    CREATE TRIGGER trg_worker_exec_no_delete BEFORE DELETE ON worker_executions
+    BEGIN SELECT RAISE(ABORT, 'worker_executions is append-only'); END
+    """,
+]
+
 MIGRATIONS: List[Migration] = [
     (1, "project intelligence foundation", _M1),
     (2, "execution and evidence", _M2),
@@ -801,6 +878,7 @@ MIGRATIONS: List[Migration] = [
     (4, "project-aware intelligence", _M4),
     (5, "historical learning and performance evaluation", _M5),
     (6, "infrastructure awareness and capability registry", _M6),
+    (7, "worker communication, task leasing, and execution history", _M7),
 ]
 
 
