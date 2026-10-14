@@ -243,16 +243,56 @@ If secret values were previously committed to Git:
 
 ---
 
-## 10. Platform Advisory: Windows 10 Support & End-of-Life Risk
+## 10. Private HTTPS Remote Access with Tailscale Serve
+
+To access the Qwen Collective control interface securely from other devices (e.g., phones, tablets, laptops) on your private network without exposing the machine to the public internet:
+
+### Architecture
+- The application binds strictly to loopback: `127.0.0.1:8000`.
+- Tailscale runs on the host and uses **Tailscale Serve** to proxy incoming requests within the private tailnet.
+- Tailscale handles TLS termination automatically using Let's Encrypt certificates provisioned for your machine's MagicDNS name (`https://<node-name>.<tailnet>.ts.net/`).
+- **Tailscale Funnel is kept strictly DISABLED** to prevent public internet access.
+
+### Configuration Steps
+1. **Enable Unattended Mode**:
+   Allows Tailscale to remain connected in the background even when no user is logged in to Windows:
+   ```powershell
+   & "C:\Program Files\Tailscale\tailscale.exe" set --unattended
+   ```
+2. **Authorize Tailscale Serve**:
+   If your tailnet requires node approval, follow the authorization URL displayed upon first setup or enable Serve capability in your Tailscale admin console ACLs.
+3. **Start Background Serve Proxy**:
+   Proxy incoming HTTPS requests to the local Uvicorn instance on port 8000:
+   ```powershell
+   & "C:\Program Files\Tailscale\tailscale.exe" serve --bg 8000
+   ```
+4. **Verify Configuration**:
+   ```powershell
+   & "C:\Program Files\Tailscale\tailscale.exe" serve status
+   ```
+   Expected output:
+   ```text
+   https://<your-node>.<your-tailnet>.ts.net/
+   |-- proxy http://127.0.0.1:8000
+   ```
+5. **Verify Funnel is Disabled**:
+   ```powershell
+   & "C:\Program Files\Tailscale\tailscale.exe" funnel status
+   ```
+   Must display `(tailnet only)` to confirm zero public internet exposure.
+
+---
+
+## 11. Platform Advisory: Windows 10 Support & End-of-Life Risk
 
 > [!WARNING]
 > Microsoft ended standard mainstream support for **Windows 10** in **October 2025**. Running an always-on network control server on Windows 10 carries operational risk without Extended Security Updates (ESU).
 >
-> While Qwen Collective operates cleanly on Windows 10 (Build 19045), we recommend planning a migration to **Windows 11 Pro/Enterprise** or a dedicated headless **Debian 12 / Ubuntu 24.04 LTS** node. All application data in `C:\Users\Matt C\.qwen-collective\data` is portable and can be moved without data loss.
+> While Qwen Collective operates cleanly on Windows 10 (Build 19045), we recommend planning a migration to **Windows 11 Pro/Enterprise** or a dedicated headless **Debian 12 / Ubuntu 24.04 LTS** node. All application data in `%USERPROFILE%\.qwen-collective\data` is portable and can be moved without data loss.
 
 ---
 
-## 11. Verification & Reliability Audit Summary
+## 12. Verification & Reliability Audit Summary
 
 | Reliability Item | Status | Verification Method |
 | :--- | :--- | :--- |
@@ -270,4 +310,5 @@ If secret values were previously committed to Git:
 | **Zero Machine / Offline State Handling** | **VERIFIED** | Tested explicit onboarding and offline warning badges (`test_ui_states.py`) |
 | **Atomic Backup & Restore** | **VERIFIED** | Tested via `backup-windows.ps1` producing consistent ZIP snapshot |
 | **Control Server Background Daemon** | **ACTIVE** | Live on `127.0.0.1:8000`, 200 OK verified |
-| **Tailscale Installation** | **INSTALLED** | Tailscale 1.104.1 installed and running; awaiting tailnet login |
+| **Tailscale Serve (Private HTTPS)** | **ACTIVE** | Tested over HTTPS: valid TLS cert, secure session cookie, Funnel disabled |
+

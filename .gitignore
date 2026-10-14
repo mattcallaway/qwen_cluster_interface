@@ -60,6 +60,8 @@ service/logs/
 .DS_Store
 Thumbs.db
 
-# Local Deployment Diagnostics
+# Local Deployment & Diagnostic Reports (contain private tailnet hostnames, IPs, or local paths)
 DEPLOYMENT_REPORT.md
+TAILSCALE_DIAGNOSTIC_REPORT.md
+*DIAGNOSTIC_REPORT.md
 

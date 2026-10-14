@@ -14,10 +14,10 @@
 | **Operating System** | Warning | Windows 10 Home (10.0.19045), x64, 24 GB RAM (See OS Support Risk below) |
 | **Python Environment** | Ready | Python 3.12.10; dedicated virtual environment created at `.venv/` |
 | **Control Server Port** | Ready | Bound strictly to `127.0.0.1:8000` (port verified unoccupied) |
-| **Persistent Data Directory** | Ready | Stored outside source tree at `C:\Users\Matt C\.qwen-collective\data` |
+| **Persistent Data Directory** | Ready | Stored outside source tree at `%USERPROFILE%\.qwen-collective\data` |
 | **OpenSSH Tools** | Ready | Windows OpenSSH 9.5.5.2 installed; `%USERPROFILE%\.ssh` secured via `icacls` |
 | **WinSW Service Wrapper** | Ready | WinSW v2.12.0 staged; literal secrets removed from tracked XML |
-| **Tailscale** | Installed | Version 1.104.1 installed and running; awaiting user `tailscale login` |
+| **Tailscale Serve** | Active | Authenticated; Unattended mode active; Private HTTPS reverse-proxy active via Tailscale Serve (`--bg 8000`) |
 | **Background Server Daemon** | Active | Running on `http://127.0.0.1:8000` with rotated credentials |
 
 ---
