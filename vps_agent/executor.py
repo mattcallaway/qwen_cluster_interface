@@ -54,18 +54,36 @@ def _build_sanitized_environment(work_dir: Optional[str] = None) -> Dict[str, st
 def _detect_os_isolation_mechanism() -> Optional[str]:
     """
     Detect enforced OS-level execution isolation mechanism.
-    Priority:
-    1. 'scoped_runner': /usr/local/bin/qwen-sandbox-runner (scoped privileged launcher)
-    2. 'systemd_transient': systemd-run transient unit with DynamicUser=yes, ProtectSystem=strict, etc.
-    3. 'bubblewrap': bwrap unprivileged container sandbox
-    4. 'restricted_subprocess': only in development/test fallback mode
-    5. None: if no enforceable OS isolation boundary is present (fails closed)
+
+    Security Invariants:
+    1. Production Linux worker strictly REQUIRES the approved root-owned scoped launcher (qwen-sandbox-runner).
+    2. If the scoped launcher is missing or invalid in production, the engine strictly fails closed (returns None).
+       It NEVER silently falls back to direct systemd-run, Bubblewrap, or unrestricted subprocesses.
+    3. Alternate mechanisms (systemd_transient, bubblewrap, restricted_subprocess) are only accessible
+       in explicitly configured development/testing environments.
     """
+    # 1. Approved root-owned scoped privileged launcher
     custom_runner = os.getenv("QC_SANDBOX_RUNNER")
     if custom_runner and (os.path.exists(custom_runner) or os.name != "nt"):
         return "scoped_runner"
     if os.path.exists("/usr/local/bin/qwen-sandbox-runner") or shutil.which("qwen-sandbox-runner"):
         return "scoped_runner"
+
+    # 2. Strict Production Guard: fail closed if scoped runner is absent in production
+    is_dev_or_test = bool(
+        os.getenv("QC_ENV") == "development"
+        or os.getenv("QC_ALLOW_ALT_ISOLATION") == "1"
+        or os.getenv("QC_ALLOW_SUBPROCESS_FALLBACK") == "1"
+        or os.getenv("PYTEST_CURRENT_TEST")
+    )
+    if not is_dev_or_test:
+        logger.error(
+            "Production security gate: approved scoped launcher (/usr/local/bin/qwen-sandbox-runner) "
+            "not found. Execution rejected without alternate fallback."
+        )
+        return None
+
+    # 3. Alternate mechanisms (retained only for explicit dev/test environments)
     if shutil.which("systemd-run"):
         return "systemd_transient"
     if shutil.which("bwrap"):
@@ -90,7 +108,9 @@ def _build_isolation_command(
             or shutil.which("qwen-sandbox-runner")
             or "/usr/local/bin/qwen-sandbox-runner"
         )
-        cmd = [
+        # Notice: --allow-network is strictly omitted for production scoped runner;
+        # IPAddressDeny=any is hardcoded in the launcher.
+        return [
             "sudo",
             runner_bin,
             "--workspace", str(work_dir),
@@ -98,9 +118,6 @@ def _build_isolation_command(
             "--memory-mb", str(memory_limit_mb),
             "--tasks-max", str(tasks_max),
         ]
-        if network_access:
-            cmd.append("--allow-network")
-        return cmd
     elif isolation_mech == "systemd_transient":
         network_flags = [] if network_access else ["-p", "IPAddressDeny=any"]
         return [

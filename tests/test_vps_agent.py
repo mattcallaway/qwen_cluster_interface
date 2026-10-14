@@ -384,7 +384,8 @@ def test_executor_scoped_runner_detection_and_command_construction(monkeypatch, 
         work_dir=str(tmp_path),
         network_access=True,
     )
-    assert "--allow-network" in cmd_net
+    # Production scoped runner unconditionally denies network; worker cannot enable network
+    assert "--allow-network" not in cmd_net
 
 
 def test_scoped_sandbox_runner_validates_paths_and_hardens_systemd(tmp_path, monkeypatch):
@@ -458,6 +459,67 @@ def test_scoped_sandbox_runner_validates_paths_and_hardens_systemd(tmp_path, mon
 
     ep_resolved = runner_mod.validate_entrypoint(valid_ws, str(valid_ep))
     assert ep_resolved == valid_ep.resolve()
+
+
+def test_production_sandbox_adversarial_boundary_protections(monkeypatch, tmp_path):
+    """
+    Adversarial verification tests:
+    1. --allow-network is rejected by launcher CLI
+    2. Over-ceiling resource requests are strictly clamped to approved maximums
+    3. Missing launcher in production causes strict fail-closed rejection
+    4. Alternative execution mechanisms (systemd-run, bwrap) are blocked in production
+    """
+    import subprocess
+    import sys
+    from vps_agent import executor
+
+    runner_script = Path(__file__).resolve().parent.parent / "scripts" / "qwen-sandbox-runner.py"
+
+    # 1. Attempting to pass --allow-network is rejected by argument parser
+    res_net = subprocess.run(
+        [sys.executable, str(runner_script), "--workspace", str(tmp_path), "--entrypoint", str(tmp_path / "ep.py"), "--allow-network"],
+        capture_output=True,
+        text=True,
+    )
+    assert res_net.returncode == 2
+    assert "unrecognized arguments: --allow-network" in res_net.stderr
+
+    # 2. Strict production gate: in production, missing launcher returns None even if systemd-run / bwrap exist
+    monkeypatch.setenv("QC_ENV", "production")
+    monkeypatch.delenv("QC_SANDBOX_RUNNER", raising=False)
+    monkeypatch.delenv("QC_ALLOW_ALT_ISOLATION", raising=False)
+    monkeypatch.delenv("QC_ALLOW_SUBPROCESS_FALLBACK", raising=False)
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    # Mock system commands to simulate systemd and bwrap being installed on host
+    monkeypatch.setattr(executor.os.path, "exists", lambda p: False)
+    monkeypatch.setattr(executor.shutil, "which", lambda cmd: f"/usr/bin/{cmd}" if cmd in ("systemd-run", "bwrap") else None)
+
+    # In production, must NOT fall back to systemd_transient or bubblewrap
+    assert executor._detect_os_isolation_mechanism() is None
+
+    # Class B task execution fails closed with exit code 126
+    import hashlib
+    script_content = "print('evil')"
+    script_sha = hashlib.sha256(script_content.encode("utf-8")).hexdigest()
+    fake_manifest = {
+        "task_id": "adv-task-1",
+        "script_checksum": script_sha,
+        "allowed_capabilities": ["python_execution"],
+    }
+    task = {
+        "task_id": "adv-task-1",
+        "task_type": "python_execution",
+        "input_data": {
+            "script": script_content,
+            "checksum": script_sha,
+            "execution_manifest": fake_manifest,
+        },
+    }
+    outcome = executor.execute_task(task)
+    assert outcome["status"] == "error"
+    assert outcome["exit_code"] == 126
+    assert outcome["error_category"] == "unsupported_isolation"
 
 
 

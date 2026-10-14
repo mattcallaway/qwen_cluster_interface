@@ -65,6 +65,17 @@ def test_unauthorized_launcher_inputs():
     else:
         print_fail(f"Prefix collision not rejected: rc={res2.returncode}")
 
+    # 3. Unrecognized / prohibited argument rejection (--allow-network)
+    res3 = subprocess.run(
+        [sys.executable, str(runner), "--workspace", "/opt/qwen-collective/workspaces/test", "--entrypoint", "/tmp/any.py", "--allow-network"],
+        capture_output=True,
+        text=True,
+    )
+    if res3.returncode == 2 and "unrecognized arguments" in res3.stderr:
+        print_pass("Prohibited flag '--allow-network' rejected by argument parser.")
+    else:
+        print_fail(f"--allow-network not rejected as expected: rc={res3.returncode}")
+
 
 def test_sandbox_execution_and_containment():
     print_step("Verify DynamicUser Execution, Containment & Artifact Return")

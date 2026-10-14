@@ -116,31 +116,40 @@ def main():
     parser = argparse.ArgumentParser(description="Qwen Collective Scoped Sandbox Runner")
     parser.add_argument("--workspace", required=True, help="Path to isolated task workspace directory")
     parser.add_argument("--entrypoint", required=True, help="Path to entrypoint script inside workspace")
-    parser.add_argument("--memory-mb", type=int, default=512, help="Memory limit in megabytes (max 512)")
-    parser.add_argument("--tasks-max", type=int, default=64, help="Process count limit (max 64)")
-    parser.add_argument("--timeout", type=int, default=600, help="Execution timeout in seconds")
-    parser.add_argument("--allow-network", action="store_true", default=False, help="Allow external network access")
+    parser.add_argument("--memory-mb", type=int, default=256, help="Memory limit in megabytes (min 64, max 512)")
+    parser.add_argument("--tasks-max", type=int, default=32, help="Process count limit (min 10, max 64)")
+    parser.add_argument("--timeout", type=int, default=300, help="Execution timeout in seconds (min 10, max 300)")
 
     args = parser.parse_args()
 
-    # Ensure runner itself is owned by root and non-world-writable when on Linux/POSIX
+    # Ensure runner itself is owned by root and non-world-writable when running as root on Linux/POSIX
     if os.name != "nt" and os.geteuid() == 0:
         self_path = Path(__file__).resolve()
         stat_self = self_path.stat()
         if stat_self.st_uid != 0:
-            sys.stderr.write(f"Security Alert: Launcher {self_path} must be owned by root.\n")
+            sys.stderr.write(f"Security Alert: Launcher {self_path} must be owned by root (uid={stat_self.st_uid}).\n")
             sys.exit(126)
         if stat_self.st_mode & 0o022:
-            sys.stderr.write(f"Security Alert: Launcher {self_path} must not be group/world writable.\n")
+            sys.stderr.write(f"Security Alert: Launcher {self_path} must not be group/world writable (mode={oct(stat_self.st_mode)}).\n")
             sys.exit(126)
+
+    # Sanitize root environment before invoking systemd-run
+    for var in ["PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "PYTHONUSERBASE", "LD_PRELOAD", "LD_LIBRARY_PATH"]:
+        if var in os.environ:
+            del os.environ[var]
+    os.environ["PATH"] = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
     # Security validation of inputs
     workspace = validate_workspace(args.workspace)
     entrypoint = validate_entrypoint(workspace, args.entrypoint)
 
-    # Enforce hard upper bounds on resource limits
+    # Enforce strict immutable upper bounds on resource limits
     mem_mb = min(max(args.memory_mb, 64), 512)
     tasks_max = min(max(args.tasks_max, 10), 64)
+    timeout_sec = min(max(args.timeout, 10), 300)
+
+    # Trusted host python binary
+    python_bin = "/usr/bin/python3" if os.path.exists("/usr/bin/python3") else (sys.executable or "/usr/bin/python3")
 
     # Construct mandatory systemd-run command
     cmd = [
@@ -152,28 +161,23 @@ def main():
         "-p", "ProtectSystem=strict",
         "-p", "ProtectHome=yes",
         "-p", "PrivateTmp=yes",
+        "-p", "IPAddressDeny=any",
         "-p", f"MemoryMax={mem_mb}M",
         "-p", f"TasksMax={tasks_max}",
         "-p", f"ReadWritePaths={workspace}",
-    ]
-
-    if not args.allow_network:
-        cmd.extend(["-p", "IPAddressDeny=any"])
-
-    cmd.extend([
-        sys.executable if sys.executable else "/usr/bin/python3",
+        python_bin,
         str(entrypoint),
-    ])
+    ]
 
     try:
         proc = subprocess.run(
             cmd,
             cwd=str(workspace),
-            timeout=args.timeout,
+            timeout=timeout_sec,
         )
         sys.exit(proc.returncode)
     except subprocess.TimeoutExpired:
-        sys.stderr.write(f"Error: Execution timed out after {args.timeout} seconds.\n")
+        sys.stderr.write(f"Error: Execution timed out after {timeout_sec} seconds.\n")
         sys.exit(124)
     except Exception as e:
         sys.stderr.write(f"Error invoking systemd sandbox: {e}\n")
