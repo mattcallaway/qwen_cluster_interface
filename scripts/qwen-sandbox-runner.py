@@ -32,24 +32,74 @@ ALLOWED_WORKSPACE_PREFIXES = [
 
 
 def validate_workspace(workspace_str: str) -> Path:
-    ws = Path(workspace_str).resolve()
+    raw_path = Path(workspace_str)
+    # Reject symlinked workspace paths to prevent directory redirection
+    if raw_path.is_symlink():
+        sys.stderr.write(f"Error: Workspace cannot be a symlink: {workspace_str}\n")
+        sys.exit(126)
+
+    ws = raw_path.resolve()
     if not ws.is_dir():
         sys.stderr.write(f"Error: Workspace directory does not exist: {ws}\n")
         sys.exit(126)
 
-    # Ensure path starts with an authorized prefix
-    ws_str = str(ws)
-    if not any(ws_str.startswith(prefix) for prefix in ALLOWED_WORKSPACE_PREFIXES):
-        sys.stderr.write(f"Error: Workspace path '{ws_str}' is outside authorized prefixes.\n")
+    is_valid = False
+
+    # 1. /opt/qwen-collective/workspaces/<subdir>
+    opt_base = Path("/opt/qwen-collective/workspaces").resolve()
+    try:
+        if ws != opt_base and ws.is_relative_to(opt_base):
+            is_valid = True
+    except (ValueError, AttributeError):
+        pass
+
+    # 2. /tmp/qc_worker_exec_<suffix> or /var/tmp/qc_worker_exec_<suffix>
+    tmp_base = Path("/tmp").resolve()
+    var_tmp_base = Path("/var/tmp").resolve()
+    try:
+        if (ws.parent == tmp_base or ws.parent == var_tmp_base) and ws.name.startswith("qc_worker_exec_"):
+            is_valid = True
+    except Exception:
+        pass
+
+    # 3. Allow controlled test scratch paths if specifically configured in test environment
+    test_base = os.getenv("QC_ALLOWED_TEST_WORKSPACE")
+    if test_base:
+        try:
+            t_base = Path(test_base).resolve()
+            if ws != t_base and ws.is_relative_to(t_base):
+                is_valid = True
+        except Exception:
+            pass
+
+    if not is_valid:
+        sys.stderr.write(f"Error: Workspace path '{ws}' is outside authorized prefixes.\n")
         sys.exit(126)
 
     return ws
 
 
 def validate_entrypoint(workspace: Path, entrypoint_str: str) -> Path:
-    ep = Path(entrypoint_str).resolve()
+    ep_raw = Path(entrypoint_str)
+    # Reject symlinks to prevent pointing to host files or sensitive paths
+    if ep_raw.is_symlink():
+        sys.stderr.write(f"Error: Entrypoint '{entrypoint_str}' cannot be a symlink.\n")
+        sys.exit(126)
+
+    ep = ep_raw.resolve()
     if not ep.is_file():
         sys.stderr.write(f"Error: Entrypoint file does not exist: {ep}\n")
+        sys.exit(126)
+
+    # Check for hardlinks: if st_nlink > 1, reject
+    stat_res = ep.stat()
+    if stat_res.st_nlink > 1:
+        sys.stderr.write(f"Error: Entrypoint file has hardlinks (nlink={stat_res.st_nlink}).\n")
+        sys.exit(126)
+
+    # Entrypoint cannot be world-writable on POSIX
+    if os.name != "nt" and (stat_res.st_mode & 0o002):
+        sys.stderr.write(f"Error: Entrypoint file cannot be world-writable (mode={oct(stat_res.st_mode)}).\n")
         sys.exit(126)
 
     # Ensure entrypoint is strictly located inside the validated workspace
@@ -72,6 +122,17 @@ def main():
     parser.add_argument("--allow-network", action="store_true", default=False, help="Allow external network access")
 
     args = parser.parse_args()
+
+    # Ensure runner itself is owned by root and non-world-writable when on Linux/POSIX
+    if os.name != "nt" and os.geteuid() == 0:
+        self_path = Path(__file__).resolve()
+        stat_self = self_path.stat()
+        if stat_self.st_uid != 0:
+            sys.stderr.write(f"Security Alert: Launcher {self_path} must be owned by root.\n")
+            sys.exit(126)
+        if stat_self.st_mode & 0o022:
+            sys.stderr.write(f"Security Alert: Launcher {self_path} must not be group/world writable.\n")
+            sys.exit(126)
 
     # Security validation of inputs
     workspace = validate_workspace(args.workspace)

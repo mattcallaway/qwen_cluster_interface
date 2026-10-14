@@ -394,6 +394,7 @@ def test_scoped_sandbox_runner_validates_paths_and_hardens_systemd(tmp_path, mon
     2. Rejects entrypoint script outside the workspace directory with exit code 126
     3. Mandates non-bypassable systemd-run sandbox flags (DynamicUser, ProtectSystem, PrivateTmp, etc.)
     """
+    import os
     import subprocess
     import sys
     runner_script = Path(__file__).resolve().parent.parent / "scripts" / "qwen-sandbox-runner.py"
@@ -435,5 +436,28 @@ def test_scoped_sandbox_runner_validates_paths_and_hardens_systemd(tmp_path, mon
     with pytest.raises(SystemExit) as excinfo2:
         runner_mod.validate_entrypoint(auth_ws, str(outside_ep))
     assert excinfo2.value.code == 126
+
+    # 3. Path prefix collision defense (e.g. /opt/qwen-collective/workspaces_evil)
+    collision_dir = tmp_path / "workspaces_evil"
+    collision_dir.mkdir()
+    with pytest.raises(SystemExit) as excinfo3:
+        runner_mod.validate_workspace(str(collision_dir))
+    assert excinfo3.value.code == 126
+
+    # 4. Authorized workspace under test base succeeds
+    monkeypatch.setenv("QC_ALLOWED_TEST_WORKSPACE", str(tmp_path))
+    valid_ws = tmp_path / "valid_task_ws"
+    valid_ws.mkdir()
+    valid_ep = valid_ws / "task_entrypoint.py"
+    valid_ep.write_text("print('valid')", encoding="utf-8")
+    if hasattr(os, "chmod") and os.name != "nt":
+        os.chmod(valid_ep, 0o555)
+
+    ws_resolved = runner_mod.validate_workspace(str(valid_ws))
+    assert ws_resolved == valid_ws.resolve()
+
+    ep_resolved = runner_mod.validate_entrypoint(valid_ws, str(valid_ep))
+    assert ep_resolved == valid_ep.resolve()
+
 
 

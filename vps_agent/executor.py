@@ -342,10 +342,11 @@ def execute_task(
             work_dir = tempfile.mkdtemp(prefix="qc_worker_exec_")
 
         # DynamicUser=yes assigns an ephemeral UID (61184-65519) to the sandboxed execution.
-        # work_dir must have 0777 mode so the dynamic user can enter, read entrypoint, and write output artifacts.
+        # Set 01777 (rwxrwxrwt with sticky bit): allows ephemeral dynamic user to write artifacts,
+        # while sticky bit prevents tampering, unlinking, or replacement of task_entrypoint.py.
         if os.name != "nt":
             try:
-                os.chmod(work_dir, 0o777)
+                os.chmod(work_dir, 0o1777)
             except Exception:
                 pass
 
