@@ -214,9 +214,15 @@ def rebuild_knowledge_index() -> int:
     conn.close()
     return count
 
-def search_knowledge(query: str) -> List[Dict[str, Any]]:
-    """Search knowledge repository using SQLite FTS5."""
+def search_knowledge(query: str, restrict_paths: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+    """Search knowledge repository using SQLite FTS5.
+
+    If `restrict_paths` is given, only those vault paths are searched (filtering happens in SQL,
+    before the result limit, so scoped searches are not truncated by unrelated notes).
+    """
     if not query.strip():
+        return []
+    if restrict_paths is not None and not restrict_paths:
         return []
         
     # Sanitize FTS5 query terms defensively
@@ -224,6 +230,10 @@ def search_knowledge(query: str) -> List[Dict[str, Any]]:
     if not clean_terms:
         return []
     fts_query = " ".join([f'"{term}"*' for term in clean_terms])
+    scope_sql, scope_args = "", ()
+    if restrict_paths is not None:
+        scope_sql = f" AND path IN ({','.join('?' * len(restrict_paths))})"
+        scope_args = tuple(restrict_paths)
     
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -231,13 +241,13 @@ def search_knowledge(query: str) -> List[Dict[str, Any]]:
         # Highlight with control-character sentinels, escape the whole snippet, then
         # restore <mark>. The template renders `snippet|safe`, so the snippet must be
         # HTML-safe here: note bodies are untrusted.
-        cursor.execute("""
+        cursor.execute(f"""
         SELECT path, title, category, snippet(knowledge_fts, 3, char(2), char(3), '...', 20) as snippet, updated_at
         FROM knowledge_fts
-        WHERE knowledge_fts MATCH ?
+        WHERE knowledge_fts MATCH ?{scope_sql}
         ORDER BY rank
         LIMIT 30;
-        """, (fts_query,))
+        """, (fts_query, *scope_args))
         rows = cursor.fetchall()
         results = []
         for row in rows:
@@ -247,12 +257,12 @@ def search_knowledge(query: str) -> List[Dict[str, Any]]:
     except sqlite3.OperationalError:
         # Fallback to simple LIKE if syntax issue
         like_query = f"%{query.strip()}%"
-        cursor.execute("""
+        cursor.execute(f"""
         SELECT path, title, category, substr(content, 1, 150) as snippet, updated_at
         FROM knowledge_fts
-        WHERE title LIKE ? OR content LIKE ?
+        WHERE (title LIKE ? OR content LIKE ?){scope_sql}
         LIMIT 30;
-        """, (like_query, like_query))
+        """, (like_query, like_query, *scope_args))
         rows = cursor.fetchall()
         results = []
         for row in rows:
