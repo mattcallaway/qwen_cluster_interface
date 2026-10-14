@@ -661,12 +661,146 @@ _M5: List[str] = [
     """,
 ]
 
+# --- Milestone 1 (Infrastructure Awareness & Capability Registry) -----------
+_M6 = [
+    # 1. Infrastructure Nodes
+    """
+    CREATE TABLE infrastructure_nodes (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN (
+            'controller', 'vps_worker', 'inference_node', 'compute_worker', 'general_worker'
+        )),
+        hostname TEXT NOT NULL DEFAULT '',
+        ip_address TEXT NOT NULL DEFAULT '',
+        tailscale_ip TEXT NOT NULL DEFAULT '',
+        tailscale_status TEXT NOT NULL DEFAULT 'unknown' CHECK (tailscale_status IN (
+            'connected', 'disconnected', 'unknown'
+        )),
+        os_name TEXT NOT NULL DEFAULT '',
+        os_version TEXT NOT NULL DEFAULT '',
+        architecture TEXT NOT NULL DEFAULT '',
+        cpu_info TEXT NOT NULL DEFAULT '',
+        installed_ram_mb INTEGER,
+        available_ram_mb INTEGER,
+        storage_total_gb REAL,
+        storage_free_gb REAL,
+        installed_runtimes_json TEXT NOT NULL DEFAULT '[]',
+        registered_services_json TEXT NOT NULL DEFAULT '[]',
+        available_models_json TEXT NOT NULL DEFAULT '[]',
+        health_status TEXT NOT NULL DEFAULT 'unknown' CHECK (health_status IN (
+            'online', 'offline', 'degraded', 'unknown'
+        )),
+        last_contact_at TEXT,
+        last_inventory_at TEXT,
+        capability_restrictions_json TEXT NOT NULL DEFAULT '{}',
+        notes TEXT NOT NULL DEFAULT '',
+        is_enabled INTEGER NOT NULL DEFAULT 1 CHECK (is_enabled IN (0, 1)),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_infra_nodes_role ON infrastructure_nodes(role)",
+    "CREATE INDEX idx_infra_nodes_health ON infrastructure_nodes(health_status)",
+
+    # 2. Infrastructure Capabilities
+    """
+    CREATE TABLE infrastructure_capabilities (
+        id TEXT PRIMARY KEY,
+        node_id TEXT NOT NULL REFERENCES infrastructure_nodes(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        category TEXT NOT NULL CHECK (category IN (
+            'ai_inference', 'web_retrieval', 'search', 'browser_automation',
+            'python_execution', 'approved_shell_execution', 'file_processing',
+            'document_extraction', 'data_transformation', 'api_integration',
+            'scheduled_execution', 'persistent_service', 'monitoring',
+            'software_deployment', 'reporting'
+        )),
+        required_software TEXT NOT NULL DEFAULT '',
+        supported_operations_json TEXT NOT NULL DEFAULT '[]',
+        input_schema_json TEXT NOT NULL DEFAULT '{}',
+        output_schema_json TEXT NOT NULL DEFAULT '{}',
+        version TEXT NOT NULL DEFAULT '1.0.0',
+        discovery_status TEXT NOT NULL DEFAULT 'declared' CHECK (discovery_status IN (
+            'declared', 'discovered', 'missing'
+        )),
+        discovery_method TEXT NOT NULL DEFAULT 'config_declared' CHECK (discovery_method IN (
+            'config_declared', 'agent_probe', 'hardware_scan', 'local_inspection'
+        )),
+        discovered_at TEXT,
+        verification_status TEXT NOT NULL DEFAULT 'unverified' CHECK (verification_status IN (
+            'unverified', 'verified', 'failed', 'revoked'
+        )),
+        verification_method TEXT NOT NULL DEFAULT 'side_effect_free_probe' CHECK (verification_method IN (
+            'dry_run_test', 'side_effect_free_probe', 'manual_audit', 'health_check'
+        )),
+        last_verified_at TEXT,
+        verification_error TEXT NOT NULL DEFAULT '',
+        operational_status TEXT NOT NULL DEFAULT 'active' CHECK (operational_status IN (
+            'active', 'disabled', 'degraded', 'unavailable'
+        )),
+        required_permissions_json TEXT NOT NULL DEFAULT '[]',
+        approval_policy TEXT NOT NULL DEFAULT 'always_requires_human_approval' CHECK (approval_policy IN (
+            'always_requires_human_approval', 'pre_authorized', 'restricted'
+        )),
+        resource_limits_json TEXT NOT NULL DEFAULT '{}',
+        security_classification TEXT NOT NULL DEFAULT 'isolated_sandbox' CHECK (security_classification IN (
+            'trusted_internal', 'isolated_sandbox', 'untrusted_external'
+        )),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_infra_caps_node ON infrastructure_capabilities(node_id)",
+    "CREATE INDEX idx_infra_caps_category ON infrastructure_capabilities(category)",
+    "CREATE INDEX idx_infra_caps_verification ON infrastructure_capabilities(verification_status)",
+    "CREATE INDEX idx_infra_caps_operational ON infrastructure_capabilities(operational_status)",
+
+    # 3. Infrastructure Reconciliations (Architecture Drift & Discrepancies)
+    """
+    CREATE TABLE infrastructure_reconciliations (
+        id TEXT PRIMARY KEY,
+        node_id TEXT REFERENCES infrastructure_nodes(id) ON DELETE SET NULL,
+        capability_id TEXT REFERENCES infrastructure_capabilities(id) ON DELETE SET NULL,
+        discrepancy_type TEXT NOT NULL CHECK (discrepancy_type IN (
+            'missing_capability', 'unexpected_service', 'version_drift',
+            'health_degraded', 'unregistered_job', 'verification_failure'
+        )),
+        description TEXT NOT NULL,
+        severity TEXT NOT NULL DEFAULT 'warning' CHECK (severity IN ('info', 'warning', 'critical')),
+        status TEXT NOT NULL DEFAULT 'detected' CHECK (status IN ('detected', 'reviewed', 'resolved', 'ignored')),
+        detected_at TEXT NOT NULL,
+        resolved_at TEXT,
+        resolution_notes TEXT NOT NULL DEFAULT ''
+    )
+    """,
+    "CREATE INDEX idx_infra_recon_status ON infrastructure_reconciliations(status)",
+    "CREATE INDEX idx_infra_recon_node ON infrastructure_reconciliations(node_id)",
+
+    # 4. Infrastructure Capability Verifications (Audit Log of Side-Effect Free Probes)
+    """
+    CREATE TABLE infrastructure_verifications (
+        id TEXT PRIMARY KEY,
+        capability_id TEXT NOT NULL REFERENCES infrastructure_capabilities(id) ON DELETE CASCADE,
+        node_id TEXT NOT NULL REFERENCES infrastructure_nodes(id) ON DELETE CASCADE,
+        verification_test TEXT NOT NULL,
+        result_status TEXT NOT NULL CHECK (result_status IN ('passed', 'failed', 'error')),
+        details TEXT NOT NULL DEFAULT '',
+        verified_at TEXT NOT NULL,
+        verified_by TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_infra_verif_cap ON infrastructure_verifications(capability_id, verified_at)",
+]
+
 MIGRATIONS: List[Migration] = [
     (1, "project intelligence foundation", _M1),
     (2, "execution and evidence", _M2),
     (3, "measurement and forecasting", _M3),
     (4, "project-aware intelligence", _M4),
     (5, "historical learning and performance evaluation", _M5),
+    (6, "infrastructure awareness and capability registry", _M6),
 ]
 
 

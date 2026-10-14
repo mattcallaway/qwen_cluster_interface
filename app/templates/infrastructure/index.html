@@ -1,0 +1,426 @@
+{% extends "base.html" %}
+
+{% block page_title %}Infrastructure & Capabilities{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; gap:16px;">
+  <div>
+    <h2 style="font-size:1.3rem; font-weight:600; margin:0 0 4px 0;">Infrastructure & Capability Registry</h2>
+    <div style="font-size:0.8rem; color:var(--text-muted);">
+      Authoritative hardware topology, software runtimes, verified operational capabilities, and live architecture context.
+    </div>
+  </div>
+  <div style="display:flex; gap:8px;">
+    <form action="/infrastructure/sync-vault" method="post" style="display:inline;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn btn-sm btn-secondary" title="Export live infrastructure facts into durable knowledge vault note">
+        📚 Sync to Knowledge Vault
+      </button>
+    </form>
+    <a href="/infrastructure?tab=architecture" class="btn btn-sm btn-primary">
+      🔍 Architecture Context Inspector
+    </a>
+  </div>
+</div>
+
+{% if alert %}
+<div class="alert alert-{{ alert.type }}" style="margin-bottom:16px;">
+  {{ alert.message }}
+</div>
+{% endif %}
+
+{# Top KPI Summary #}
+<div class="grid-cols-4" style="margin-bottom:20px;">
+  <div class="stat-widget">
+    <div class="stat-label">Registered Nodes</div>
+    <div class="stat-value">{{ nodes|length }}</div>
+    <div class="stat-sub">{{ online_nodes|length }} online · {{ (nodes|length) - (online_nodes|length) }} offline/unknown</div>
+  </div>
+
+  <div class="stat-widget">
+    <div class="stat-label">Verified Capabilities</div>
+    <div class="stat-value" style="color:var(--text-accent);">{{ verified_caps|length }}</div>
+    <div class="stat-sub">{{ capabilities|length }} total declared/discovered</div>
+  </div>
+
+  <div class="stat-widget">
+    <div class="stat-label">Architecture Drift</div>
+    <div class="stat-value" style="{% if reconciliations|length > 0 %}color:#d9534f;{% endif %}">
+      {{ reconciliations|length }}
+    </div>
+    <div class="stat-sub">{% if reconciliations|length == 0 %}100% reconciled{% else %}Unresolved drift alerts{% endif %}</div>
+  </div>
+
+  <div class="stat-widget">
+    <div class="stat-label">Controller Service</div>
+    <div class="stat-value" style="font-size:1.1rem; margin-top:4px;">
+      <span class="badge badge-accepted">PORT 8000 LIVE</span>
+    </div>
+    <div class="stat-sub">WinSW Windows Service (Auto)</div>
+  </div>
+</div>
+
+{# Tab Navigation #}
+<div style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+  {% for t in ['overview', 'workers', 'capabilities', 'reconciliation', 'architecture'] %}
+    <a id="tab-{{ t }}" href="/infrastructure?tab={{ t }}" class="btn btn-sm {% if tab == t %}btn-primary{% else %}btn-secondary{% endif %}">
+      {% if t == 'overview' %}System Overview
+      {% elif t == 'workers' %}Worker Inventory ({{ nodes|length }})
+      {% elif t == 'capabilities' %}Capabilities ({{ capabilities|length }})
+      {% elif t == 'reconciliation' %}Drift & Reconciliation ({{ reconciliations|length }})
+      {% elif t == 'architecture' %}Architecture Context Inspector
+      {% endif %}
+    </a>
+  {% endfor %}
+</div>
+
+{# ============================ OVERVIEW TAB ============================ #}
+{% if tab == 'overview' %}
+<div class="card" style="margin-bottom:20px;">
+  <h3 class="card-title" style="margin:0 0 12px 0;">Component Roles & Architecture Topology</h3>
+  <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px;">
+    <!-- Windows Controller -->
+    <div style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:6px; padding:16px;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+        <h4 style="font-size:1rem; font-weight:600; margin:0;">Windows Controller</h4>
+        <span class="badge badge-accepted">AUTHORITATIVE</span>
+      </div>
+      <p style="font-size:0.85rem; color:var(--text-muted); line-height:1.4; margin-bottom:12px;">
+        Central coordinator, SQLite state authority, project goals, immutable decision ledger, and approval gateway.
+      </p>
+      <div style="font-size:0.8rem; font-family:var(--font-mono); color:var(--text-main);">
+        <div>Service: WinSW (QwenCollective)</div>
+        <div>Binding: 127.0.0.1:8000</div>
+        <div>Mesh: Tailscale Serve Enabled</div>
+      </div>
+    </div>
+
+    <!-- Local Qwen Inference Nodes -->
+    <div style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:6px; padding:16px;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+        <h4 style="font-size:1rem; font-weight:600; margin:0;">Local Qwen Nodes</h4>
+        <span class="badge badge-role">REASONING & PLANNING</span>
+      </div>
+      <p style="font-size:0.85rem; color:var(--text-muted); line-height:1.4; margin-bottom:12px;">
+        Reasoning, strategic path proposals, task decomposition, and retrospective synthesis.
+      </p>
+      <div style="font-size:0.8rem; font-family:var(--font-mono); color:var(--text-main);">
+        <div>Backend: llama.cpp / RPC Cluster</div>
+        <div>Model: Qwen 2.5</div>
+        <div>Context: Token-Budgeted Packets</div>
+      </div>
+    </div>
+
+    <!-- Remote VPS Worker -->
+    <div style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:6px; padding:16px;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+        <h4 style="font-size:1rem; font-weight:600; margin:0;">Remote VPS Worker</h4>
+        <span class="badge badge-changes">OPERATIONAL RUNTIME</span>
+      </div>
+      <p style="font-size:0.85rem; color:var(--text-muted); line-height:1.4; margin-bottom:12px;">
+        Unprivileged remote execution of approved scripts, browser automation, and recurring systemd jobs.
+      </p>
+      <div style="font-size:0.8rem; font-family:var(--font-mono); color:var(--text-main);">
+        <div>Transport: Outbound Pull (Tailscale)</div>
+        <div>Isolation: Non-Root Sandboxed</div>
+        <div>Autonomy: Independent of Active AI</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <h3 class="card-title" style="margin:0;">Active Operational Nodes ({{ nodes|length }})</h3>
+    <a href="/infrastructure?tab=workers" class="btn btn-sm btn-secondary">View Complete Inventory →</a>
+  </div>
+  <div style="overflow-x:auto;">
+    <table class="table" style="width:100%; font-size:0.85rem;">
+      <thead>
+        <tr>
+          <th>Node Name</th>
+          <th>Role</th>
+          <th>OS & Platform</th>
+          <th>Health</th>
+          <th>RAM Capacity</th>
+          <th>Last Inventory</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for n in nodes %}
+        <tr>
+          <td><strong>{{ n.name }}</strong><br><span style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">{{ n.id }}</span></td>
+          <td><span class="badge badge-role">{{ n.role|replace('_', ' ')|title }}</span></td>
+          <td>{{ n.os_name }} {{ n.os_version }} ({{ n.architecture or 'x86_64' }})</td>
+          <td>
+            <span class="badge {% if n.health_status == 'online' %}badge-accepted{% elif n.health_status == 'offline' %}badge-error{% else %}badge-draft{% endif %}">
+              {{ n.health_status|upper }}
+            </span>
+          </td>
+          <td>
+            {% if n.installed_ram_mb %}
+              {{ n.installed_ram_mb }} MB ({{ n.available_ram_mb or '—' }} MB free)
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td style="font-size:0.75rem; color:var(--text-muted);">{{ n.last_inventory_at[:16] if n.last_inventory_at else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{# ============================ WORKERS TAB ============================ #}
+{% if tab == 'workers' %}
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <div>
+      <h3 class="card-title" style="margin:0;">Registered Infrastructure Nodes & Workers</h3>
+      <p style="font-size:0.8rem; color:var(--text-muted); margin:4px 0 0 0;">
+        Live inventory of physical, virtual, and remote worker nodes reporting to the controller.
+      </p>
+    </div>
+  </div>
+
+  <div style="display:flex; flex-direction:column; gap:16px;">
+    {% for n in nodes %}
+    <div class="card" style="background:var(--bg-secondary); border:1px solid var(--border-color); margin-bottom:0;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
+        <div>
+          <h4 style="font-size:1.1rem; font-weight:600; margin:0 0 4px 0;">{{ n.name }}</h4>
+          <div style="font-size:0.75rem; font-family:var(--font-mono); color:var(--text-muted);">
+            ID: {{ n.id }} · Hostname: {{ n.hostname or 'N/A' }} · IP: {{ n.ip_address or '127.0.0.1' }}
+            {% if n.tailscale_ip %} · Tailscale: {{ n.tailscale_ip }}{% endif %}
+          </div>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <span class="badge badge-role">{{ n.role|replace('_', ' ')|title }}</span>
+          <span class="badge {% if n.health_status == 'online' %}badge-accepted{% elif n.health_status == 'offline' %}badge-error{% else %}badge-draft{% endif %}">
+            {{ n.health_status|upper }}
+          </span>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:12px; margin-bottom:12px;">
+        <div style="padding:10px; background:var(--bg-surface); border:1px solid var(--border-color); border-radius:4px; font-size:0.85rem;">
+          <div style="color:var(--text-muted); font-size:0.75rem;">Operating System</div>
+          <div style="font-weight:600; margin-top:2px;">{{ n.os_name }} {{ n.os_version }}</div>
+          <div style="font-size:0.75rem; color:var(--text-muted);">Arch: {{ n.architecture }}</div>
+        </div>
+        <div style="padding:10px; background:var(--bg-surface); border:1px solid var(--border-color); border-radius:4px; font-size:0.85rem;">
+          <div style="color:var(--text-muted); font-size:0.75rem;">RAM Memory</div>
+          <div style="font-weight:600; margin-top:2px;">{{ n.installed_ram_mb or 'N/A' }} MB</div>
+          <div style="font-size:0.75rem; color:var(--text-muted);">{{ n.available_ram_mb or '—' }} MB available</div>
+        </div>
+        <div style="padding:10px; background:var(--bg-surface); border:1px solid var(--border-color); border-radius:4px; font-size:0.85rem;">
+          <div style="color:var(--text-muted); font-size:0.75rem;">Storage Capacity</div>
+          <div style="font-weight:600; margin-top:2px;">{{ n.storage_total_gb or 'N/A' }} GB</div>
+          <div style="font-size:0.75rem; color:var(--text-muted);">{{ n.storage_free_gb or '—' }} GB free</div>
+        </div>
+        <div style="padding:10px; background:var(--bg-surface); border:1px solid var(--border-color); border-radius:4px; font-size:0.85rem;">
+          <div style="color:var(--text-muted); font-size:0.75rem;">Tailscale Mesh</div>
+          <div style="font-weight:600; margin-top:2px;">{{ n.tailscale_status|upper }}</div>
+          <div style="font-size:0.75rem; color:var(--text-muted);">Encrypted WireGuard</div>
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; padding-top:10px; border-top:1px solid var(--border-color); font-size:0.8rem;">
+        <div style="color:var(--text-muted);">
+          Runtimes: 
+          {% for r in n.installed_runtimes %}
+            <span class="badge" style="background:var(--bg-surface); border:1px solid var(--border-color); font-size:0.75rem; font-family:var(--font-mono);">{{ r }}</span>
+          {% else %}
+            <span style="font-style:italic;">None reported</span>
+          {% endfor %}
+        </div>
+        <form action="/infrastructure/nodes/{{ n.id }}/discover" method="post" style="display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="btn btn-sm btn-secondary">🔍 Read-Only Rediscovery</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{# ============================ CAPABILITIES TAB ============================ #}
+{% if tab == 'capabilities' %}
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <div>
+      <h3 class="card-title" style="margin:0;">Infrastructure Capabilities Registry</h3>
+      <p style="font-size:0.8rem; color:var(--text-muted); margin:4px 0 0 0;">
+        Distinguishes declared configuration, discovered physical presence, and side-effect-free verified capabilities.
+      </p>
+    </div>
+  </div>
+
+  <div style="overflow-x:auto;">
+    <table class="table" style="width:100%; font-size:0.85rem;">
+      <thead>
+        <tr>
+          <th>Capability</th>
+          <th>Provider Node</th>
+          <th>Category</th>
+          <th>Discovery</th>
+          <th>Verification</th>
+          <th>Approval Policy</th>
+          <th>Sandbox Level</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in capabilities %}
+        <tr>
+          <td>
+            <strong>{{ c.name }}</strong><br>
+            <span style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">{{ c.id }}</span>
+            {% if c.description %}<div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">{{ c.description }}</div>{% endif %}
+          </td>
+          <td><strong>{{ c.node_name }}</strong></td>
+          <td><span class="badge badge-role">{{ c.category|replace('_', ' ')|title }}</span></td>
+          <td>
+            <span class="badge {% if c.discovery_status == 'discovered' %}badge-accepted{% elif c.discovery_status == 'missing' %}badge-error{% else %}badge-draft{% endif %}">
+              {{ c.discovery_status|upper }}
+            </span>
+          </td>
+          <td>
+            <span class="badge {% if c.verification_status == 'verified' %}badge-accepted{% elif c.verification_status == 'failed' %}badge-error{% else %}badge-changes{% endif %}">
+              {{ c.verification_status|upper }}
+            </span>
+            {% if c.last_verified_at %}
+              <div style="font-size:0.7rem; color:var(--text-muted); margin-top:2px;">Verified: {{ c.last_verified_at[:10] }}</div>
+            {% endif %}
+          </td>
+          <td><code>{{ c.approval_policy|replace('_', ' ') }}</code></td>
+          <td><span class="badge" style="font-size:0.75rem;">{{ c.security_classification|replace('_', ' ')|title }}</span></td>
+          <td>
+            <form action="/infrastructure/capabilities/{{ c.id }}/verify" method="post" style="display:inline;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="btn btn-sm btn-secondary" title="Execute side-effect-free probe to verify operational capability">
+                ✓ Test Verify
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{# ============================ RECONCILIATION TAB ============================ #}
+{% if tab == 'reconciliation' %}
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <div>
+      <h3 class="card-title" style="margin:0;">Architecture Drift & Discrepancies</h3>
+      <p style="font-size:0.8rem; color:var(--text-muted); margin:4px 0 0 0;">
+        Compares documented architecture, registered specs, discovered state, and verified capabilities to detect drift.
+      </p>
+    </div>
+  </div>
+
+  {% if not reconciliations %}
+    <div style="padding:32px; text-align:center; color:var(--text-muted); font-size:0.9rem;">
+      <span style="font-size:1.5rem;">✅</span><br><br>
+      <strong>Zero Architectural Drift Detected.</strong><br>
+      All registered nodes, discovery records, and verified operational capabilities match documented specifications.
+    </div>
+  {% else %}
+    <div style="display:flex; flex-direction:column; gap:16px;">
+      {% for r in reconciliations %}
+      <div class="card" style="background:var(--bg-secondary); border:1px solid var(--border-color); margin-bottom:0;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+          <div>
+            <span class="badge {% if r.severity == 'critical' %}badge-error{% elif r.severity == 'warning' %}badge-changes{% else %}badge-role{% endif %}">
+              {{ r.severity|upper }}
+            </span>
+            <strong style="margin-left:8px; font-size:0.95rem;">{{ r.discrepancy_type|replace('_', ' ')|title }}</strong>
+            <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">Detected: {{ r.detected_at[:16] }}</div>
+          </div>
+          <div>
+            <span class="badge badge-draft">{{ r.status|upper }}</span>
+          </div>
+        </div>
+
+        <div style="font-size:0.85rem; color:var(--text-main); margin-bottom:12px;">
+          {{ r.description }}
+        </div>
+
+        <form action="/infrastructure/reconciliations/{{ r.id }}/resolve" method="post" style="display:flex; gap:8px; align-items:center; padding-top:8px; border-top:1px solid var(--border-color);">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="text" name="resolution_notes" class="form-control" style="font-size:0.8rem; flex-grow:1;" placeholder="Resolution rationale / remediation notes *" required>
+          <button type="submit" class="btn btn-sm btn-primary">Resolve Discrepancy</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{# ============================ ARCHITECTURE CONTEXT INSPECTOR TAB ============================ #}
+{% if tab == 'architecture' %}
+<div class="card" style="margin-bottom:20px;">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <div>
+      <h3 class="card-title" style="margin:0;">Architecture Context Packet Inspector</h3>
+      <p style="font-size:0.8rem; color:var(--text-muted); margin:4px 0 0 0;">
+        Simulates how Qwen models receive real-time, token-budgeted infrastructure self-awareness.
+      </p>
+    </div>
+  </div>
+
+  <form action="/infrastructure" method="get" style="display:flex; gap:12px; align-items:flex-end; margin-bottom:16px; background:var(--bg-secondary); padding:14px; border-radius:6px; border:1px solid var(--border-color);">
+    <input type="hidden" name="tab" value="architecture">
+    <div class="form-group" style="margin:0; width:180px;">
+      <label class="form-label" style="font-size:0.75rem;">Token Budget</label>
+      <select name="token_budget" class="form-control" style="font-size:0.85rem;">
+        <option value="500" {% if token_budget == 500 %}selected{% endif %}>500 tokens (Compact)</option>
+        <option value="1000" {% if token_budget == 1000 %}selected{% endif %}>1000 tokens (Standard)</option>
+        <option value="2000" {% if token_budget == 2000 %}selected{% endif %}>2000 tokens (Recommended)</option>
+        <option value="4000" {% if token_budget == 4000 %}selected{% endif %}>4000 tokens (Detailed)</option>
+      </select>
+    </div>
+
+    <div class="form-group" style="margin:0; flex-grow:1;">
+      <label class="form-label" style="font-size:0.75rem;">Simulated Operational Query / Directive</label>
+      <input type="text" name="q" class="form-control" style="font-size:0.85rem;" value="{{ query }}" placeholder="e.g. Can we run Python scripts on the VPS to scrape county records?">
+    </div>
+
+    <button type="submit" class="btn btn-sm btn-primary">Inspect Packet</button>
+  </form>
+
+  <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-bottom:16px;">
+    <div style="padding:10px; background:var(--bg-surface); border:1px solid var(--border-color); border-radius:4px; font-size:0.85rem;">
+      <div style="color:var(--text-muted); font-size:0.75rem;">Allocated Budget</div>
+      <div style="font-weight:600;">{{ context_packet.token_budget }} tokens</div>
+    </div>
+    <div style="padding:10px; background:var(--bg-surface); border:1px solid var(--border-color); border-radius:4px; font-size:0.85rem;">
+      <div style="color:var(--text-muted); font-size:0.75rem;">Estimated Rendered Tokens</div>
+      <div style="font-weight:600;">~{{ context_packet.estimated_tokens }} tokens</div>
+    </div>
+    <div style="padding:10px; background:var(--bg-surface); border:1px solid var(--border-color); border-radius:4px; font-size:0.85rem;">
+      <div style="color:var(--text-muted); font-size:0.75rem;">Priority Pruning Status</div>
+      <div style="font-weight:600;">
+        {% if context_packet.omitted_priorities %}
+          <span style="color:#d9534f;">Pruned Priorities {{ context_packet.omitted_priorities }}</span>
+        {% else %}
+          <span style="color:var(--text-accent);">All 8 Priorities Included</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <h4 style="font-size:0.9rem; font-weight:600; margin:16px 0 8px 0;">Rendered Prompt Injected into Model Context:</h4>
+  <pre style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:6px; padding:16px; font-family:var(--font-mono); font-size:0.8rem; line-height:1.45; overflow-x:auto; white-space:pre-wrap; max-height:500px;">{{ context_packet.rendered_prompt }}</pre>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -16,6 +16,7 @@ from app.routes import (
     knowledge,
     tasks,
     projects,
+    infrastructure,
     settings as settings_route
 )
 
@@ -58,6 +59,7 @@ app.include_router(chat.router)
 app.include_router(knowledge.router)
 app.include_router(tasks.router)
 app.include_router(projects.router)
+app.include_router(infrastructure.router)
 app.include_router(settings_route.router)
 
 if __name__ == "__main__":
