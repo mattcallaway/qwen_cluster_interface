@@ -68,7 +68,7 @@ class TaskLeaseRequest(BaseModel):
 
 class TaskResultSubmission(BaseModel):
     task_id: str
-    lease_id: str
+    lease_id: Optional[str] = None
     idempotency_key: str
     status: str = Field(..., pattern="^(success|error|timeout|cancelled)$")
     exit_code: int = 0

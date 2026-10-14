@@ -45,9 +45,9 @@ def _run_lease_heartbeats(agent: "VPSWorkerAgent", lease_id: str, stop_event: th
 
 
 class VPSWorkerAgent:
-    def __init__(self, config: Optional[AgentConfig] = None):
+    def __init__(self, config: Optional[AgentConfig] = None, buffer: Optional[OfflineBuffer] = None):
         self.config = config or load_config()
-        self.buffer = OfflineBuffer(self.config.buffer_db_path)
+        self.buffer = buffer if buffer is not None else OfflineBuffer(self.config.buffer_db_path)
         self.session = requests.Session()
         self.token = self.config.worker_token
         self.is_registered = False
@@ -126,7 +126,16 @@ class VPSWorkerAgent:
             return False
 
     def flush_offline_buffer(self) -> int:
-        """Drain buffered submissions to the controller once connectivity is restored."""
+        """Drain buffered submissions to the controller according to explicit acknowledgment semantics.
+
+        Semantics:
+        - 200 with recorded / already_processed / reconciled_conflict: remove from buffer (acknowledged).
+        - 400 / 422: invalid payload; quarantine with error rather than blocking FIFO delivery queue.
+        - 401 / 403: auth failure; suspend retries until re-registered.
+        - 5xx: controller unavailable; retain and retry later.
+        - Network drop: retain and retry later.
+        - Unknown 200 ack: retain for review.
+        """
         pending = self.buffer.get_pending_submissions(limit=10)
         flushed_count = 0
         for item in pending:
@@ -135,13 +144,33 @@ class VPSWorkerAgent:
             try:
                 resp = self.session.post(url, json=item["payload"], headers=self._headers(), timeout=10)
                 if resp.status_code == 200:
-                    self.buffer.remove_submission(item["id"])
-                    flushed_count += 1
+                    try:
+                        data = resp.json()
+                    except Exception:
+                        data = {}
+                    ack_status = data.get("status")
+                    if ack_status in ("recorded", "already_processed", "reconciled_conflict"):
+                        self.buffer.remove_submission(item["id"])
+                        flushed_count += 1
+                        logger.info("Cleared buffer submission #%s for task %s on terminal ack '%s'", item["id"], task_id, ack_status)
+                    else:
+                        logger.warning("Unrecognized 200 ack status '%s' for task %s; retaining for review", ack_status, task_id)
+                        break
+                elif resp.status_code in (401, 403):
+                    logger.warning("Authentication rejected (%s) while flushing buffer; suspending retries", resp.status_code)
+                    self.is_registered = False
+                    break
+                elif resp.status_code in (400, 422):
+                    logger.error("Controller rejected buffer submission #%s as invalid payload (HTTP %s); quarantining", item["id"], resp.status_code)
+                    self.buffer.quarantine_submission(item["id"], reason=f"HTTP_{resp.status_code}:{resp.text[:200]}")
+                elif resp.status_code >= 500:
+                    logger.warning("Controller 5xx error (%s) flushing task %s; retaining for retry", resp.status_code, task_id)
+                    break
                 else:
-                    logger.warning("Buffered task %s submission rejected: %s", task_id, resp.status_code)
+                    logger.warning("Unexpected status %s flushing task %s; retaining for review", resp.status_code, task_id)
                     break
             except Exception as e:
-                logger.debug("Could not flush buffered submission for task %s: %s", task_id, e)
+                logger.debug("Could not flush buffered submission for task %s (retaining for retry): %s", task_id, e)
                 break
         return flushed_count
 
@@ -210,8 +239,29 @@ class VPSWorkerAgent:
         try:
             submit_resp = self.session.post(submit_url, json=submission, headers=self._headers(), timeout=10)
             if submit_resp.status_code == 200:
-                submitted = True
-                logger.info("Submitted task %s results to controller", task_id)
+                try:
+                    data = submit_resp.json()
+                except Exception:
+                    data = {}
+                ack_status = data.get("status")
+                if ack_status in ("recorded", "already_processed", "reconciled_conflict"):
+                    submitted = True
+                    logger.info("Submitted task %s results to controller (ack: %s)", task_id, ack_status)
+                else:
+                    logger.warning("Unexpected 200 ack status '%s' for task %s; buffering for review", ack_status, task_id)
+            elif submit_resp.status_code in (400, 422):
+                logger.error("Controller rejected task %s submission as invalid (HTTP %s); buffering and quarantining", task_id, submit_resp.status_code)
+                self.buffer.buffer_submission(
+                    task_id=task_id,
+                    lease_id=lease_id,
+                    idempotency_key=idempotency_key,
+                    submission_payload=submission,
+                )
+                pending = self.buffer.get_pending_submissions(limit=1)
+                for p in pending:
+                    if p["idempotency_key"] == idempotency_key:
+                        self.buffer.quarantine_submission(p["id"], reason=f"HTTP_{submit_resp.status_code}:{submit_resp.text[:200]}")
+                return exec_outcome
         except Exception as e:
             logger.warning("Submission failed, buffering locally: %s", e)
 

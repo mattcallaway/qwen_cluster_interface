@@ -200,7 +200,16 @@ def build_project_context_packet(
         for m in metrics[:6]:
             summary = met_svc.get_metric_summary(m["id"])
             target_str = f"Target: {summary.get('target_value', '—')} {summary.get('unit', '')}"
-            act_str = f"Actual: {summary['latest_observation']['value'] if summary.get('latest_observation') else '—'}"
+            latest = summary.get("latest_observation")
+            if latest:
+                v_stat = latest.get("verification_status", "unverified")
+                val = latest.get("value")
+                if v_stat == "verified":
+                    act_str = f"Actual: {val} (verified)"
+                else:
+                    act_str = f"Reported: {val} ({v_stat})"
+            else:
+                act_str = "Actual: —"
             fct_str = f"Forecast: {summary['latest_forecast']['predicted_value'] if summary.get('latest_forecast') else '—'}"
             stat_str = f"Assessment: {summary['status_assessment'].upper()}"
             met_lines.append(f"- **{m['name']}** ({m['unit']}) [{stat_str}]: {target_str} | {act_str} | {fct_str}")

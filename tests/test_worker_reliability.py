@@ -219,3 +219,157 @@ def test_offline_buffer_drain_lifecycle(tmp_path):
     # Remove one
     buf2.remove_submission(pending[0]["id"])
     assert buf2.count_pending() == 1
+
+
+def test_offline_buffer_flush_reconciled_conflict_clears_queue(client, db_conn, tmp_path):
+    """Simulates offline execution, lease expiration, conflict reconciliation, and buffer clearance.
+    
+    Verifies:
+    - Worker buffers result offline while controller is disconnected
+    - Task is completed by another execution during network dropout
+    - Controller returns reconciled_conflict on flush
+    - Worker clears pending delivery from local buffer (no infinite retry loop)
+    - Controller preserves both execution records
+    """
+    db_path = tmp_path / "recon_worker.db"
+    buffer = OfflineBuffer(db_path)
+
+    # 1. Enroll worker
+    node_id = "vps-recon-worker-ack"
+    _, enr_tok = worker_svc.create_enrollment_token(allowed_node_id=node_id)
+    reg_resp = client.post(
+        "/api/v1/worker/register",
+        json={"node_id": node_id, "name": "Recon Ack Worker"},
+        headers={"X-Enrollment-Token": enr_tok},
+    )
+    worker_token = reg_resp.json()["worker_token"]
+
+    # 2. Setup task already completed by another execution
+    now = datetime.now(timezone.utc).isoformat()
+    past = (datetime.now(timezone.utc) - timedelta(seconds=900)).isoformat()
+    task_id = "task-recon-ack-01"
+    lease_id = "lease-recon-ack-01"
+    idem_key = "idem-recon-ack-01"
+
+    db_conn.execute(
+        """
+        INSERT INTO tasks (id, title, task_type, status, created_at, updated_at)
+        VALUES (?, 'Conflict Ack Task', 'test_task', 'completed', ?, ?)
+        """,
+        (task_id, now, now),
+    )
+    db_conn.execute(
+        """
+        INSERT INTO worker_task_leases (
+            id, task_id, worker_id, idempotency_key, status,
+            leased_at, lease_expires_at, heartbeat_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, 'expired', ?, ?, ?, ?, ?)
+        """,
+        (lease_id, task_id, node_id, idem_key, past, past, past, past, past),
+    )
+    db_conn.commit()
+
+    # 3. Buffer submission offline
+    submission_payload = {
+        "task_id": task_id,
+        "lease_id": lease_id,
+        "idempotency_key": idem_key,
+        "status": "success",
+        "exit_code": 0,
+        "runtime_seconds": 3.14,
+        "stdout_summary": "Offline completed task output.",
+    }
+    buffer.buffer_submission(task_id, lease_id, idem_key, submission_payload)
+    assert buffer.count_pending() == 1
+
+    # 4. Agent reconnects and flushes buffer
+    cfg = AgentConfig(
+        controller_url="http://testserver",
+        worker_id=node_id,
+        worker_token=worker_token,
+    )
+    agent = VPSWorkerAgent(cfg, buffer=buffer)
+    agent.is_registered = True
+    # Wire agent session to TestClient
+    agent.session = client
+
+    flushed = agent.flush_offline_buffer()
+    assert flushed == 1
+    # Pending queue must be clear (terminal ack reconciled_conflict handled deterministically)
+    assert buffer.count_pending() == 0
+
+    # 5. Verify controller preserved execution record as reconciled conflict
+    exec_row = db_conn.execute("SELECT status, error_category FROM worker_executions WHERE idempotency_key = ?", (idem_key,)).fetchone()
+    assert exec_row is not None
+    assert exec_row["status"] == "cancelled"
+    assert exec_row["error_category"] == "reconciled_conflict"
+
+    # Task remains completed (not overwritten)
+    task_row = db_conn.execute("SELECT status FROM tasks WHERE id = ?", (task_id,)).fetchone()
+    assert task_row["status"] == "completed"
+
+
+def test_offline_buffer_quarantines_invalid_payload_without_blocking_queue(client, tmp_path):
+    """Invalid payload (HTTP 400/422) is quarantined with error and does not block pending FIFO delivery."""
+    db_path = tmp_path / "quarantine_worker.db"
+    buffer = OfflineBuffer(db_path)
+
+    node_id = "vps-quarantine-worker"
+    _, enr_tok = worker_svc.create_enrollment_token(allowed_node_id=node_id)
+    reg_resp = client.post(
+        "/api/v1/worker/register",
+        json={"node_id": node_id, "name": "Quarantine Worker"},
+        headers={"X-Enrollment-Token": enr_tok},
+    )
+    worker_token = reg_resp.json()["worker_token"]
+
+    cfg = AgentConfig(
+        controller_url="http://testserver",
+        worker_id=node_id,
+        worker_token=worker_token,
+    )
+    agent = VPSWorkerAgent(cfg, buffer=buffer)
+    agent.is_registered = True
+    agent.session = client
+
+    # Buffer an invalid payload (missing required task_id target)
+    bad_payload = {"invalid_field": "no_task_data"}
+    buffer.buffer_submission("non-existent-task-id", "lease-bad", "idem-bad-01", bad_payload)
+    assert buffer.count_pending() == 1
+    assert buffer.count_quarantined() == 0
+
+    flushed = agent.flush_offline_buffer()
+    assert flushed == 0
+    # Pending count is 0 because poisoned payload was quarantined
+    assert buffer.count_pending() == 0
+    assert buffer.count_quarantined() == 1
+
+    quarantined = buffer.get_quarantined_submissions()
+    assert len(quarantined) == 1
+    assert quarantined[0]["idempotency_key"] == "idem-bad-01"
+    assert "HTTP_400" in quarantined[0]["quarantine_reason"] or "HTTP_422" in quarantined[0]["quarantine_reason"]
+
+
+def test_offline_buffer_auth_rejection_suspends_retries(client, tmp_path):
+    """HTTP 401/403 suspends retries without discarding the buffer item."""
+    db_path = tmp_path / "auth_suspend.db"
+    buffer = OfflineBuffer(db_path)
+
+    buffer.buffer_submission("task-auth-01", "lease-auth", "idem-auth", {"status": "success"})
+    assert buffer.count_pending() == 1
+
+    cfg = AgentConfig(
+        controller_url="http://testserver",
+        worker_id="vps-bad-auth",
+        worker_token="invalid_unauthorized_token",
+    )
+    agent = VPSWorkerAgent(cfg, buffer=buffer)
+    agent.is_registered = True
+    agent.session = client
+
+    flushed = agent.flush_offline_buffer()
+    assert flushed == 0
+    # Retries suspended pending re-registration
+    assert not agent.is_registered
+    # Item retained for retry after re-registration
+    assert buffer.count_pending() == 1

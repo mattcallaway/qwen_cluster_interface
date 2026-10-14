@@ -7,6 +7,7 @@ Enforces execution security model across:
 - Explicit rejection of unsupported operations with structured error
 """
 
+import hashlib
 import logging
 import os
 import shutil
@@ -25,10 +26,10 @@ CLASS_C_OPERATIONS = {"experimental_code", "untrusted_script", "ai_generated_cod
 MAX_OUTPUT_CHARS = 10000
 
 # Environment variables to strip to prevent secret leakage to worker scripts
-SENSITIVE_ENV_PREFIXES = ("QC_", "SECRET_", "API_KEY", "TOKEN", "PASSWORD", "AWS_", "SSH_", "DATABASE_")
+SENSITIVE_ENV_PREFIXES = ("QC_", "SECRET", "API_KEY", "TOKEN", "PASSWORD", "AWS_", "SSH_", "DATABASE_", "AUTH")
 
 
-def _build_sanitized_environment() -> Dict[str, str]:
+def _build_sanitized_environment(work_dir: Optional[str] = None) -> Dict[str, str]:
     """Create a minimal, sanitized environment for subprocess execution."""
     clean_env: Dict[str, str] = {}
     safe_keys = {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "USERPROFILE", "HOME", "LANG", "LC_ALL"}
@@ -36,10 +37,14 @@ def _build_sanitized_environment() -> Dict[str, str]:
         k_upper = k.upper()
         if any(k_upper.startswith(prefix) for prefix in SENSITIVE_ENV_PREFIXES):
             continue
-        if k_upper in safe_keys or k_upper.startswith("PYTHON"):
+        if any(term in k_upper for term in ("SECRET", "TOKEN", "KEY", "PASS", "AUTH")):
+            continue
+        if k_upper in safe_keys:
             clean_env[k] = v
-    # Ensure unbuffered python output
+    # Isolate python imports to working directory
+    clean_env["PYTHONPATH"] = work_dir or os.getcwd()
     clean_env["PYTHONUNBUFFERED"] = "1"
+    clean_env["QC_EXECUTION_SANDBOX"] = "1"
     return clean_env
 
 
@@ -116,9 +121,61 @@ def execute_task(
                 "result_payload": {"execution_class": "Class B"},
             }
 
+        # ---------------------------------------------------------------------------
+        # Security Gate: Approval Record and Checksum Verification
+        # ---------------------------------------------------------------------------
+        is_approved = (
+            input_data.get("approved") is True
+            or input_data.get("approval_status") in ("approved", "authorized")
+            or bool(task.get("approved"))
+            or bool(task.get("approval_status") in ("approved", "authorized"))
+            or bool(input_data.get("approved_script_id"))
+        )
+        expected_checksum = (
+            input_data.get("script_checksum")
+            or input_data.get("checksum")
+            or input_data.get("sha256")
+            or task.get("script_checksum")
+        )
+        actual_checksum = hashlib.sha256(script_code.encode("utf-8")).hexdigest()
+
+        # Unapproved scripts cannot run as Class B
+        if not is_approved:
+            runtime = round(time.time() - start_time, 4)
+            logger.warning("Unapproved script rejected for Class B execution (task: %s)", task_id)
+            return {
+                "status": "error",
+                "exit_code": 126,
+                "runtime_seconds": runtime,
+                "stdout_summary": "",
+                "stderr_summary": "Unapproved Python script rejected for Class B execution. Arbitrary scripts must have an approval record.",
+                "error_category": "unapproved_script",
+                "result_payload": {"execution_class": "Class B", "is_approved": False},
+            }
+
+        # Approved script checksums must be validated if specified
+        if expected_checksum and expected_checksum.lower() != actual_checksum.lower():
+            runtime = round(time.time() - start_time, 4)
+            logger.warning("Script checksum mismatch for task %s (expected %s, got %s)", task_id, expected_checksum, actual_checksum)
+            return {
+                "status": "error",
+                "exit_code": 126,
+                "runtime_seconds": runtime,
+                "stdout_summary": "",
+                "stderr_summary": f"Script checksum verification failed. Expected '{expected_checksum}', computed '{actual_checksum}'.",
+                "error_category": "checksum_mismatch",
+                "result_payload": {"execution_class": "Class B", "expected_checksum": expected_checksum, "actual_checksum": actual_checksum},
+            }
+
         # Create isolated workspace directory for this execution
         work_dir = tempfile.mkdtemp(prefix="qc_worker_exec_")
-        sanitized_env = _build_sanitized_environment()
+        if os.name != "nt":
+            try:
+                os.chmod(work_dir, 0o700)
+            except Exception:
+                pass
+
+        sanitized_env = _build_sanitized_environment(work_dir=work_dir)
 
         try:
             cmd = [sys.executable, "-c", script_code]

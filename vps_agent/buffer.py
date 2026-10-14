@@ -36,10 +36,19 @@ class OfflineBuffer:
                     payload_json TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     attempts INTEGER NOT NULL DEFAULT 0,
-                    last_attempt_at TEXT
+                    last_attempt_at TEXT,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    quarantine_reason TEXT
                 )
                 """
             )
+            # Add columns if migrating an existing database
+            cursor = conn.execute("PRAGMA table_info(pending_submissions)")
+            cols = [col[1] for col in cursor.fetchall()]
+            if "status" not in cols:
+                conn.execute("ALTER TABLE pending_submissions ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'")
+            if "quarantine_reason" not in cols:
+                conn.execute("ALTER TABLE pending_submissions ADD COLUMN quarantine_reason TEXT")
             conn.commit()
 
     def buffer_submission(
@@ -56,11 +65,12 @@ class OfflineBuffer:
             conn.execute(
                 """
                 INSERT INTO pending_submissions (
-                    task_id, lease_id, idempotency_key, payload_json, created_at, attempts
-                ) VALUES (?, ?, ?, ?, ?, 0)
+                    task_id, lease_id, idempotency_key, payload_json, created_at, attempts, status
+                ) VALUES (?, ?, ?, ?, ?, 0, 'pending')
                 ON CONFLICT(idempotency_key) DO UPDATE SET
                     payload_json = excluded.payload_json,
-                    attempts = attempts + 1
+                    attempts = attempts + 1,
+                    status = 'pending'
                 """,
                 (task_id, lease_id, idempotency_key, payload_str, now),
             )
@@ -74,6 +84,7 @@ class OfflineBuffer:
                 """
                 SELECT id, task_id, lease_id, idempotency_key, payload_json, created_at, attempts
                 FROM pending_submissions
+                WHERE status = 'pending'
                 ORDER BY id ASC
                 LIMIT ?
                 """,
@@ -97,6 +108,53 @@ class OfflineBuffer:
                 })
             return results
 
+    def quarantine_submission(self, submission_id: int, reason: str):
+        """Quarantine an invalid or unprocessable submission so it doesn't block the pending queue."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._get_conn() as conn:
+            conn.execute(
+                """
+                UPDATE pending_submissions
+                SET status = 'quarantined',
+                    quarantine_reason = ?,
+                    last_attempt_at = ?
+                WHERE id = ?
+                """,
+                (reason, now, submission_id),
+            )
+            conn.commit()
+            logger.error("Quarantined buffer submission #%s (Reason: %s)", submission_id, reason)
+
+    def get_quarantined_submissions(self) -> List[Dict[str, Any]]:
+        """Retrieve quarantined submissions for diagnostic review."""
+        with self._get_conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, task_id, lease_id, idempotency_key, payload_json, created_at, attempts, quarantine_reason
+                FROM pending_submissions
+                WHERE status = 'quarantined'
+                ORDER BY id ASC
+                """
+            ).fetchall()
+
+            results = []
+            for r in rows:
+                try:
+                    payload = json.loads(r["payload_json"])
+                except Exception:
+                    payload = {}
+                results.append({
+                    "id": r["id"],
+                    "task_id": r["task_id"],
+                    "lease_id": r["lease_id"],
+                    "idempotency_key": r["idempotency_key"],
+                    "payload": payload,
+                    "created_at": r["created_at"],
+                    "attempts": r["attempts"],
+                    "quarantine_reason": r["quarantine_reason"],
+                })
+            return results
+
     def remove_submission(self, submission_id: int):
         """Delete successfully synced submission from local buffer."""
         with self._get_conn() as conn:
@@ -105,7 +163,13 @@ class OfflineBuffer:
             logger.info("Cleared synced buffer submission #%s", submission_id)
 
     def count_pending(self) -> int:
-        """Count remaining buffered submissions."""
+        """Count remaining buffered pending submissions."""
         with self._get_conn() as conn:
-            row = conn.execute("SELECT count(*) FROM pending_submissions").fetchone()
+            row = conn.execute("SELECT count(*) FROM pending_submissions WHERE status = 'pending'").fetchone()
+            return int(row[0]) if row else 0
+
+    def count_quarantined(self) -> int:
+        """Count quarantined submissions."""
+        with self._get_conn() as conn:
+            row = conn.execute("SELECT count(*) FROM pending_submissions WHERE status = 'quarantined'").fetchone()
             return int(row[0]) if row else 0

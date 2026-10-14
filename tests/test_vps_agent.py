@@ -67,7 +67,10 @@ def test_executor_python_script_execution():
     task = {
         "task_id": "py-task-1",
         "task_type": "python_execution",
-        "input_data": {"script": "print('Hello from Qwen Worker!'); print(2 + 2)"},
+        "input_data": {
+            "approved": True,
+            "script": "print('Hello from Qwen Worker!'); print(2 + 2)",
+        },
     }
     outcome = execute_task(task, timeout_seconds=10)
     assert outcome["status"] == "success"
@@ -76,11 +79,68 @@ def test_executor_python_script_execution():
     assert "4" in outcome["stdout_summary"]
 
 
+def test_executor_unapproved_script_fails_closed():
+    """Unapproved scripts cannot run under Class B execution."""
+    task = {
+        "task_id": "py-unapproved",
+        "task_type": "python_execution",
+        "input_data": {
+            "script": "print('This should be rejected!')",
+        },
+    }
+    outcome = execute_task(task, timeout_seconds=10)
+    assert outcome["status"] == "error"
+    assert outcome["exit_code"] == 126
+    assert outcome["error_category"] == "unapproved_script"
+    assert "unapproved python script" in outcome["stderr_summary"].lower()
+
+
+def test_executor_checksum_validation_success():
+    """Approved script with matching checksum executes successfully."""
+    import hashlib
+    script = "print('Verified Checksum Execution')"
+    checksum = hashlib.sha256(script.encode("utf-8")).hexdigest()
+    task = {
+        "task_id": "py-checksum-ok",
+        "task_type": "python_execution",
+        "input_data": {
+            "approved": True,
+            "script_checksum": checksum,
+            "script": script,
+        },
+    }
+    outcome = execute_task(task, timeout_seconds=10)
+    assert outcome["status"] == "success"
+    assert outcome["exit_code"] == 0
+    assert "Verified Checksum Execution" in outcome["stdout_summary"]
+
+
+def test_executor_checksum_mismatch_fails_closed():
+    """Tampered script with checksum mismatch fails closed."""
+    task = {
+        "task_id": "py-checksum-tampered",
+        "task_type": "python_execution",
+        "input_data": {
+            "approved": True,
+            "script_checksum": "0000000000000000000000000000000000000000000000000000000000000000",
+            "script": "print('Tampered script')",
+        },
+    }
+    outcome = execute_task(task, timeout_seconds=10)
+    assert outcome["status"] == "error"
+    assert outcome["exit_code"] == 126
+    assert outcome["error_category"] == "checksum_mismatch"
+    assert "checksum verification failed" in outcome["stderr_summary"].lower()
+
+
 def test_executor_python_script_error():
     task = {
         "task_id": "py-task-err",
         "task_type": "python_execution",
-        "input_data": {"script": "raise ValueError('Intentional worker test error')"},
+        "input_data": {
+            "approved": True,
+            "script": "raise ValueError('Intentional worker test error')",
+        },
     }
     outcome = execute_task(task, timeout_seconds=10)
     assert outcome["status"] == "error"
@@ -93,7 +153,10 @@ def test_executor_timeout_limit():
     task = {
         "task_id": "py-task-timeout",
         "task_type": "python_execution",
-        "input_data": {"script": "import time; time.sleep(5)"},
+        "input_data": {
+            "approved": True,
+            "script": "import time; time.sleep(5)",
+        },
     }
     # Short 1-second timeout
     outcome = execute_task(task, timeout_seconds=1)
@@ -118,7 +181,6 @@ def test_executor_unsupported_operation_rejection():
 
 def test_executor_class_c_fails_closed_without_container_runtime(monkeypatch):
     """Class C experimental/untrusted code fails closed if container runtime is absent."""
-    # Force container runtime check to False
     from vps_agent import executor
     monkeypatch.setattr(executor, "_check_container_isolation_available", lambda: False)
 
@@ -144,6 +206,7 @@ def test_executor_environment_sanitization_strips_controller_secrets(monkeypatch
         "task_id": "py-leak-check",
         "task_type": "python_execution",
         "input_data": {
+            "approved": True,
             "script": "import os; print('QC_SECRET_KEY=' + os.environ.get('QC_SECRET_KEY', 'NOT_FOUND')); print('TOKEN=' + os.environ.get('TOKEN_API_SECRET', 'NOT_FOUND'))"
         },
     }
@@ -151,4 +214,26 @@ def test_executor_environment_sanitization_strips_controller_secrets(monkeypatch
     assert outcome["status"] == "success"
     assert "QC_SECRET_KEY=NOT_FOUND" in outcome["stdout_summary"]
     assert "TOKEN=NOT_FOUND" in outcome["stdout_summary"]
+
+
+def test_executor_pythonpath_isolation_blocks_agent_imports():
+    """Worker child scripts cannot import vps_agent internal modules due to PYTHONPATH scrubbing."""
+    task = {
+        "task_id": "py-import-leak",
+        "task_type": "python_execution",
+        "input_data": {
+            "approved": True,
+            "script": (
+                "try:\n"
+                "    import vps_agent\n"
+                "    print('LEAKED_VPS_AGENT')\n"
+                "except ImportError:\n"
+                "    print('BLOCKED_IMPORT_OK')\n"
+            ),
+        },
+    }
+    outcome = execute_task(task, timeout_seconds=5)
+    assert outcome["status"] == "success"
+    assert "BLOCKED_IMPORT_OK" in outcome["stdout_summary"]
+    assert "LEAKED_VPS_AGENT" not in outcome["stdout_summary"]
 

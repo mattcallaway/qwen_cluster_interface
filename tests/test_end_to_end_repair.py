@@ -248,6 +248,8 @@ def test_complete_intelligence_to_execution_to_knowledge_loop(auth_client, db_co
             "metric_observation": {
                 "metric_id": metric_id,
                 "value": 1.0,
+                "evidence_reference": f"deliverable:{deliv_id}",
+                "artifact_checksum": "283b68cf83948f4741923117d12b64e266ac1885b8cd6bf0efd230449787f3a9",
                 "notes": "Automated download verified with SHA256 checksum",
             }
         },
