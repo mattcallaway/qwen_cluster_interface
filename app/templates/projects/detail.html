@@ -9,7 +9,8 @@
      'cancelled':'badge-error','archived':'badge-offline','superseded':'badge-offline','rejected':'badge-error',
      'planned':'badge-offline','blocked':'badge-error','awaiting_review':'badge-warning','skipped':'badge-offline',
      'queued':'badge-primary','awaiting_approval':'badge-warning','running':'badge-role','failed':'badge-error',
-     'captured':'badge-warning','verified':'badge-online','accepted':'badge-online','disputed':'badge-error'}.get(s, 'badge-offline') -%}
+     'captured':'badge-warning','verified':'badge-online','accepted':'badge-online','disputed':'badge-error',
+     'on_target':'badge-online','ahead_of_forecast':'badge-primary','behind_forecast':'badge-warning','at_risk':'badge-error','insufficient_data':'badge-offline'}.get(s, 'badge-offline') -%}
   <span class="badge {{ cls }}">{{ s|replace('_',' ') }}</span>
 {%- endmacro %}
 
@@ -33,10 +34,10 @@
 </div>
 
 <div style="display:flex; gap:8px; margin-bottom:20px;">
-  {% for t in ['overview','paths','tasks','deliverables','knowledge'] %}
+  {% for t in ['overview','paths','tasks','deliverables','knowledge','metrics'] %}
     <a id="tab-{{ t }}" href="/projects/{{ project.id }}?tab={{ t }}" class="btn btn-sm {% if tab == t %}btn-primary{% else %}btn-secondary{% endif %}">
       {{ t|capitalize }}
-      {% if t == 'paths' %}({{ paths|length }}){% elif t == 'tasks' %}({{ tasks|length }}){% elif t == 'deliverables' %}({{ deliverables|length }}){% elif t == 'knowledge' %}({{ knowledge|length }}){% endif %}
+      {% if t == 'paths' %}({{ paths|length }}){% elif t == 'tasks' %}({{ tasks|length }}){% elif t == 'deliverables' %}({{ deliverables|length }}){% elif t == 'knowledge' %}({{ knowledge|length }}){% elif t == 'metrics' %}({{ metrics|length }}){% endif %}
     </a>
   {% endfor %}
 </div>
@@ -797,6 +798,342 @@
       <button class="btn btn-secondary" type="submit">Link note</button>
     </form>
   </details>
+</div>
+
+{# ============================ METRICS & FORECASTING ============================ #}
+{% elif tab == 'metrics' %}
+<div class="grid-cols-4" style="margin-bottom:20px;">
+  <div class="stat-widget"><div class="stat-label">Defined Metrics</div>
+    <div class="stat-value">{{ metrics|length }}</div>
+    <div class="stat-sub">Active &amp; tracked</div></div>
+  <div class="stat-widget"><div class="stat-label">On Target</div>
+    <div class="stat-value" style="color:var(--status-online);">{{ metrics|selectattr('status_assessment', 'equalto', 'on_target')|list|length }}</div>
+    <div class="stat-sub">{{ metrics|selectattr('status_assessment', 'equalto', 'ahead_of_forecast')|list|length }} ahead of forecast</div></div>
+  <div class="stat-widget"><div class="stat-label">Behind / At Risk</div>
+    <div class="stat-value" style="color:var(--status-error);">{{ (metrics|selectattr('status_assessment', 'equalto', 'behind_forecast')|list|length) + (metrics|selectattr('status_assessment', 'equalto', 'at_risk')|list|length) }}</div>
+    <div class="stat-sub">{{ metrics|selectattr('status_assessment', 'equalto', 'at_risk')|list|length }} at risk</div></div>
+  <div class="stat-widget"><div class="stat-label">Insufficient Data</div>
+    <div class="stat-value" style="color:var(--text-muted);">{{ metrics|selectattr('status_assessment', 'equalto', 'insufficient_data')|list|length }}</div>
+    <div class="stat-sub">Awaiting observations</div></div>
+</div>
+
+<details class="card" style="margin-bottom:20px;">
+  <summary style="cursor:pointer; font-weight:600; display:flex; justify-content:space-between; align-items:center;">
+    <span>+ Define New Metric</span>
+    <span style="font-size:0.8rem; color:var(--text-muted); font-weight:normal;">Target values, units, frequency, and improvement direction</span>
+  </summary>
+  <form action="/projects/{{ project.id }}/metrics/create" method="post" style="margin-top:16px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div style="display:grid; grid-template-columns:2fr 1fr 1fr; gap:12px;">
+      <div class="form-group"><label class="form-label" for="met_name">Metric Name *</label><input class="form-control" id="met_name" name="name" required placeholder="e.g. Latency P99, Token Cost, Test Pass Rate"></div>
+      <div class="form-group"><label class="form-label" for="met_unit">Unit *</label><input class="form-control" id="met_unit" name="unit" required placeholder="e.g. ms, USD, %, req/s"></div>
+      <div class="form-group"><label class="form-label" for="met_type">Type *</label>
+        <select class="form-control" id="met_type" name="metric_type">
+          {% for t in metric_types %}<option value="{{ t }}">{{ t|capitalize }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
+      <div class="form-group"><label class="form-label" for="met_path">Path (Optional)</label>
+        <select class="form-control" id="met_path" name="path_id">
+          <option value="">Project-wide (All Paths)</option>
+          {% for p in paths %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label" for="met_target">Target Value</label><input class="form-control" id="met_target" name="target_value" type="number" step="any" placeholder="Numeric target"></div>
+      <div class="form-group"><label class="form-label" for="met_target_date">Target Date</label><input class="form-control" id="met_target_date" name="target_date" type="date"></div>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
+      <div class="form-group"><label class="form-label" for="met_dir">Direction of Improvement</label>
+        <select class="form-control" id="met_dir" name="direction_of_improvement">
+          {% for d in directions_of_improvement %}<option value="{{ d }}">{{ d|replace('_',' ')|capitalize }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label" for="met_freq">Collection Frequency</label>
+        <select class="form-control" id="met_freq" name="collection_frequency">
+          {% for f in collection_frequencies %}<option value="{{ f }}">{{ f|replace('_',' ')|capitalize }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label" for="met_method">Measurement Method</label>
+        <select class="form-control" id="met_method" name="measurement_method">
+          {% for m in measurement_methods %}<option value="{{ m }}">{{ m|replace('_',' ')|capitalize }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="form-group"><label class="form-label" for="met_desc">Description</label><textarea class="form-control" id="met_desc" name="description" rows="2" placeholder="What does this metric measure and why does it matter?"></textarea></div>
+    <button class="btn btn-primary" type="submit">Define Metric</button>
+  </form>
+</details>
+
+{% if not metrics %}
+  <div class="card" style="text-align:center; padding:32px; color:var(--text-muted);">
+    No metrics defined yet for this project. Define a metric above to measure reality and track predictions.
+  </div>
+{% endif %}
+
+<div style="display:flex; flex-direction:column; gap:20px;">
+  {% for m in metrics %}
+  <div class="card" id="metric-card-{{ m.id }}" style="{% if m.status == 'archived' %}opacity:0.65;{% endif %}">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
+      <div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <h3 style="margin:0; font-size:1.15rem; font-weight:600;">{{ m.name }}</h3>
+          {{ badge(m.status_assessment) }}
+          {% if m.status == 'archived' %}<span class="badge badge-offline">Archived</span>{% endif %}
+          <span class="badge badge-role">{{ m.metric_type }}</span>
+        </div>
+        <div style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">
+          Unit: <strong>{{ m.unit }}</strong> ·
+          Direction: <strong>{{ m.direction_of_improvement|replace('_',' ') }}</strong> ·
+          Scope: <strong>{{ path_names.get(m.path_id, 'Project-wide') }}</strong> ·
+          Method: {{ m.measurement_method|replace('_',' ') }} ·
+          Owner: {{ m.owner }}
+        </div>
+        {% if m.description %}<p style="font-size:0.85rem; margin:6px 0 0 0; color:var(--text-main);">{{ m.description }}</p>{% endif %}
+      </div>
+    </div>
+
+    <!-- 4-Stat Comparison Widget -->
+    <div class="grid-cols-4" style="gap:12px; margin-bottom:16px; background:var(--bg-secondary); padding:12px; border-radius:6px; border:1px solid var(--border-color);">
+      <div>
+        <div class="stat-label">Target</div>
+        <div class="stat-value" style="font-size:1.2rem;">
+          {% if m.target_value is not none %}{{ m.target_value }} <span style="font-size:0.8rem;">{{ m.unit }}</span>{% else %}—{% endif %}
+        </div>
+        <div class="stat-sub">Target date: {{ m.target_date[:10] if m.target_date else 'None' }}</div>
+      </div>
+      <div>
+        <div class="stat-label">Latest Actual</div>
+        <div class="stat-value" style="font-size:1.2rem;">
+          {% if m.latest_observation %}{{ m.latest_observation.value }} <span style="font-size:0.8rem;">{{ m.unit }}</span>{% else %}—{% endif %}
+        </div>
+        <div class="stat-sub">
+          {% if m.latest_observation %}
+            {{ m.latest_observation.measured_at[:10] }} ({{ m.latest_observation.verification_status }})
+          {% else %}
+            No observations recorded
+          {% endif %}
+        </div>
+      </div>
+      <div>
+        <div class="stat-label">Current Forecast</div>
+        <div class="stat-value" style="font-size:1.2rem;">
+          {% if m.latest_forecast %}{{ m.latest_forecast.predicted_value }} <span style="font-size:0.8rem;">{{ m.unit }}</span>{% else %}—{% endif %}
+        </div>
+        <div class="stat-sub">
+          {% if m.latest_forecast %}
+            v{{ m.latest_forecast.version }} · {{ m.latest_forecast.method|replace('_',' ') }} ({{ m.latest_forecast.confidence_level }})
+          {% else %}
+            No forecast version
+          {% endif %}
+        </div>
+      </div>
+      <div>
+        <div class="stat-label">Variance &amp; Accuracy</div>
+        <div class="stat-value" style="font-size:1.2rem;">
+          {% if m.current_variance is not none %}
+            {{ '%+.2f'|format(m.current_variance) }} <span style="font-size:0.8rem;">{{ m.unit }}</span>
+          {% else %}
+            —
+          {% endif %}
+        </div>
+        <div class="stat-sub">
+          {% if m.accuracy_score is not none %}
+            Accuracy: {{ (m.accuracy_score * 100)|round(1) }}% ({{ m.percentage_error }}% err)
+          {% else %}
+            Insufficient data
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Action Forms Grid -->
+    <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+      <details style="flex:1; min-width:280px;" class="card">
+        <summary style="cursor:pointer; font-size:0.85rem; font-weight:600; color:var(--color-primary);">+ Log Actual Observation</summary>
+        <form action="/projects/{{ project.id }}/metrics/{{ m.id }}/observations/create" method="post" style="margin-top:10px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <div class="form-group"><label class="form-label">Observed Value * ({{ m.unit }})</label><input class="form-control" name="value" type="number" step="any" required placeholder="Measured value"></div>
+          <div class="form-group"><label class="form-label">Measured Timestamp (ISO)</label><input class="form-control" name="measured_at" type="datetime-local"></div>
+          <div class="form-group"><label class="form-label">Verification Status</label>
+            <select class="form-control" name="verification_status">
+              <option value="unverified">Unverified</option>
+              <option value="verified" selected>Verified</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Source / Benchmark</label><input class="form-control" name="source" placeholder="e.g. Locust telemetry, benchmark run"></div>
+          <div class="form-group"><label class="form-label">Evidence Reference</label><input class="form-control" name="evidence_reference" placeholder="Note path, task ID, URL"></div>
+          <div class="form-group"><label class="form-label">Notes</label><textarea class="form-control" name="notes" rows="2" placeholder="Collection conditions"></textarea></div>
+          <button class="btn btn-sm btn-primary" type="submit">Record Observation</button>
+        </form>
+      </details>
+
+      <details style="flex:1; min-width:280px;" class="card">
+        <summary style="cursor:pointer; font-size:0.85rem; font-weight:600; color:var(--color-primary);">+ Record Versioned Forecast</summary>
+        <form action="/projects/{{ project.id }}/metrics/{{ m.id }}/forecasts/create" method="post" style="margin-top:10px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <div class="form-group"><label class="form-label">Predicted Value * ({{ m.unit }})</label><input class="form-control" name="predicted_value" type="number" step="any" required placeholder="Predicted value"></div>
+          <div class="form-group"><label class="form-label">Method</label>
+            <select class="form-control" name="method">
+              {% for fm in forecast_methods %}<option value="{{ fm }}" {% if fm == 'manual_estimate' %}selected{% endif %}>{{ fm|replace('_',' ')|capitalize }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Confidence Level</label>
+            <select class="form-control" name="confidence_level">
+              {% for cl in confidence_levels %}<option value="{{ cl }}" {% if cl == 'medium' %}selected{% endif %}>{{ cl|capitalize }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Assumptions</label><textarea class="form-control" name="assumptions" rows="2" placeholder="Key assumptions underlying this prediction"></textarea></div>
+          <div class="form-group"><label class="form-label">Evidence</label><input class="form-control" name="evidence" placeholder="Supporting evidence reference"></div>
+          {% if m.forecasts_count > 0 %}
+            <div class="form-group"><label class="form-label">Revision Reason * (Mandatory for v{{ m.forecasts_count + 1 }})</label><input class="form-control" name="revision_reason" required placeholder="Why is this forecast changing?"></div>
+          {% endif %}
+          <button class="btn btn-sm btn-primary" type="submit">Save Forecast v{{ m.forecasts_count + 1 }}</button>
+        </form>
+      </details>
+
+      <details style="flex:1; min-width:280px;" class="card">
+        <summary style="cursor:pointer; font-size:0.85rem; font-weight:600; color:var(--color-primary);">⚡ Automated Forecast Calculation</summary>
+        <form action="/projects/{{ project.id }}/metrics/{{ m.id }}/forecasts/generate" method="post" style="margin-top:10px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <div class="form-group"><label class="form-label">Calculation Method</label>
+            <select class="form-control" name="method">
+              <option value="linear_trend">Linear Trend (Least-Squares Extrapolation)</option>
+              <option value="rolling_average">Rolling Average (Latest Window)</option>
+              <option value="rate_extrapolation">Rate Extrapolation (Interval Projected)</option>
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Target Projection Date</label><input class="form-control" name="target_date" type="date"></div>
+          <div class="form-group"><label class="form-label">Rolling Average Window Size</label><input class="form-control" name="window_size" type="number" min="1" max="50" value="3"></div>
+          {% if m.forecasts_count > 0 %}
+            <div class="form-group"><label class="form-label">Revision Reason (for v{{ m.forecasts_count + 1 }})</label><input class="form-control" name="revision_reason" placeholder="Automated recalculation"></div>
+          {% endif %}
+          <button class="btn btn-sm btn-secondary" type="submit">Compute &amp; Record Forecast</button>
+        </form>
+      </details>
+    </div>
+
+    <!-- History Accordion -->
+    <details style="margin-top:10px;">
+      <summary style="cursor:pointer; font-size:0.85rem; font-weight:600; color:var(--text-muted);">
+        Detailed History &amp; Evidence ({{ observations_by_metric.get(m.id, [])|length }} observations, {{ forecasts_by_metric.get(m.id, [])|length }} forecast versions, {{ evaluations_by_metric.get(m.id, [])|length }} evaluations)
+      </summary>
+
+      <!-- Observations Table -->
+      <div style="margin-top:12px;">
+        <h4 style="font-size:0.9rem; margin-bottom:6px;">Actual Observations (Immutable)</h4>
+        {% set obs_list = observations_by_metric.get(m.id, []) %}
+        {% if obs_list %}
+          <table class="table" style="font-size:0.8rem; margin-bottom:12px;">
+            <thead><tr><th>Measured At</th><th>Value</th><th>Status</th><th>Source</th><th>Evidence</th><th>Supersedes / Reason</th></tr></thead>
+            <tbody>
+              {% for o in obs_list %}
+              <tr style="{% if o.supersedes_id %}background:rgba(255,193,7,0.05);{% endif %}">
+                <td>{{ o.measured_at }}</td>
+                <td><strong>{{ o.value }} {{ m.unit }}</strong></td>
+                <td>{{ badge(o.verification_status) }}</td>
+                <td>{{ o.source or '—' }}</td>
+                <td>{{ o.evidence_reference or '—' }}</td>
+                <td>
+                  {% if o.supersedes_id %}
+                    <span style="color:var(--status-warning);">Supersedes {{ o.supersedes_id }}</span><br>
+                    <small>{{ o.correction_reason }}</small>
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:12px;">No observations recorded.</div>
+        {% endif %}
+      </div>
+
+      <!-- Forecasts Table -->
+      <div style="margin-top:12px;">
+        <h4 style="font-size:0.9rem; margin-bottom:6px;">Versioned Forecasts (Historical Strategy)</h4>
+        {% set fct_list = forecasts_by_metric.get(m.id, []) %}
+        {% if fct_list %}
+          <table class="table" style="font-size:0.8rem; margin-bottom:12px;">
+            <thead><tr><th>Version</th><th>Predicted Value</th><th>Method</th><th>Confidence</th><th>Assumptions</th><th>Revision Reason</th><th>Created</th><th>Evaluate</th></tr></thead>
+            <tbody>
+              {% for f in fct_list %}
+              <tr>
+                <td><strong>v{{ f.version }}</strong></td>
+                <td><strong>{{ f.predicted_value }} {{ m.unit }}</strong></td>
+                <td>{{ f.method|replace('_',' ') }}</td>
+                <td>{{ f.confidence_level }}</td>
+                <td>{{ f.assumptions or '—' }}</td>
+                <td>{{ f.revision_reason or '—' }}</td>
+                <td>{{ f.created_at[:16] }}</td>
+                <td>
+                  <form action="/projects/{{ project.id }}/metrics/{{ m.id }}/forecasts/{{ f.id }}/evaluate" method="post" style="display:inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button class="btn btn-xs btn-secondary" type="submit" title="Evaluate against latest observation">Evaluate</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:12px;">No forecasts recorded.</div>
+        {% endif %}
+      </div>
+
+      <!-- Forecast Evaluations Table -->
+      <div style="margin-top:12px;">
+        <h4 style="font-size:0.9rem; margin-bottom:6px;">Historical Accuracy &amp; Variance Evaluations</h4>
+        {% set ev_list = evaluations_by_metric.get(m.id, []) %}
+        {% if ev_list %}
+          <table class="table" style="font-size:0.8rem;">
+            <thead><tr><th>Evaluated At</th><th>Forecast / Actual</th><th>Target</th><th>Variance</th><th>Accuracy</th><th>Status</th><th>Notes</th></tr></thead>
+            <tbody>
+              {% for ev in ev_list %}
+              <tr>
+                <td>{{ ev.evaluated_at[:16] }}</td>
+                <td>Predicted: {{ ev.predicted_value }} {{ m.unit }}<br>Actual: <strong>{{ ev.actual_value }} {{ m.unit }}</strong></td>
+                <td>{{ ev.target_value if ev.target_value is not none else '—' }}</td>
+                <td>{{ '%+.2f'|format(ev.variance) }} ({{ ev.percentage_error }}% err)</td>
+                <td><strong>{{ (ev.accuracy_score * 100)|round(1) }}%</strong></td>
+                <td>{{ badge(ev.status_assessment) }}</td>
+                <td>{{ ev.evaluation_notes or '—' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <div style="font-size:0.8rem; color:var(--text-muted);">No evaluations recorded yet.</div>
+        {% endif %}
+      </div>
+
+      <!-- Correct an Observation Form -->
+      {% if obs_list %}
+      <div style="margin-top:16px; padding:12px; background:var(--bg-secondary); border-radius:6px;">
+        <h4 style="font-size:0.85rem; margin-bottom:8px; color:var(--status-warning);">Auditable Observation Correction</h4>
+        <p style="font-size:0.75rem; color:var(--text-muted); margin-bottom:8px;">
+          Rather than silently rewriting history, recording a correction creates an auditable replacement record that explicitly supersedes the original measurement.
+        </p>
+        <form action="/projects/{{ project.id }}/metrics/{{ m.id }}/observations/correct" method="post" style="display:grid; grid-template-columns:1fr 1fr 1fr 2fr auto; gap:8px; align-items:flex-end;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <div class="form-group" style="margin:0;"><label class="form-label" style="font-size:0.75rem;">Observation to Supersede</label>
+            <select class="form-control" name="supersedes_id" style="font-size:0.8rem;" required>
+              {% for o in obs_list %}<option value="{{ o.id }}">{{ o.measured_at[:10] }} ({{ o.value }} {{ m.unit }})</option>{% endfor %}
+            </select>
+          </div>
+          <div class="form-group" style="margin:0;"><label class="form-label" style="font-size:0.75rem;">Corrected Value *</label><input class="form-control" name="value" type="number" step="any" required style="font-size:0.8rem;"></div>
+          <div class="form-group" style="margin:0;"><label class="form-label" style="font-size:0.75rem;">Measured Timestamp</label><input class="form-control" name="measured_at" type="datetime-local" style="font-size:0.8rem;"></div>
+          <div class="form-group" style="margin:0;"><label class="form-label" style="font-size:0.75rem;">Correction Reason *</label><input class="form-control" name="correction_reason" required placeholder="Why was the original measurement superseded?" style="font-size:0.8rem;"></div>
+          <button class="btn btn-sm btn-warning" type="submit">Record Correction</button>
+        </form>
+      </div>
+      {% endif %}
+    </details>
+  </div>
+  {% endfor %}
 </div>
 {% endif %}
 {% endblock %}

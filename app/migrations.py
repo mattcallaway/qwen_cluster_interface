@@ -386,9 +386,137 @@ _M2: List[str] = [
     """,
 ]
 
+# ---------------------------------------------------------------------------
+# Migration 3 — Measurement and forecasting (Milestone 3)
+# ---------------------------------------------------------------------------
+_M3: List[str] = [
+    # --- Project Metrics --------------------------------------------------
+    """
+    CREATE TABLE project_metrics (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id),
+        path_id TEXT REFERENCES project_paths(id),
+        name TEXT NOT NULL CHECK (length(trim(name)) BETWEEN 1 AND 200),
+        description TEXT NOT NULL DEFAULT '',
+        metric_type TEXT NOT NULL CHECK (metric_type IN (
+            'count','percentage','rate','duration','currency','quality','reliability','other')),
+        unit TEXT NOT NULL CHECK (length(trim(unit)) BETWEEN 1 AND 50),
+        measurement_method TEXT NOT NULL DEFAULT 'manual' CHECK (measurement_method IN (
+            'automated_query','manual_audit','task_telemetry','benchmark','manual')),
+        source TEXT NOT NULL DEFAULT '',
+        collection_frequency TEXT NOT NULL DEFAULT 'ad_hoc' CHECK (collection_frequency IN (
+            'per_task','daily','weekly','stage_gate','ad_hoc')),
+        target_value REAL,
+        target_date TEXT,
+        direction_of_improvement TEXT NOT NULL DEFAULT 'higher_is_better' CHECK (direction_of_improvement IN (
+            'higher_is_better','lower_is_better','target_is_optimal')),
+        owner TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','archived')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (project_id, name)
+    )
+    """,
+    "CREATE INDEX idx_metrics_proj ON project_metrics(project_id, status)",
+    "CREATE INDEX idx_metrics_path ON project_metrics(path_id)",
+
+    # --- Actual Observations (Immutable, Timestamped, Auditable) ----------
+    """
+    CREATE TABLE metric_observations (
+        id TEXT PRIMARY KEY,
+        metric_id TEXT NOT NULL REFERENCES project_metrics(id),
+        value REAL NOT NULL,
+        measured_at TEXT NOT NULL,
+        recorded_at TEXT NOT NULL,
+        source TEXT NOT NULL DEFAULT '',
+        collection_method TEXT NOT NULL DEFAULT '',
+        verification_status TEXT NOT NULL DEFAULT 'unverified' CHECK (verification_status IN (
+            'unverified','verified','rejected')),
+        evidence_reference TEXT NOT NULL DEFAULT '',
+        notes TEXT NOT NULL DEFAULT '',
+        supersedes_id TEXT REFERENCES metric_observations(id),
+        correction_reason TEXT NOT NULL DEFAULT '',
+        created_by TEXT NOT NULL,
+        CHECK (supersedes_id IS NULL OR supersedes_id <> id),
+        CHECK ((supersedes_id IS NOT NULL) = (length(trim(correction_reason)) > 0))
+    )
+    """,
+    "CREATE INDEX idx_obs_metric ON metric_observations(metric_id, measured_at)",
+    "CREATE INDEX idx_obs_supersedes ON metric_observations(supersedes_id)",
+    """
+    CREATE TRIGGER trg_observations_no_update BEFORE UPDATE ON metric_observations
+    BEGIN SELECT RAISE(ABORT, 'metric_observations are immutable; record a correction that supersedes'); END
+    """,
+    """
+    CREATE TRIGGER trg_observations_no_delete BEFORE DELETE ON metric_observations
+    BEGIN SELECT RAISE(ABORT, 'metric_observations are immutable'); END
+    """,
+
+    # --- Versioned Forecasts (Predictions, Preserved History) -------------
+    """
+    CREATE TABLE path_forecasts (
+        id TEXT PRIMARY KEY,
+        metric_id TEXT NOT NULL REFERENCES project_metrics(id),
+        path_id TEXT REFERENCES project_paths(id),
+        version INTEGER NOT NULL CHECK (version >= 1),
+        prediction_period TEXT NOT NULL DEFAULT '',
+        target_date TEXT,
+        predicted_value REAL NOT NULL,
+        method TEXT NOT NULL CHECK (method IN (
+            'linear_trend','rolling_average','rate_extrapolation','manual_estimate','model_estimate')),
+        assumptions TEXT NOT NULL DEFAULT '',
+        evidence TEXT NOT NULL DEFAULT '',
+        confidence_score REAL CHECK (confidence_score IS NULL OR (confidence_score >= 0.0 AND confidence_score <= 1.0)),
+        confidence_level TEXT NOT NULL DEFAULT 'medium' CHECK (confidence_level IN ('low','medium','high')),
+        revision_reason TEXT NOT NULL DEFAULT '',
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        CHECK (version = 1 OR length(trim(revision_reason)) > 0)
+    )
+    """,
+    "CREATE UNIQUE INDEX ux_forecast_version ON path_forecasts(metric_id, COALESCE(path_id, ''), version)",
+    "CREATE INDEX idx_forecasts_metric ON path_forecasts(metric_id, version)",
+    "CREATE INDEX idx_forecasts_path ON path_forecasts(path_id)",
+    """
+    CREATE TRIGGER trg_forecasts_no_update BEFORE UPDATE ON path_forecasts
+    BEGIN SELECT RAISE(ABORT, 'path_forecasts are versioned and immutable'); END
+    """,
+    """
+    CREATE TRIGGER trg_forecasts_no_delete BEFORE DELETE ON path_forecasts
+    BEGIN SELECT RAISE(ABORT, 'path_forecasts are versioned and immutable'); END
+    """,
+
+    # --- Historical Forecast Evaluations & Accuracy Tracking -------------
+    """
+    CREATE TABLE forecast_evaluations (
+        id TEXT PRIMARY KEY,
+        forecast_id TEXT NOT NULL REFERENCES path_forecasts(id),
+        metric_id TEXT NOT NULL REFERENCES project_metrics(id),
+        path_id TEXT REFERENCES project_paths(id),
+        actual_observation_id TEXT REFERENCES metric_observations(id),
+        target_value REAL,
+        predicted_value REAL NOT NULL,
+        actual_value REAL NOT NULL,
+        variance REAL NOT NULL,
+        absolute_error REAL NOT NULL,
+        percentage_error REAL,
+        accuracy_score REAL NOT NULL CHECK (accuracy_score >= 0.0 AND accuracy_score <= 1.0),
+        status_assessment TEXT NOT NULL CHECK (status_assessment IN (
+            'on_target','ahead_of_forecast','behind_forecast','at_risk','insufficient_data')),
+        evaluation_notes TEXT NOT NULL DEFAULT '',
+        evaluated_by TEXT NOT NULL,
+        evaluated_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_eval_metric ON forecast_evaluations(metric_id, evaluated_at)",
+    "CREATE INDEX idx_eval_path ON forecast_evaluations(path_id)",
+    "CREATE INDEX idx_eval_forecast ON forecast_evaluations(forecast_id)",
+]
+
 MIGRATIONS: List[Migration] = [
     (1, "project intelligence foundation", _M1),
     (2, "execution and evidence", _M2),
+    (3, "measurement and forecasting", _M3),
 ]
 
 

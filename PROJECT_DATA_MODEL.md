@@ -1,9 +1,9 @@
-# Project Data Model (Milestones 1 & 2, schema version 2)
+# Project Data Model (Milestones 1, 2 & 3, schema version 3)
 
 This describes the schema that **exists** on `feature/project-intelligence`. Source of truth:
 [`app/migrations.py`](app/migrations.py). Business rules: [`app/services/projects.py`](app/services/projects.py),
 [`app/services/tasks.py`](app/services/tasks.py), [`app/services/deliverables.py`](app/services/deliverables.py),
-[`app/services/knowledge_meta.py`](app/services/knowledge_meta.py).
+[`app/services/knowledge_meta.py`](app/services/knowledge_meta.py), [`app/services/metrics.py`](app/services/metrics.py).
 
 ## Schema versioning
 
@@ -12,6 +12,7 @@ This describes the schema that **exists** on `feature/project-intelligence`. Sou
 | 0 | Baseline: the tables that existed before this work, created by `create_baseline_schema()` (DDL unchanged). |
 | 1 | Migration 1: Project intelligence foundation (projects, paths, stages, knowledge_metadata, knowledge_relations, project_decisions). |
 | 2 | Migration 2: Execution and evidence (deliverables, deliverable_revisions, task_dependencies, task_execution_events, path_revisions, collective knowledge). |
+| 3 | Migration 3: Measurement and forecasting (project_metrics, metric_observations, path_forecasts, forecast_evaluations). |
 
 * The version lives in `PRAGMA user_version`.
 * `init_db()` runs on every start. It (1) creates the baseline tables if they're missing, (2) takes a `sqlite3.backup()` snapshot when an **existing** DB is behind, named `qwen_collective.pre-migration-v{cur}-to-v{target}-{UTC}.db` and stored next to the DB, then (3) applies pending migrations sequentially.
@@ -39,6 +40,14 @@ erDiagram
     projects ||--o{ knowledge_metadata : "project_id (optional)"
     knowledge_metadata ||--o{ knowledge_relations : "typed links"
     projects ||--o{ project_decisions : "append-only"
+    projects ||--o{ project_metrics : "defines"
+    project_paths ||--o{ project_metrics : "path_id (optional)"
+    project_metrics ||--o{ metric_observations : "immutable actuals"
+    metric_observations ||--o{ metric_observations : "supersedes_id (corrections)"
+    project_metrics ||--o{ path_forecasts : "versioned predictions"
+    project_paths ||--o{ path_forecasts : "path forecasts"
+    path_forecasts ||--o{ forecast_evaluations : "evaluates"
+    metric_observations ||--o{ forecast_evaluations : "actual measurement"
 ```
 
 ### `projects`
@@ -130,6 +139,56 @@ Extended with `is_collective` (INTEGER), `promoted_by`, and `promoted_at`.
 * Verified or accepted project knowledge can be promoted to **Collective Memory**.
 * Promotion logs a `knowledge_promotion` decision in `project_decisions`.
 
+### `project_metrics` (Milestone 3)
+Measures actual performance and project outcomes.
+* `id`: `met_<uuid>`
+* `project_id`: FK → `projects`
+* `path_id`: Optional FK → `project_paths`
+* `name`: 1–200 chars, unique per project
+* `metric_type`: `count · percentage · rate · duration · currency · quality · reliability · other`
+* `unit`: string (e.g. `req/s`, `ms`, `USD`, `%`, `points`, `tokens`)
+* `measurement_method`: `automated_query · manual_audit · task_telemetry · benchmark · manual`
+* `collection_frequency`: `per_task · daily · weekly · stage_gate · ad_hoc`
+* `target_value`: Optional numeric target
+* `target_date`: Optional ISO target date
+* `direction_of_improvement`: `higher_is_better · lower_is_better · target_is_optimal`
+* `owner`, `status` (`active · archived`), timestamps.
+
+### `metric_observations` (Milestone 3)
+Actual measurements stored as immutable, timestamped records.
+* `id`: `obs_<uuid>`
+* `metric_id`: FK → `project_metrics`
+* `value`: numeric REAL
+* `measured_at`: timestamp of actual measurement
+* `recorded_at`: timestamp of database entry
+* `verification_status`: `unverified · verified · rejected`
+* `evidence_reference`: task ID, note path, or external link
+* `supersedes_id`: FK → `metric_observations` (for auditable corrections)
+* `correction_reason`: mandatory when `supersedes_id` is set
+* Database triggers `trg_observations_no_update` and `trg_observations_no_delete` enforce that observation records are never updated or deleted.
+
+### `path_forecasts` (Milestone 3)
+Predictions, not targets and not actuals. Versioned and historical predictions are preserved indefinitely.
+* `id`: `fct_<uuid>`
+* `metric_id`: FK → `project_metrics`
+* `path_id`: Optional FK → `project_paths`
+* `version`: auto-incrementing integer (v1, v2, ...) per `(metric_id, path_id)`
+* `predicted_value`: numeric REAL
+* `method`: `linear_trend · rolling_average · rate_extrapolation · manual_estimate · model_estimate`
+* `confidence_level`: `low · medium · high`
+* `revision_reason`: mandatory for version > 1
+* Database triggers `trg_forecasts_no_update` and `trg_forecasts_no_delete` ensure forecasts are versioned and immutable.
+
+### `forecast_evaluations` (Milestone 3)
+Records historical accuracy and variance assessments comparing predictions against actual observations.
+* `forecast_id`, `metric_id`, `path_id`, `actual_observation_id`
+* `target_value`, `predicted_value`, `actual_value`
+* `variance`: `actual - predicted`
+* `absolute_error`: `abs(actual - predicted)`
+* `percentage_error`: `(absolute_error / abs(predicted)) * 100`
+* `accuracy_score`: normalized accuracy between 0.0 and 1.0
+* `status_assessment`: `on_target · ahead_of_forecast · behind_forecast · at_risk · insufficient_data`
+
 ### `project_decisions` (append-only)
 Expanded CHECK constraint allows:
 `decision_type ∈ {path_selection, path_status_change, project_status_change, project_parent_change, stage_advancement, stage_status_change, deliverable_acceptance, path_revision, knowledge_promotion}`.
@@ -149,6 +208,9 @@ Each row records `subject_id`, `from_value`, `to_value`, `rationale` (required),
 | Knowledge enters only as captured or proposed; promotion needs review | Triggers & service rules |
 | Decisions immutable | Triggers (abort on update/delete) |
 | Deliverables immutable once accepted/rejected | Service transition rules |
+| Observations immutable | Triggers (abort on update/delete; corrections supersede) |
+| Forecasts versioned and immutable | Triggers (abort on update/delete) |
+| Unique metric names per project | UNIQUE index |
 | Relation targets exist and belong to the scoped project | Service polymorphic validation |
 
 > [!WARNING]

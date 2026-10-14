@@ -9,6 +9,7 @@ from fastapi.templating import Jinja2Templates
 from app.auth import get_csrf_token, get_current_user, verify_csrf
 from app.services import deliverables as ds
 from app.services import knowledge_meta as km
+from app.services import metrics as met_svc
 from app.services import projects as ps
 from app.services import tasks as ts
 from app.services.knowledge import list_all_notes
@@ -16,7 +17,7 @@ from app.services.knowledge import list_all_notes
 router = APIRouter(tags=["projects"])
 templates = Jinja2Templates(directory="app/templates")
 
-TABS = ("overview", "paths", "tasks", "deliverables", "knowledge")
+TABS = ("overview", "paths", "tasks", "deliverables", "knowledge", "metrics")
 
 
 def _to(pid: Optional[str] = None, tab: str = "overview", err: str = "", msg: str = "") -> RedirectResponse:
@@ -101,6 +102,12 @@ def project_detail(request: Request, project_id: str, tab: str = "overview",
     path_names = {p["id"]: p["name"] for p in paths}
     stage_names = {s["id"]: s["name"] for ss in stages_by_path.values() for s in ss}
 
+    raw_metrics = met_svc.list_project_metrics(project_id, include_archived=True)
+    metrics = [met_svc.get_metric_summary(m["id"]) for m in raw_metrics]
+    observations_by_metric = {m["id"]: met_svc.list_metric_observations(m["id"], include_superseded=True) for m in raw_metrics}
+    forecasts_by_metric = {m["id"]: met_svc.list_path_forecasts(m["id"]) for m in raw_metrics}
+    evaluations_by_metric = {m["id"]: met_svc.list_forecast_evaluations(metric_id=m["id"]) for m in raw_metrics}
+
     return templates.TemplateResponse(request=request, name="projects/detail.html", context={
         "active_nav": "projects", "current_user": user, "csrf_token": get_csrf_token(request),
         "project": project, "summary": ps.project_summary(project), "tab": tab,
@@ -121,6 +128,16 @@ def project_detail(request: Request, project_id: str, tab: str = "overview",
         "relation_types": km.RELATION_TYPES, "untrusted_origins": km.UNTRUSTED_ORIGINS,
         "collective_knowledge": km.list_collective_knowledge() if tab == "knowledge" else [],
         "vault_notes": list_all_notes() if tab == "knowledge" else [],
+        "metrics": metrics,
+        "observations_by_metric": observations_by_metric,
+        "forecasts_by_metric": forecasts_by_metric,
+        "evaluations_by_metric": evaluations_by_metric,
+        "metric_types": met_svc.METRIC_TYPES,
+        "measurement_methods": met_svc.MEASUREMENT_METHODS,
+        "collection_frequencies": met_svc.COLLECTION_FREQUENCIES,
+        "directions_of_improvement": met_svc.DIRECTIONS_OF_IMPROVEMENT,
+        "forecast_methods": met_svc.FORECAST_METHODS,
+        "confidence_levels": met_svc.CONFIDENCE_LEVELS,
         "alert": _alert(err, msg),
     })
 
@@ -494,3 +511,302 @@ def project_knowledge_promote(request: Request, project_id: str, kn_id: str, csr
         return _to(project_id, "knowledge", err="Session expired or invalid form token.")
     return _run(project_id, "knowledge", lambda: km.promote_to_collective(kn_id, user, rationale),
                 "Knowledge verified and promoted to Collective Memory.")
+
+
+# --- metrics actions (Milestone 3) -----------------------------------------
+
+@router.post("/projects/{project_id}/metrics/create")
+def project_metric_create(
+    request: Request,
+    project_id: str,
+    csrf_token: str = Form(...),
+    name: str = Form(...),
+    unit: str = Form(...),
+    metric_type: str = Form("count"),
+    path_id: str = Form(""),
+    description: str = Form(""),
+    measurement_method: str = Form("manual"),
+    source: str = Form(""),
+    collection_frequency: str = Form("ad_hoc"),
+    target_value: str = Form(""),
+    target_date: str = Form(""),
+    direction_of_improvement: str = Form("higher_is_better"),
+):
+    user = _guard(request, csrf_token)
+    if not user:
+        return _to(project_id, "metrics", err="Session expired or invalid form token.")
+
+    pid = path_id.strip() or None
+    t_val = float(target_value.strip()) if target_value.strip() else None
+    t_date = target_date.strip() or None
+
+    return _run(
+        project_id,
+        "metrics",
+        lambda: met_svc.define_metric(
+            project_id=project_id,
+            name=name,
+            unit=unit,
+            metric_type=metric_type,
+            path_id=pid,
+            description=description,
+            measurement_method=measurement_method,
+            source=source,
+            collection_frequency=collection_frequency,
+            target_value=t_val,
+            target_date=t_date,
+            direction_of_improvement=direction_of_improvement,
+            owner=user,
+        ),
+        f"Metric '{name}' defined successfully."
+    )
+
+
+@router.post("/projects/{project_id}/metrics/{metric_id}/update")
+def project_metric_update(
+    request: Request,
+    project_id: str,
+    metric_id: str,
+    csrf_token: str = Form(...),
+    description: str = Form(""),
+    target_value: str = Form(""),
+    target_date: str = Form(""),
+    direction_of_improvement: str = Form(""),
+    collection_frequency: str = Form(""),
+):
+    user = _guard(request, csrf_token)
+    if not user:
+        return _to(project_id, "metrics", err="Session expired or invalid form token.")
+
+    t_val = float(target_value.strip()) if target_value.strip() else None
+    t_date = target_date.strip() or None
+    dir_imp = direction_of_improvement.strip() or None
+    freq = collection_frequency.strip() or None
+
+    return _run(
+        project_id,
+        "metrics",
+        lambda: met_svc.update_metric(
+            metric_id=metric_id,
+            description=description,
+            target_value=t_val,
+            target_date=t_date,
+            direction_of_improvement=dir_imp,
+            collection_frequency=freq,
+        ),
+        "Metric updated."
+    )
+
+
+@router.post("/projects/{project_id}/metrics/{metric_id}/archive")
+def project_metric_archive(request: Request, project_id: str, metric_id: str, csrf_token: str = Form(...)):
+    user = _guard(request, csrf_token)
+    if not user:
+        return _to(project_id, "metrics", err="Session expired or invalid form token.")
+    return _run(project_id, "metrics", lambda: met_svc.archive_metric(metric_id), "Metric archived.")
+
+
+@router.post("/projects/{project_id}/metrics/{metric_id}/observations/create")
+def project_observation_create(
+    request: Request,
+    project_id: str,
+    metric_id: str,
+    csrf_token: str = Form(...),
+    value: str = Form(...),
+    measured_at: str = Form(""),
+    source: str = Form(""),
+    collection_method: str = Form(""),
+    verification_status: str = Form("unverified"),
+    evidence_reference: str = Form(""),
+    notes: str = Form(""),
+):
+    user = _guard(request, csrf_token)
+    if not user:
+        return _to(project_id, "metrics", err="Session expired or invalid form token.")
+
+    val = float(value.strip())
+    meas_time = measured_at.strip() or None
+
+    return _run(
+        project_id,
+        "metrics",
+        lambda: met_svc.record_observation(
+            metric_id=metric_id,
+            value=val,
+            measured_at=meas_time,
+            source=source,
+            collection_method=collection_method,
+            verification_status=verification_status,
+            evidence_reference=evidence_reference,
+            notes=notes,
+            created_by=user,
+        ),
+        "Actual observation recorded."
+    )
+
+
+@router.post("/projects/{project_id}/metrics/{metric_id}/observations/correct")
+def project_observation_correct(
+    request: Request,
+    project_id: str,
+    metric_id: str,
+    csrf_token: str = Form(...),
+    supersedes_id: str = Form(...),
+    correction_reason: str = Form(...),
+    value: str = Form(...),
+    measured_at: str = Form(""),
+    source: str = Form(""),
+    collection_method: str = Form(""),
+    verification_status: str = Form("verified"),
+    evidence_reference: str = Form(""),
+    notes: str = Form(""),
+):
+    user = _guard(request, csrf_token)
+    if not user:
+        return _to(project_id, "metrics", err="Session expired or invalid form token.")
+
+    val = float(value.strip())
+    meas_time = measured_at.strip() or None
+
+    return _run(
+        project_id,
+        "metrics",
+        lambda: met_svc.record_observation_correction(
+            metric_id=metric_id,
+            supersedes_id=supersedes_id,
+            correction_reason=correction_reason,
+            value=val,
+            measured_at=meas_time,
+            source=source,
+            collection_method=collection_method,
+            verification_status=verification_status,
+            evidence_reference=evidence_reference,
+            notes=notes,
+            created_by=user,
+        ),
+        "Auditable observation correction recorded."
+    )
+
+
+@router.post("/projects/{project_id}/metrics/{metric_id}/forecasts/create")
+def project_forecast_create(
+    request: Request,
+    project_id: str,
+    metric_id: str,
+    csrf_token: str = Form(...),
+    predicted_value: str = Form(...),
+    method: str = Form("manual_estimate"),
+    path_id: str = Form(""),
+    assumptions: str = Form(""),
+    evidence: str = Form(""),
+    confidence_score: str = Form(""),
+    confidence_level: str = Form("medium"),
+    revision_reason: str = Form(""),
+    prediction_period: str = Form(""),
+    target_date: str = Form(""),
+):
+    user = _guard(request, csrf_token)
+    if not user:
+        return _to(project_id, "metrics", err="Session expired or invalid form token.")
+
+    val = float(predicted_value.strip())
+    pid = path_id.strip() or None
+    cs = float(confidence_score.strip()) if confidence_score.strip() else None
+    t_date = target_date.strip() or None
+
+    return _run(
+        project_id,
+        "metrics",
+        lambda: met_svc.record_forecast(
+            metric_id=metric_id,
+            predicted_value=val,
+            method=method,
+            assumptions=assumptions,
+            evidence=evidence,
+            confidence_score=cs,
+            confidence_level=confidence_level,
+            revision_reason=revision_reason,
+            created_by=user,
+            path_id=pid,
+            prediction_period=prediction_period,
+            target_date=t_date,
+        ),
+        "Versioned forecast recorded."
+    )
+
+
+@router.post("/projects/{project_id}/metrics/{metric_id}/forecasts/generate")
+def project_forecast_generate(
+    request: Request,
+    project_id: str,
+    metric_id: str,
+    csrf_token: str = Form(...),
+    method: str = Form(...),
+    path_id: str = Form(""),
+    target_date: str = Form(""),
+    window_size: int = Form(3),
+    revision_reason: str = Form(""),
+):
+    user = _guard(request, csrf_token)
+    if not user:
+        return _to(project_id, "metrics", err="Session expired or invalid form token.")
+
+    pid = path_id.strip() or None
+    t_date = target_date.strip() or None
+
+    def _calc():
+        if method == "linear_trend":
+            calc = met_svc.calculate_linear_trend_forecast(metric_id, target_date_iso=t_date)
+        elif method == "rolling_average":
+            calc = met_svc.calculate_rolling_average_forecast(metric_id, window_size=window_size)
+        elif method == "rate_extrapolation":
+            calc = met_svc.calculate_rate_extrapolation_forecast(metric_id, target_date_iso=t_date)
+        else:
+            raise ps.ValidationError(f"Unsupported automated method '{method}'.")
+
+        if calc["status"] == "insufficient_data":
+            raise ps.ValidationError(f"Insufficient data for {method}: {calc.get('reason')}")
+
+        return met_svc.record_forecast(
+            metric_id=metric_id,
+            predicted_value=calc["predicted_value"],
+            method=method,
+            assumptions=calc.get("assumptions", ""),
+            confidence_level=calc.get("confidence_level", "medium"),
+            revision_reason=revision_reason,
+            created_by=user,
+            path_id=pid,
+            target_date=t_date,
+        )
+
+    return _run(project_id, "metrics", _calc, "Automated forecast calculated and recorded.")
+
+
+@router.post("/projects/{project_id}/metrics/{metric_id}/forecasts/{forecast_id}/evaluate")
+def project_forecast_evaluate(
+    request: Request,
+    project_id: str,
+    metric_id: str,
+    forecast_id: str,
+    csrf_token: str = Form(...),
+    actual_observation_id: str = Form(""),
+    evaluation_notes: str = Form(""),
+):
+    user = _guard(request, csrf_token)
+    if not user:
+        return _to(project_id, "metrics", err="Session expired or invalid form token.")
+
+    obs_id = actual_observation_id.strip() or None
+
+    return _run(
+        project_id,
+        "metrics",
+        lambda: met_svc.evaluate_forecast(
+            forecast_id=forecast_id,
+            actual_observation_id=obs_id,
+            evaluated_by=user,
+            notes=evaluation_notes,
+        ),
+        "Forecast evaluated against actual performance."
+    )
+
