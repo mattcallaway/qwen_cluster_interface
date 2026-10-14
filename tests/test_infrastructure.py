@@ -10,11 +10,19 @@ from app.services import infrastructure as infra_svc
 def clean_infrastructure_tables():
     """Ensure clean infrastructure tables before each test."""
     with get_db_connection() as conn:
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute("DROP TRIGGER IF EXISTS trg_worker_exec_no_delete")
+        conn.execute("DELETE FROM worker_executions")
+        conn.execute("""
+            CREATE TRIGGER trg_worker_exec_no_delete BEFORE DELETE ON worker_executions
+            BEGIN SELECT RAISE(ABORT, 'worker_executions is append-only'); END
+        """)
         conn.execute("DELETE FROM infrastructure_verifications")
         conn.execute("DELETE FROM infrastructure_reconciliations")
         conn.execute("DELETE FROM infrastructure_capabilities")
         conn.execute("DELETE FROM infrastructure_nodes")
         conn.commit()
+        conn.execute("PRAGMA foreign_keys = ON")
     yield
 
 

@@ -1,5 +1,11 @@
 """
-API integration tests for Worker Controller Endpoints & Agent Communication (Milestone 2).
+API integration tests for Worker Controller Endpoints & Agent Communication.
+Verifies:
+- Enrollment token lifecycle (creation, validation, expiration, single-use consumption)
+- Rejection of unauthenticated or invalid enrollment attempts
+- Scoped worker token issuance and authenticated inventory updates
+- Worker isolation (prevention of cross-worker execution viewing and lease hijacking)
+- Idempotent task leasing, heartbeats, and result submissions
 """
 
 from datetime import datetime, timezone
@@ -8,8 +14,6 @@ from starlette.testclient import TestClient
 
 from app.main import app
 from app.services import worker as worker_svc
-from vps_agent.agent import VPSWorkerAgent
-from vps_agent.config import AgentConfig
 
 
 @pytest.fixture
@@ -17,11 +21,67 @@ def client(db_conn):
     return TestClient(app)
 
 
-def test_worker_registration_and_auth_flow(client):
-    # 1. Register worker
+def test_unauthenticated_registration_rejected(client):
+    """Worker registration without enrollment token or admin session is rejected (401)."""
     reg_payload = {
-        "node_id": "vps-api-node-01",
-        "name": "API Test Worker",
+        "node_id": "vps-unauth-01",
+        "name": "Unauthenticated Worker",
+        "role": "vps_worker",
+    }
+    resp = client.post("/api/v1/worker/register", json=reg_payload)
+    assert resp.status_code == 401
+    assert "Worker enrollment authorization required" in resp.json()["detail"]
+
+
+def test_invalid_and_expired_enrollment_tokens_rejected(client, db_conn):
+    """Invalid, expired, or node-mismatched enrollment tokens are rejected with 403."""
+    reg_payload = {
+        "node_id": "vps-invalid-node",
+        "name": "Invalid Token Worker",
+        "role": "vps_worker",
+    }
+
+    # 1. Non-existent / malformed token
+    resp = client.post(
+        "/api/v1/worker/register",
+        json=reg_payload,
+        headers={"X-Enrollment-Token": "qcwe_completely_fake_token_value_here"},
+    )
+    assert resp.status_code == 403
+    assert "Enrollment token not found" in resp.json()["detail"]
+
+    # 2. Expired token (expires in -10 seconds)
+    token_id, expired_token = worker_svc.create_enrollment_token(expires_in_seconds=-10)
+    resp = client.post(
+        "/api/v1/worker/register",
+        json=reg_payload,
+        headers={"X-Enrollment-Token": expired_token},
+    )
+    assert resp.status_code == 403
+    assert "expired" in resp.json()["detail"].lower()
+
+    # 3. Token restricted to node-specific ID
+    token_id2, restricted_token = worker_svc.create_enrollment_token(allowed_node_id="vps-authorized-node-only")
+    resp = client.post(
+        "/api/v1/worker/register",
+        json={"node_id": "vps-wrong-node", "name": "Wrong Node"},
+        headers={"X-Enrollment-Token": restricted_token},
+    )
+    assert resp.status_code == 403
+    assert "restricted to node" in resp.json()["detail"].lower()
+
+
+def test_valid_enrollment_succeeds_and_token_is_single_use(client, db_conn):
+    """Valid enrollment token succeeds, provisions worker token, and cannot be reused."""
+    node_id = "vps-valid-node-01"
+    token_id, raw_enrollment_token = worker_svc.create_enrollment_token(
+        allowed_node_id=node_id,
+        expires_in_seconds=3600,
+    )
+
+    reg_payload = {
+        "node_id": node_id,
+        "name": "Valid Worker Node",
         "role": "vps_worker",
         "cpu_count": 2,
         "ram_total_mb": 2048,
@@ -30,34 +90,92 @@ def test_worker_registration_and_auth_flow(client):
         "disk_free_gb": 20.0,
         "declared_capabilities": ["python_execution", "test_task"],
     }
-    resp = client.post("/api/v1/worker/register", json=reg_payload)
+
+    # 1. First enrollment succeeds
+    resp = client.post(
+        "/api/v1/worker/register",
+        json=reg_payload,
+        headers={"X-Enrollment-Token": raw_enrollment_token},
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "registered"
+    assert data["token_status"] == "provisioned"
     assert "worker_token" in data
-    token = data["worker_token"]
-    assert token.startswith("qcw_")
+    worker_token = data["worker_token"]
+    assert worker_token.startswith("qcw_")
 
-    # 2. Unauthenticated heartbeat rejected
-    hb_payload = {
-        "node_id": "vps-api-node-01",
-        "ram_available_mb": 950,
-        "disk_free_gb": 19.5,
-    }
-    unauth_resp = client.post("/api/v1/worker/heartbeat", json=hb_payload)
-    assert unauth_resp.status_code == 401
+    # 2. Immediate reuse of the same enrollment token is rejected (single-use)
+    reuse_resp = client.post(
+        "/api/v1/worker/register",
+        json=reg_payload,
+        headers={"X-Enrollment-Token": raw_enrollment_token},
+    )
+    assert reuse_resp.status_code == 403
+    assert "already consumed" in reuse_resp.json()["detail"].lower()
 
-    # 3. Authenticated heartbeat accepted
-    auth_headers = {"Authorization": f"Bearer {token}"}
-    auth_resp = client.post("/api/v1/worker/heartbeat", json=hb_payload, headers=auth_headers)
+    # 3. Subsequent inventory updates use the authenticated worker Bearer token
+    update_payload = dict(reg_payload, ram_available_mb=1200)
+    auth_resp = client.post(
+        "/api/v1/worker/register",
+        json=update_payload,
+        headers={"Authorization": f"Bearer {worker_token}"},
+    )
     assert auth_resp.status_code == 200
-    hb_data = auth_resp.json()
-    assert hb_data["status"] == "ok"
-    assert hb_data["node_id"] == "vps-api-node-01"
+    assert auth_resp.json()["token_status"] == "authenticated"
+
+
+def test_worker_cannot_impersonate_or_access_other_nodes(client, db_conn):
+    """A worker cannot access another node's private executions or claim another node's tasks."""
+    # Enroll Worker A
+    _, enr_a = worker_svc.create_enrollment_token(allowed_node_id="worker-node-a")
+    resp_a = client.post(
+        "/api/v1/worker/register",
+        json={"node_id": "worker-node-a", "name": "Worker A"},
+        headers={"X-Enrollment-Token": enr_a},
+    )
+    token_a = resp_a.json()["worker_token"]
+
+    # Enroll Worker B
+    _, enr_b = worker_svc.create_enrollment_token(allowed_node_id="worker-node-b")
+    resp_b = client.post(
+        "/api/v1/worker/register",
+        json={"node_id": "worker-node-b", "name": "Worker B"},
+        headers={"X-Enrollment-Token": enr_b},
+    )
+    token_b = resp_b.json()["worker_token"]
+
+    headers_a = {"Authorization": f"Bearer {token_a}"}
+    headers_b = {"Authorization": f"Bearer {token_b}"}
+
+    # Worker A cannot claim tasks using Worker B's worker_id
+    lease_resp = client.post(
+        "/api/v1/worker/tasks/lease",
+        json={"worker_id": "worker-node-b", "supported_categories": ["test_task"]},
+        headers=headers_a,
+    )
+    assert lease_resp.status_code == 403
+
+    # Worker A cannot send heartbeat for Worker B
+    hb_resp = client.post(
+        "/api/v1/worker/heartbeat",
+        json={"node_id": "worker-node-b"},
+        headers=headers_a,
+    )
+    assert hb_resp.status_code == 403
+
+    # Worker A cannot inspect Worker B's execution history
+    exec_resp = client.get(
+        "/api/v1/worker/executions?worker_id=worker-node-b",
+        headers=headers_a,
+    )
+    assert exec_resp.status_code == 403
 
 
 def test_task_leasing_and_submission_api_flow(client, db_conn):
-    # 1. Register worker and get token
+    """Complete lifecycle: enrollment, lease claim, heartbeat renewal, execution submission."""
+    # 1. Enroll worker with enrollment token
+    _, enr_tok = worker_svc.create_enrollment_token(allowed_node_id="vps-task-worker-01")
     reg_resp = client.post(
         "/api/v1/worker/register",
         json={
@@ -65,12 +183,14 @@ def test_task_leasing_and_submission_api_flow(client, db_conn):
             "name": "Task Test Worker",
             "declared_capabilities": ["test_task"],
         },
+        headers={"X-Enrollment-Token": enr_tok},
     )
+    assert reg_resp.status_code == 200
     token = reg_resp.json()["worker_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
     # Ensure no pre-existing tasks are pending before starting the test
-    db_conn.execute("UPDATE tasks SET status = 'completed' WHERE status IN ('pending', 'approved')")
+    db_conn.execute("UPDATE tasks SET status = 'completed' WHERE status IN ('pending', 'approved', 'queued')")
     db_conn.commit()
 
     # 2. No work available initially
@@ -115,7 +235,15 @@ def test_task_leasing_and_submission_api_flow(client, db_conn):
     assert renew_resp.status_code == 200
     assert renew_resp.json()["status"] == "renewed"
 
-    # 6. Submit task result
+    # 6. Worker B cannot submit result for Worker A's lease
+    _, enr_tok_b = worker_svc.create_enrollment_token(allowed_node_id="vps-worker-hijacker")
+    reg_b = client.post(
+        "/api/v1/worker/register",
+        json={"node_id": "vps-worker-hijacker", "name": "Hijacker"},
+        headers={"X-Enrollment-Token": enr_tok_b},
+    )
+    headers_b = {"Authorization": f"Bearer {reg_b.json()['worker_token']}"}
+
     sub_payload = {
         "task_id": task_id,
         "lease_id": lease_id,
@@ -126,11 +254,15 @@ def test_task_leasing_and_submission_api_flow(client, db_conn):
         "stdout_summary": "Acceptance probe completed successfully.",
         "result_payload": {"success": True},
     }
+    hijack_resp = client.post(f"/api/v1/worker/tasks/{task_id}/submit", json=sub_payload, headers=headers_b)
+    assert hijack_resp.status_code == 403
+
+    # 7. Authorized worker submits task result
     submit_resp = client.post(f"/api/v1/worker/tasks/{task_id}/submit", json=sub_payload, headers=headers)
     assert submit_resp.status_code == 200
     assert submit_resp.json()["status"] == "recorded"
 
-    # 7. Check execution history
+    # 8. Check execution history
     hist_resp = client.get("/api/v1/worker/executions", headers=headers)
     assert hist_resp.status_code == 200
     executions = hist_resp.json()

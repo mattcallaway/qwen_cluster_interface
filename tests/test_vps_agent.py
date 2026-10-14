@@ -100,3 +100,55 @@ def test_executor_timeout_limit():
     assert outcome["status"] == "timeout"
     assert outcome["exit_code"] == 124
     assert outcome["error_category"] == "timeout"
+
+
+def test_executor_unsupported_operation_rejection():
+    """Unsupported operations fail explicitly with error_category 'unsupported_operation'."""
+    task = {
+        "task_id": "bad-task-01",
+        "task_type": "arbitrary_custom_binary",
+        "input_data": {"command": "do_something_unsafe"},
+    }
+    outcome = execute_task(task, timeout_seconds=5)
+    assert outcome["status"] == "error"
+    assert outcome["exit_code"] == 1
+    assert outcome["error_category"] == "unsupported_operation"
+    assert "Unsupported operation" in outcome["stderr_summary"]
+
+
+def test_executor_class_c_fails_closed_without_container_runtime(monkeypatch):
+    """Class C experimental/untrusted code fails closed if container runtime is absent."""
+    # Force container runtime check to False
+    from vps_agent import executor
+    monkeypatch.setattr(executor, "_check_container_isolation_available", lambda: False)
+
+    task = {
+        "task_id": "untrusted-ai-01",
+        "task_type": "experimental_code",
+        "input_data": {"code": "import os; print('experimental')"},
+    }
+    outcome = execute_task(task, timeout_seconds=5)
+    assert outcome["status"] == "error"
+    assert outcome["error_category"] == "isolation_unavailable"
+    assert "container isolation" in outcome["stderr_summary"].lower()
+
+
+def test_executor_environment_sanitization_strips_controller_secrets(monkeypatch):
+    """Subprocess does not receive controller secrets or sensitive environment variables."""
+    import os
+    monkeypatch.setenv("QC_SECRET_KEY", "super_secret_controller_key")
+    monkeypatch.setenv("QC_DATABASE_URL", "sqlite:///sensitive.db")
+    monkeypatch.setenv("TOKEN_API_SECRET", "super_secret_token")
+
+    task = {
+        "task_id": "py-leak-check",
+        "task_type": "python_execution",
+        "input_data": {
+            "script": "import os; print('QC_SECRET_KEY=' + os.environ.get('QC_SECRET_KEY', 'NOT_FOUND')); print('TOKEN=' + os.environ.get('TOKEN_API_SECRET', 'NOT_FOUND'))"
+        },
+    }
+    outcome = execute_task(task, timeout_seconds=5)
+    assert outcome["status"] == "success"
+    assert "QC_SECRET_KEY=NOT_FOUND" in outcome["stdout_summary"]
+    assert "TOKEN=NOT_FOUND" in outcome["stdout_summary"]
+

@@ -9,6 +9,7 @@ Enforces:
 """
 
 import logging
+import threading
 import time
 from typing import Any, Dict, Optional
 import requests
@@ -19,6 +20,28 @@ from vps_agent.config import AgentConfig, load_config
 from vps_agent.executor import execute_task
 
 logger = logging.getLogger("qwen_collective.worker_agent")
+
+
+def _run_lease_heartbeats(agent: "VPSWorkerAgent", lease_id: str, stop_event: threading.Event) -> None:
+    """Maintain per-task lease renewal and node heartbeat in background during execution."""
+    interval = min(15, max(5, agent.config.heartbeat_interval))
+    while not stop_event.wait(interval):
+        # 1. Renew per-task lease heartbeat
+        renew_url = f"{agent.config.controller_url}/api/v1/worker/tasks/{lease_id}/heartbeat"
+        try:
+            r = agent.session.post(renew_url, headers=agent._headers(), timeout=5)
+            if r.status_code == 200:
+                logger.debug("Renewed heartbeat for lease %s", lease_id)
+            elif r.status_code in (403, 404):
+                logger.warning("Lease %s heartbeat returned %s; task lease may be stale or revoked", lease_id, r.status_code)
+        except Exception as e:
+            logger.debug("Lease heartbeat ping failed: %s", e)
+
+        # 2. Also keep node health fresh
+        try:
+            agent.send_heartbeat()
+        except Exception:
+            pass
 
 
 class VPSWorkerAgent:
@@ -34,6 +57,8 @@ class VPSWorkerAgent:
         headers = {"Content-Type": "application/json"}
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
+        elif self.config.enrollment_token:
+            headers["X-Enrollment-Token"] = self.config.enrollment_token
         return headers
 
     def register(self) -> bool:
@@ -44,6 +69,7 @@ class VPSWorkerAgent:
             "node_id": self.config.worker_id,
             "name": self.config.worker_name,
             "role": self.config.worker_role,
+            "enrollment_token": self.config.enrollment_token if not self.token else None,
             "hostname": hardware_info["hostname"],
             "os_name": hardware_info["os_name"],
             "os_version": hardware_info["os_version"],
@@ -124,7 +150,10 @@ class VPSWorkerAgent:
         url = f"{self.config.controller_url}/api/v1/worker/tasks/lease"
         payload = {
             "worker_id": self.config.worker_id,
-            "supported_categories": ["python_execution", "approved_shell", "file_processing", "monitoring"],
+            "supported_categories": [
+                "test_task", "health_check", "diagnostic", "capability_probe", "ping",
+                "python_execution", "approved_shell", "file_processing", "monitoring",
+            ],
             "lease_duration_seconds": self.config.lease_duration,
         }
 
@@ -145,8 +174,20 @@ class VPSWorkerAgent:
         idempotency_key = task["idempotency_key"]
         logger.info("Claimed lease for task %s (Lease: %s)", task_id, lease_id)
 
-        # Execute task
-        exec_outcome = execute_task(task, timeout_seconds=self.config.default_task_timeout)
+        # Execute task with independent concurrent lease/node heartbeating
+        stop_heartbeat = threading.Event()
+        hb_thread = threading.Thread(
+            target=_run_lease_heartbeats,
+            args=(self, lease_id, stop_heartbeat),
+            daemon=True,
+        )
+        hb_thread.start()
+
+        try:
+            exec_outcome = execute_task(task, timeout_seconds=self.config.default_task_timeout)
+        finally:
+            stop_heartbeat.set()
+            hb_thread.join(timeout=2.0)
 
         # Prepare submission payload
         submission = {

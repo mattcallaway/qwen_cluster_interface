@@ -174,7 +174,11 @@ def build_project_context_packet(
     if stage_tasks:
         for t in stage_tasks[:8]:
             deps = task_svc.get_task_dependencies(t["id"])
-            dep_str = f" (Depends on: {', '.join([d['depends_on_task_id'] for d in deps])})" if deps else ""
+            if deps:
+                dep_names = [f"{d.get('title') or d.get('depends_on_task_id') or d.get('id')} ({d.get('status', 'unknown')})" for d in deps]
+                dep_str = f" (Depends on: {', '.join(dep_names)})"
+            else:
+                dep_str = ""
             task_lines.append(f"- **{t['title']}** [{t['status']}] - Type: {t['task_type']}{dep_str}")
             if t.get("purpose"):
                 task_lines.append(f"  - Purpose: {t['purpose']}")
@@ -343,4 +347,5 @@ def build_project_context_packet(
         "sections": sections,
         "omitted_info": omitted_info,
         "rendered_prompt": rendered_markdown,
+        "rendered_markdown": rendered_markdown,
     }

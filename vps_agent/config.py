@@ -15,6 +15,7 @@ class AgentConfig(BaseModel):
     worker_name: str = Field(default_factory=lambda: os.getenv("QC_WORKER_NAME", "VPS Operational Companion"))
     worker_role: str = Field(default_factory=lambda: os.getenv("QC_WORKER_ROLE", "vps_companion"))
     worker_token: str = Field(default_factory=lambda: os.getenv("QC_WORKER_TOKEN", ""))
+    enrollment_token: str = Field(default_factory=lambda: os.getenv("QC_ENROLLMENT_TOKEN", ""))
 
     # Polling & Heartbeat Intervals (Seconds)
     poll_interval: int = Field(default_factory=lambda: int(os.getenv("QC_POLL_INTERVAL", "5")))

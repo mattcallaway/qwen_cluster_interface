@@ -19,13 +19,30 @@
   {% else %}
     <!-- Active Chat Session Header -->
     <div class="card" style="margin-bottom: 16px; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-      <div>
-        <span style="font-size: 0.85rem; color: var(--text-muted);">Backend:</span>
-        <strong style="color: var(--primary);">{{ active_backend.name }}</strong>
-        <span style="font-size: 0.8rem; color: var(--text-muted);">({{ active_backend.model_name or "Loaded Model" }})</span>
-        <span style="margin: 0 8px; color: var(--border-color);">|</span>
-        <span style="font-size: 0.85rem; color: var(--text-muted);">Topic:</span>
-        <strong style="color: var(--text-main); font-size: 0.9rem;">{{ active_title }}</strong>
+      <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 10px;">
+        <div>
+          <span style="font-size: 0.85rem; color: var(--text-muted);">Backend:</span>
+          <strong style="color: var(--primary);">{{ active_backend.name }}</strong>
+          <span style="font-size: 0.8rem; color: var(--text-muted);">({{ active_backend.model_name or "Loaded Model" }})</span>
+        </div>
+        <span style="color: var(--border-color);">|</span>
+        <!-- Project Binding Selector -->
+        <form action="/chat/project" method="post" style="display: flex; align-items: center; gap: 6px; margin: 0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="session_id" value="{{ session_id }}">
+          <label style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">Project:</label>
+          <select name="project_id" class="form-control" style="font-size: 0.8rem; padding: 4px 8px; width: auto;" onchange="this.form.submit()">
+            <option value="">-- No Project (Standalone) --</option>
+            {% for p in projects %}
+              <option value="{{ p.id }}" {% if p.id == active_project_id %}selected{% endif %}>{{ p.name }}</option>
+            {% endfor %}
+          </select>
+        </form>
+        {% if active_project_id %}
+          <button type="button" class="btn btn-secondary btn-sm" onclick="openContextPreview()" title="Inspect context packet assembled for Qwen">
+            🔍 Context Preview
+          </button>
+        {% endif %}
       </div>
       <div style="display: flex; gap: 8px; align-items: center;">
         {% if conversations and conversations|length > 1 %}
@@ -46,6 +63,73 @@
         </form>
       </div>
     </div>
+
+    <!-- Diagnostic Context Preview Modal -->
+    <div id="contextModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; padding: 20px;">
+      <div class="card" style="max-width: 800px; width: 100%; max-height: 85vh; display: flex; flex-direction: column; background: #fff; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
+        <div style="padding: 16px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+          <h4 style="margin: 0; font-size: 1.1rem; color: var(--text-main);">🔍 Model Context Assembly Preview</h4>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="closeContextPreview()">✕ Close</button>
+        </div>
+        <div id="contextModalContent" style="padding: 20px; overflow-y: auto; font-size: 0.85rem; line-height: 1.5; color: var(--text-main);">
+          <p>Loading context packet diagnostics...</p>
+        </div>
+      </div>
+    </div>
+
+    <script>
+    async function openContextPreview() {
+      const modal = document.getElementById('contextModal');
+      const content = document.getElementById('contextModalContent');
+      modal.style.display = 'flex';
+      content.innerHTML = '<p>Loading live context packet from controller...</p>';
+      try {
+        const resp = await fetch('/chat/context-preview?session_id={{ session_id }}');
+        if (!resp.ok) {
+          content.innerHTML = '<p style="color: red;">Failed to retrieve context preview.</p>';
+          return;
+        }
+        const data = await resp.json();
+        let html = `<div style="margin-bottom: 14px;">
+          <strong>Mode:</strong> ${data.mode.toUpperCase()} | 
+          <strong>Project:</strong> ${data.project_name || 'None'} | 
+          <strong>Total Est. Tokens:</strong> ~${data.total_estimated_tokens}
+        </div>`;
+        
+        if (data.project_context && data.project_context.sections) {
+          html += '<h5 style="margin-top: 12px; margin-bottom: 6px; color: var(--primary);">Project Context Sections:</h5>';
+          html += '<div style="display: flex; flex-direction: column; gap: 8px;">';
+          data.project_context.sections.forEach(s => {
+            html += `<div style="border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 12px; background: #f8fafc;">
+              <div style="display: flex; justify-content: space-between; font-weight: 600; font-size: 0.8rem; margin-bottom: 4px;">
+                <span>Priority ${s.priority}: ${s.name}</span>
+                <span class="badge" style="background: #e2e8f0; color: #334155;">${s.trust_level} (~${s.tokens} tok)</span>
+              </div>
+              <pre style="white-space: pre-wrap; font-size: 0.75rem; margin: 0; color: #475569;">${s.preview}</pre>
+            </div>`;
+          });
+          html += '</div>';
+        }
+        
+        if (data.architecture_context) {
+          html += '<h5 style="margin-top: 16px; margin-bottom: 6px; color: var(--primary);">Architecture Context Packet:</h5>';
+          html += `<div style="border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 12px; background: #f8fafc;">
+            <div style="font-size: 0.8rem; font-weight: 600; margin-bottom: 4px;">
+              Nodes: ${data.architecture_context.node_count} | Verified Capabilities: ${data.architecture_context.verified_capability_count} | Tokens: ~${data.architecture_context.estimated_tokens}
+            </div>
+            ${data.architecture_context.rendered_prompt_preview ? `<pre style="white-space: pre-wrap; font-size: 0.75rem; margin: 0; color: #475569;">${data.architecture_context.rendered_prompt_preview}</pre>` : ''}
+          </div>`;
+        }
+        
+        content.innerHTML = html;
+      } catch (err) {
+        content.innerHTML = '<p style="color: red;">Error: ' + err + '</p>';
+      }
+    }
+    function closeContextPreview() {
+      document.getElementById('contextModal').style.display = 'none';
+    }
+    </script>
 
     <!-- Chat Message History Container -->
     <div class="card" style="min-height: 400px; max-height: 600px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; margin-bottom: 20px; padding: 24px;">

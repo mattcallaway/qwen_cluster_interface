@@ -332,7 +332,8 @@ def get_task_dependencies(task_id: str) -> List[Dict[str, Any]]:
     conn = get_db_connection()
     try:
         rows = conn.execute("""
-            SELECT t.* FROM tasks t
+            SELECT t.*, td.depends_on_task_id, td.task_id AS dependent_task_id
+            FROM tasks t
             JOIN task_dependencies td ON td.depends_on_task_id = t.id
             WHERE td.task_id = ?
             ORDER BY t.created_at ASC
@@ -347,7 +348,8 @@ def get_task_dependents(task_id: str) -> List[Dict[str, Any]]:
     conn = get_db_connection()
     try:
         rows = conn.execute("""
-            SELECT t.* FROM tasks t
+            SELECT t.*, td.depends_on_task_id, td.task_id AS dependent_task_id
+            FROM tasks t
             JOIN task_dependencies td ON td.task_id = t.id
             WHERE td.depends_on_task_id = ?
             ORDER BY t.created_at ASC

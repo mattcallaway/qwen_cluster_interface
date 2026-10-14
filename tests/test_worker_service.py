@@ -18,6 +18,7 @@ from uuid import uuid4
 def clean_node(db_conn):
     node_id = f"vps-node-{uuid4().hex[:8]}"
     now = datetime.now(timezone.utc).isoformat()
+    db_conn.execute("UPDATE tasks SET status = 'completed' WHERE status IN ('pending', 'approved', 'queued')")
     db_conn.execute(
         """
         INSERT INTO infrastructure_nodes (

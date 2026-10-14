@@ -124,6 +124,145 @@ def revoke_worker_token(token_id: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Worker Enrollment Token Management (Security Enrollment Gate)
+# ---------------------------------------------------------------------------
+
+def create_enrollment_token(
+    allowed_node_id: Optional[str] = None,
+    expires_in_seconds: int = 86400,
+    created_by: str = "admin",
+) -> Tuple[str, str]:
+    """
+    Generate an administrator-issued, single-use, expiring enrollment token.
+    Returns (token_id, raw_token). The raw token is returned once to provide to the worker.
+    """
+    raw_token = f"qcwe_{secrets.token_urlsafe(32)}"
+    token_id = f"enr_{uuid4().hex[:12]}"
+    token_hash = _hash_token(raw_token)
+    token_prefix = raw_token[:10] + "..."
+    now_dt = datetime.now(timezone.utc)
+    now_iso = now_dt.isoformat()
+    expires_dt = datetime.fromtimestamp(now_dt.timestamp() + expires_in_seconds, tz=timezone.utc)
+    expires_iso = expires_dt.isoformat()
+
+    conn = get_db_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO worker_enrollment_tokens (
+                id, token_hash, token_prefix, allowed_node_id, created_by,
+                created_at, expires_at, used_at, used_by_node_id, revoked
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0)
+            """,
+            (token_id, token_hash, token_prefix, allowed_node_id, created_by, now_iso, expires_iso),
+        )
+        conn.commit()
+        logger.info("Created worker enrollment token %s (allowed_node_id: %s, expires: %s)", token_id, allowed_node_id, expires_iso)
+        return token_id, raw_token
+    finally:
+        conn.close()
+
+
+def verify_and_consume_enrollment_token(raw_token: str, node_id: str) -> Tuple[bool, str]:
+    """
+    Verify and atomically consume an enrollment token for node_id.
+    Returns (success, reason_or_message).
+    """
+    if not raw_token or not raw_token.startswith("qcwe_"):
+        return False, "Invalid enrollment token format"
+
+    token_hash = _hash_token(raw_token)
+    now_iso = _utc_now_iso()
+
+    conn = get_db_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT id, allowed_node_id, expires_at, used_at, revoked
+            FROM worker_enrollment_tokens
+            WHERE token_hash = ?
+            """,
+            (token_hash,),
+        ).fetchone()
+
+        if not row:
+            return False, "Enrollment token not found"
+        if row["revoked"] == 1:
+            return False, "Enrollment token has been revoked"
+        if row["used_at"] is not None:
+            return False, f"Enrollment token was already consumed at {row['used_at']}"
+        if row["expires_at"] < now_iso:
+            return False, f"Enrollment token expired at {row['expires_at']}"
+        if row["allowed_node_id"] and row["allowed_node_id"] != node_id:
+            return False, f"Enrollment token restricted to node '{row['allowed_node_id']}', not '{node_id}'"
+
+        # Atomically consume the single-use token
+        cursor = conn.execute(
+            """
+            UPDATE worker_enrollment_tokens
+            SET used_at = ?, used_by_node_id = ?
+            WHERE id = ? AND used_at IS NULL AND revoked = 0
+            """,
+            (now_iso, node_id, row["id"]),
+        )
+        conn.commit()
+        if cursor.rowcount == 0:
+            return False, "Enrollment token was concurrently consumed"
+
+        logger.info("Successfully consumed enrollment token %s for node %s", row["id"], node_id)
+        return True, "Enrollment token validated and consumed"
+    finally:
+        conn.close()
+
+
+def revoke_enrollment_token(token_id: str) -> bool:
+    """Revoke an active worker enrollment token."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.execute(
+            "UPDATE worker_enrollment_tokens SET revoked = 1 WHERE id = ?",
+            (token_id,),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def list_enrollment_tokens() -> List[Dict[str, Any]]:
+    """List all enrollment tokens with security masking."""
+    conn = get_db_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT id, token_prefix, allowed_node_id, created_by, created_at,
+                   expires_at, used_at, used_by_node_id, revoked
+            FROM worker_enrollment_tokens
+            ORDER BY created_at DESC
+            """
+        ).fetchall()
+        now_iso = _utc_now_iso()
+        results = []
+        for r in rows:
+            is_valid = (r["revoked"] == 0 and r["used_at"] is None and r["expires_at"] > now_iso)
+            results.append({
+                "id": r["id"],
+                "token_prefix": r["token_prefix"],
+                "allowed_node_id": r["allowed_node_id"],
+                "created_by": r["created_by"],
+                "created_at": r["created_at"],
+                "expires_at": r["expires_at"],
+                "used_at": r["used_at"],
+                "used_by_node_id": r["used_by_node_id"],
+                "revoked": bool(r["revoked"]),
+                "is_valid": is_valid,
+            })
+        return results
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
 # Worker Registration & Health Heartbeats
 # ---------------------------------------------------------------------------
 
@@ -304,22 +443,25 @@ def lease_task_for_worker(
         # Find candidate task: approved or approval_required=0, pending status
         # Note: tasks table has columns: id, title, description, task_type, status, assigned_worker,
         # approval_required, input_data_json, idempotency_key, project_id, path_id, stage_id
-        cursor = conn.execute(
-            """
+        query = """
             SELECT t.id, t.title, t.description, t.task_type, t.status, t.assigned_worker,
                    t.input_data_json, t.project_id, t.path_id, t.stage_id, t.purpose, t.expected_output
             FROM tasks t
-            WHERE t.status IN ('pending', 'approved')
-              AND (t.approval_required = 0 OR t.status = 'approved')
+            WHERE t.status IN ('queued', 'pending', 'approved')
+              AND (t.approval_required = 0 OR t.status IN ('queued', 'approved'))
               AND (t.assigned_worker IS NULL OR t.assigned_worker = ?)
               AND t.id NOT IN (
                   SELECT task_id FROM worker_task_leases WHERE status IN ('leased', 'active')
               )
-            ORDER BY t.created_at ASC
-            LIMIT 1
-            """,
-            (worker_id,),
-        )
+        """
+        params: List[Any] = [worker_id]
+        if supported_categories:
+            placeholders = ",".join("?" for _ in supported_categories)
+            query += f" AND t.task_type IN ({placeholders})"
+            params.extend(supported_categories)
+
+        query += " ORDER BY t.created_at ASC LIMIT 1"
+        cursor = conn.execute(query, params)
         task_row = cursor.fetchone()
         if not task_row:
             return None
@@ -454,18 +596,72 @@ def submit_task_result(
                 "completed_at": existing["completed_at"],
             }
 
-        # Resolve foreign keys safely
+        # Resolve foreign keys safely and enforce lease ownership
         actual_lease_id = None
+        lease_row = None
         if lease_id:
-            lease_row = conn.execute("SELECT id FROM worker_task_leases WHERE id = ?", (lease_id,)).fetchone()
+            lease_row = conn.execute(
+                "SELECT id, worker_id, task_id, status FROM worker_task_leases WHERE id = ?",
+                (lease_id,),
+            ).fetchone()
             if lease_row:
+                if lease_row["worker_id"] != worker_id:
+                    raise PermissionError(f"Lease '{lease_id}' belongs to worker '{lease_row['worker_id']}', not '{worker_id}'.")
+                if task_id and lease_row["task_id"] != task_id:
+                    raise ValueError(f"Lease '{lease_id}' was issued for task '{lease_row['task_id']}', not '{task_id}'.")
                 actual_lease_id = lease_id
 
         actual_task_id = None
+        task_row = None
         if task_id:
-            task_row = conn.execute("SELECT id FROM tasks WHERE id = ?", (task_id,)).fetchone()
-            if task_row:
-                actual_task_id = task_row["id"]
+            task_row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            if not task_row:
+                raise ValueError(f"Specified task_id '{task_id}' does not exist.")
+            actual_task_id = task_row["id"]
+            
+            # If lease_id wasn't provided, ensure task isn't leased to a different active worker
+            if not actual_lease_id:
+                active_lease = conn.execute(
+                    "SELECT id, worker_id FROM worker_task_leases WHERE task_id = ? AND status IN ('leased', 'active')",
+                    (actual_task_id,),
+                ).fetchone()
+                if active_lease and active_lease["worker_id"] != worker_id:
+                    raise PermissionError(f"Task '{actual_task_id}' is actively leased to worker '{active_lease['worker_id']}'.")
+
+        # Check for expired lease reconciliation and conflict handling
+        was_expired_lease = bool(lease_row and lease_row["status"] == "expired")
+        task_already_done = bool(task_row and task_row["status"] == "completed")
+
+        if was_expired_lease and task_already_done:
+            # Another worker already completed this task!
+            # Preserve execution record as reconciled conflict without overwriting the completed task
+            execution_id = f"exec_{uuid4().hex[:12]}"
+            conn.execute(
+                """
+                INSERT INTO worker_executions (
+                    id, task_id, worker_id, lease_id, idempotency_key, status,
+                    exit_code, started_at, completed_at, runtime_seconds,
+                    stdout_summary, stderr_summary, error_category,
+                    deliverable_ids_json, result_payload_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, 'cancelled', ?, ?, ?, ?, ?, ?, 'reconciled_conflict', ?, ?, ?)
+                """,
+                (
+                    execution_id, actual_task_id, worker_id, actual_lease_id, idempotency_key,
+                    exit_code, now, now, runtime_seconds,
+                    stdout_summary, stderr_summary,
+                    deliverables_json, result_json, now,
+                ),
+            )
+            conn.commit()
+            logger.warning("Recorded conflicting delayed execution %s for task %s (preserved for operator review)", execution_id, task_id)
+            return {
+                "status": "reconciled_conflict",
+                "execution_id": execution_id,
+                "task_id": task_id,
+                "task_status": task_row["status"],
+                "completed_at": now,
+                "message": "Task was already completed by another execution; result preserved as conflicting evidence.",
+            }
 
         # 1. Update lease status if exists
         lease_status = "completed" if status == "success" else "failed"
@@ -479,6 +675,17 @@ def submit_task_result(
                 """,
                 (lease_status, now, actual_lease_id, worker_id),
             )
+            if was_expired_lease:
+                conn.execute(
+                    """
+                    UPDATE infrastructure_reconciliations
+                    SET status = 'resolved',
+                        resolved_at = ?,
+                        resolution_notes = ?
+                    WHERE status = 'detected' AND description LIKE ?
+                    """,
+                    (now, f"Reconciled by delayed submission from worker {worker_id}", f"%{actual_lease_id}%"),
+                )
 
         # 2. Update task record if exists
         task_status = "completed" if status == "success" else "failed"
@@ -494,6 +701,113 @@ def submit_task_result(
                 """,
                 (task_status, result_json, stderr_summary if status != "success" else None, now, actual_task_id),
             )
+
+            # Record task operational event in task_execution_events
+            try:
+                attempt_row = conn.execute(
+                    "SELECT count(*) FROM task_execution_events WHERE task_id = ?",
+                    (actual_task_id,),
+                ).fetchone()
+                attempt_num = (attempt_row[0] if attempt_row else 0) + 1
+                conn.execute(
+                    """
+                    INSERT INTO task_execution_events (
+                        task_id, attempt_number, outcome, attempted, actual_result,
+                        evidence_summary, assumptions_feedback, error_details,
+                        reusable_lessons, resulting_knowledge_id, created_by, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        actual_task_id,
+                        attempt_num,
+                        "completed" if status == "success" else "failed",
+                        f"VPS task execution by {worker_id}",
+                        stdout_summary[:500] if stdout_summary else (status if status == "success" else "execution failure"),
+                        f"Exit code {exit_code}, runtime {runtime_seconds}s",
+                        "",
+                        stderr_summary[:500] if stderr_summary else "",
+                        f"Runtime {runtime_seconds}s",
+                        None,
+                        worker_id,
+                        now,
+                    ),
+                )
+            except Exception as ev_err:
+                logger.warning("Failed to record task_execution_event for %s: %s", actual_task_id, ev_err)
+
+            # Update deliverable if task is linked to one
+            if task_row and task_row["deliverable_id"]:
+                try:
+                    deliv_id = task_row["deliverable_id"]
+                    deliv = conn.execute("SELECT * FROM deliverables WHERE id = ?", (deliv_id,)).fetchone()
+                    if deliv and deliv["status"] in ("planned", "in_progress"):
+                        new_deliv_status = "submitted" if status == "success" else deliv["status"]
+                        artifact_ref = f"execution:{idempotency_key}"
+                        conn.execute(
+                            """
+                            UPDATE deliverables
+                            SET status = ?,
+                                artifact_references = CASE WHEN artifact_references = '' THEN ? ELSE artifact_references || ';' || ? END,
+                                updated_at = ?
+                            WHERE id = ?
+                            """,
+                            (new_deliv_status, artifact_ref, artifact_ref, now, deliv_id),
+                        )
+                        # Add revision
+                        rev_count = conn.execute(
+                            "SELECT count(*) FROM deliverable_revisions WHERE deliverable_id = ?",
+                            (deliv_id,),
+                        ).fetchone()[0]
+                        conn.execute(
+                            """
+                            INSERT INTO deliverable_revisions (
+                                deliverable_id, revision_number, status, artifact_references,
+                                verification_results, decision_rationale, decided_by, created_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                deliv_id,
+                                rev_count + 1,
+                                new_deliv_status,
+                                artifact_ref,
+                                f"exit_code={exit_code}, runtime={runtime_seconds}s",
+                                f"Automatic submission from VPS worker {worker_id}",
+                                worker_id,
+                                now,
+                            ),
+                        )
+                except Exception as deliv_err:
+                    logger.warning("Failed to update deliverable for task %s: %s", actual_task_id, deliv_err)
+
+            # Record verified metric observation if supplied in result_payload
+            if status == "success" and result_payload and isinstance(result_payload, dict):
+                metric_obs = result_payload.get("metric_observation")
+                if isinstance(metric_obs, dict) and "metric_id" in metric_obs and "value" in metric_obs:
+                    try:
+                        obs_id = f"obs_{uuid4().hex[:12]}"
+                        conn.execute(
+                            """
+                            INSERT INTO metric_observations (
+                                id, metric_id, value, measured_at, recorded_at,
+                                source, collection_method, verification_status,
+                                evidence_reference, notes, created_by
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'verified', ?, ?, ?)
+                            """,
+                            (
+                                obs_id,
+                                metric_obs["metric_id"],
+                                float(metric_obs["value"]),
+                                now,
+                                now,
+                                f"vps_worker:{worker_id}",
+                                "task_telemetry",
+                                f"execution:{idempotency_key}",
+                                metric_obs.get("notes", f"Automated observation from task {actual_task_id}"),
+                                worker_id,
+                            ),
+                        )
+                    except Exception as m_err:
+                        logger.warning("Failed to record metric observation from task %s: %s", actual_task_id, m_err)
 
         # 3. Insert immutable execution record
         execution_id = f"exec_{uuid4().hex[:12]}"

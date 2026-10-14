@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
+from app.auth import get_current_user
 from app.services import worker as worker_svc
 
 logger = logging.getLogger("qwen_collective.worker_api")
@@ -24,10 +25,16 @@ router = APIRouter(prefix="/api/v1/worker", tags=["worker"])
 # Request & Response Schemas
 # ---------------------------------------------------------------------------
 
+class EnrollmentTokenCreateRequest(BaseModel):
+    allowed_node_id: Optional[str] = None
+    expires_in_seconds: int = Field(default=86400, ge=60, le=2592000)
+
+
 class WorkerRegistrationRequest(BaseModel):
     node_id: str = Field(..., min_length=1, max_length=100)
     name: str = Field(..., min_length=1, max_length=200)
     role: str = Field(default="vps_worker")
+    enrollment_token: Optional[str] = None
     hostname: str = Field(default="")
     os_name: str = Field(default="Linux")
     os_version: str = Field(default="")
@@ -105,20 +112,36 @@ def get_authenticated_worker(
 
 
 # ---------------------------------------------------------------------------
-# Worker Endpoints
+# Worker Registration & Enrollment Endpoints
 # ---------------------------------------------------------------------------
 
 @router.post("/register")
 def register_worker(
     req: WorkerRegistrationRequest,
+    request: Request,
     authorization: Optional[str] = Header(None),
     x_worker_token: Optional[str] = Header(None),
+    x_enrollment_token: Optional[str] = Header(None),
 ):
     """
     Register or update an execution worker node.
-    If already registered with a valid token, authenticates it; otherwise provisions or updates node.
+    Requires one of:
+    1. Existing valid worker Bearer token matching req.node_id (inventory update)
+    2. Single-use, valid, unexpired enrollment token (X-Enrollment-Token header or body field)
+    3. Active administrator session cookie
     """
-    # 1. Update node in infrastructure registry
+    raw_worker_token = None
+    if authorization and authorization.lower().startswith("bearer "):
+        raw_worker_token = authorization[7:].strip()
+    elif x_worker_token:
+        raw_worker_token = x_worker_token.strip()
+
+    cand_enrollment_token = x_enrollment_token or req.enrollment_token
+    token_status = "unauthorized"
+    new_worker_token = None
+    token_id = None
+
+    # 1. Update node in infrastructure registry first so foreign key constraints are satisfied
     reg_result = worker_svc.register_worker_node(
         node_id=req.node_id,
         name=req.name,
@@ -140,25 +163,112 @@ def register_worker(
         declared_capabilities=req.declared_capabilities,
     )
 
-    # 2. Issue a worker token if one does not exist for this node yet
-    raw_token = None
-    if authorization and authorization.lower().startswith("bearer "):
-        raw_token = authorization[7:].strip()
-    elif x_worker_token:
-        raw_token = x_worker_token.strip()
+    # Case 1: Existing authenticated worker token
+    if raw_worker_token:
+        token_info = worker_svc.verify_worker_token(raw_worker_token)
+        if not token_info:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Provided worker token is invalid or revoked.",
+            )
+        if token_info["node_id"] != req.node_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Worker token node mismatch. Token belongs to '{token_info['node_id']}', requested '{req.node_id}'.",
+            )
+        token_id = token_info["token_id"]
+        token_status = "authenticated"
 
-    token_info = worker_svc.verify_worker_token(raw_token) if raw_token else None
-    if not token_info:
-        token_id, new_raw_token = worker_svc.create_worker_token(req.node_id)
-        reg_result["token_id"] = token_id
-        reg_result["worker_token"] = new_raw_token
-        reg_result["token_status"] = "provisioned"
+    # Case 2: Explicit single-use enrollment token
+    elif cand_enrollment_token:
+        ok, msg = worker_svc.verify_and_consume_enrollment_token(cand_enrollment_token, req.node_id)
+        if not ok:
+            logger.warning("Enrollment token rejected for node %s: %s", req.node_id, msg)
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Enrollment token rejected: {msg}",
+            )
+        token_id, new_worker_token = worker_svc.create_worker_token(req.node_id)
+        token_status = "provisioned"
+
+    # Case 3: Administrator session
+    elif get_current_user(request):
+        token_id, new_worker_token = worker_svc.create_worker_token(req.node_id)
+        token_status = "provisioned"
+
+    # Case 4: No valid enrollment authorization
     else:
-        reg_result["token_id"] = token_info["token_id"]
-        reg_result["token_status"] = "authenticated"
+        logger.warning("Unauthenticated registration attempt for node %s", req.node_id)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=(
+                "Worker enrollment authorization required. Please provide a valid single-use enrollment token "
+                "via the 'X-Enrollment-Token' header or authenticate with an administrator session."
+            ),
+        )
+
+    reg_result["token_id"] = token_id
+    reg_result["token_status"] = token_status
+    if new_worker_token:
+        reg_result["worker_token"] = new_worker_token
 
     return reg_result
 
+
+# ---------------------------------------------------------------------------
+# Administrator Enrollment Token Management
+# ---------------------------------------------------------------------------
+
+@router.post("/enrollment-tokens")
+def create_enrollment_token(
+    req: EnrollmentTokenCreateRequest,
+    request: Request,
+):
+    """Generate an administrator-issued enrollment token for a new worker node."""
+    admin_user = get_current_user(request)
+    if not admin_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Administrator login required.")
+
+    token_id, raw_token = worker_svc.create_enrollment_token(
+        allowed_node_id=req.allowed_node_id,
+        expires_in_seconds=req.expires_in_seconds,
+        created_by=admin_user,
+    )
+    return {
+        "status": "created",
+        "token_id": token_id,
+        "enrollment_token": raw_token,
+        "allowed_node_id": req.allowed_node_id,
+        "expires_in_seconds": req.expires_in_seconds,
+    }
+
+
+@router.get("/enrollment-tokens")
+def list_enrollment_tokens(request: Request):
+    """List all worker enrollment tokens (admin only)."""
+    admin_user = get_current_user(request)
+    if not admin_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Administrator login required.")
+
+    return worker_svc.list_enrollment_tokens()
+
+
+@router.delete("/enrollment-tokens/{token_id}")
+def revoke_enrollment_token(token_id: str, request: Request):
+    """Revoke an active worker enrollment token (admin only)."""
+    admin_user = get_current_user(request)
+    if not admin_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Administrator login required.")
+
+    success = worker_svc.revoke_enrollment_token(token_id)
+    if not success:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Enrollment token not found.")
+    return {"status": "revoked", "token_id": token_id}
+
+
+# ---------------------------------------------------------------------------
+# Worker Runtime Operations
+# ---------------------------------------------------------------------------
 
 @router.post("/heartbeat")
 def worker_heartbeat(
@@ -246,22 +356,26 @@ def submit_task_result(
             detail="Task ID in path does not match payload.",
         )
 
-    result = worker_svc.submit_task_result(
-        worker_id=worker["node_id"],
-        task_id=task_id,
-        lease_id=submission.lease_id,
-        idempotency_key=submission.idempotency_key,
-        status=submission.status,
-        exit_code=submission.exit_code,
-        runtime_seconds=submission.runtime_seconds,
-        stdout_summary=submission.stdout_summary,
-        stderr_summary=submission.stderr_summary,
-        error_category=submission.error_category,
-        result_payload=submission.result_payload,
-        deliverable_ids=submission.deliverable_ids,
-    )
-
-    return result
+    try:
+        result = worker_svc.submit_task_result(
+            worker_id=worker["node_id"],
+            task_id=task_id,
+            lease_id=submission.lease_id,
+            idempotency_key=submission.idempotency_key,
+            status=submission.status,
+            exit_code=submission.exit_code,
+            runtime_seconds=submission.runtime_seconds,
+            stdout_summary=submission.stdout_summary,
+            stderr_summary=submission.stderr_summary,
+            error_category=submission.error_category,
+            result_payload=submission.result_payload,
+            deliverable_ids=submission.deliverable_ids,
+        )
+        return result
+    except PermissionError as pe:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(pe))
+    except ValueError as ve:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
 
 
 @router.get("/executions")
@@ -271,6 +385,11 @@ def list_executions(
     worker: Dict[str, Any] = Depends(get_authenticated_worker),
 ):
     """List recent executions from the immutable execution ledger."""
-    # Allow workers to inspect their own executions, or any if admin
-    target_worker = worker_id or worker["node_id"]
+    # Worker may only inspect its own executions
+    if worker_id and worker_id != worker["node_id"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Workers are forbidden from accessing execution records of other nodes.",
+        )
+    target_worker = worker["node_id"]
     return worker_svc.list_worker_executions(worker_id=target_worker, limit=limit)

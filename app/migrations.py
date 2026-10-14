@@ -871,6 +871,33 @@ _M7: List[str] = [
     """,
 ]
 
+# ---------------------------------------------------------------------------
+# Migration 8 — Worker Enrollment Security & Chat Project Context (Integration Repair)
+# ---------------------------------------------------------------------------
+_M8: List[str] = [
+    # 1. Administrator-Issued Worker Enrollment Tokens
+    """
+    CREATE TABLE worker_enrollment_tokens (
+        id TEXT PRIMARY KEY,
+        token_hash TEXT NOT NULL UNIQUE,
+        token_prefix TEXT NOT NULL,
+        allowed_node_id TEXT,
+        created_by TEXT NOT NULL DEFAULT 'admin',
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        used_at TEXT,
+        used_by_node_id TEXT,
+        revoked INTEGER NOT NULL DEFAULT 0 CHECK (revoked IN (0, 1))
+    )
+    """,
+    "CREATE INDEX idx_enrollment_tokens_hash ON worker_enrollment_tokens(token_hash)",
+    "CREATE INDEX idx_enrollment_tokens_status ON worker_enrollment_tokens(revoked, used_at, expires_at)",
+
+    # 2. Chat Conversation to Project Association
+    "ALTER TABLE chat_conversations ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL",
+    "CREATE INDEX idx_chat_conv_project ON chat_conversations(project_id)",
+]
+
 MIGRATIONS: List[Migration] = [
     (1, "project intelligence foundation", _M1),
     (2, "execution and evidence", _M2),
@@ -879,6 +906,7 @@ MIGRATIONS: List[Migration] = [
     (5, "historical learning and performance evaluation", _M5),
     (6, "infrastructure awareness and capability registry", _M6),
     (7, "worker communication, task leasing, and execution history", _M7),
+    (8, "worker enrollment security and chat project context", _M8),
 ]
 
 
