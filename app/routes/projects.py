@@ -10,6 +10,7 @@ from app.auth import get_csrf_token, get_current_user, verify_csrf
 from app.services import context_packet as cp_svc
 from app.services import deliverables as ds
 from app.services import knowledge_meta as km
+from app.services import learning as learn_svc
 from app.services import metrics as met_svc
 from app.services import projects as ps
 from app.services import proposals as prop_svc
@@ -19,7 +20,7 @@ from app.services.knowledge import list_all_notes
 router = APIRouter(tags=["projects"])
 templates = Jinja2Templates(directory="app/templates")
 
-TABS = ("overview", "paths", "tasks", "deliverables", "knowledge", "metrics", "proposals")
+TABS = ("overview", "paths", "tasks", "deliverables", "knowledge", "metrics", "proposals", "learning")
 
 
 def _to(pid: Optional[str] = None, tab: str = "overview", err: str = "", msg: str = "") -> RedirectResponse:
@@ -112,6 +113,11 @@ def project_detail(request: Request, project_id: str, tab: str = "overview",
 
     proposals = prop_svc.list_project_proposals(project_id)
 
+    model_calibration = learn_svc.calculate_model_calibration(project_id)
+    retrospectives = learn_svc.list_retrospectives(project_id)
+    deliverable_evaluations = learn_svc.list_deliverable_evaluations(project_id)
+    cross_project_lessons = learn_svc.search_cross_project_lessons(current_project_id=project_id, limit=6) if tab == "learning" else []
+
     return templates.TemplateResponse(request=request, name="projects/detail.html", context={
         "active_nav": "projects", "current_user": user, "csrf_token": get_csrf_token(request),
         "project": project, "summary": ps.project_summary(project), "tab": tab,
@@ -145,6 +151,12 @@ def project_detail(request: Request, project_id: str, tab: str = "overview",
         "proposals": proposals,
         "proposal_types": prop_svc.PROPOSAL_TYPES,
         "proposal_statuses": prop_svc.PROPOSAL_STATUSES,
+        "model_calibration": model_calibration,
+        "retrospectives": retrospectives,
+        "deliverable_evaluations": deliverable_evaluations,
+        "cross_project_lessons": cross_project_lessons,
+        "deliverable_evaluation_types": learn_svc.EVALUATION_TYPES,
+        "deliverable_outcome_statuses": learn_svc.OUTCOME_STATUSES,
         "alert": _alert(err, msg),
     })
 
@@ -964,5 +976,95 @@ def project_proposal_review(
             review_notes=review_notes,
         ),
         f"Proposal successfully {action}ed."
+    )
+
+
+# --- Milestone 5: Learning, Retrospectives & Deliverable Evaluations -------
+
+@router.post("/projects/{project_id}/retrospectives/generate")
+def project_retrospective_generate(
+    request: Request,
+    project_id: str,
+    csrf_token: str = Form(...),
+    user_guidance: str = Form(""),
+):
+    user = _guard(request, csrf_token)
+    if not user:
+        return _to(project_id, "learning", err="Session expired or invalid form token.")
+
+    return _run(
+        project_id,
+        "learning",
+        lambda: learn_svc.generate_project_retrospective(
+            project_id=project_id,
+            user_guidance=user_guidance,
+            created_by=user,
+        ),
+        "Project retrospective synthesized in draft state. Review, edit, or publish below."
+    )
+
+
+@router.post("/projects/{project_id}/retrospectives/{retrospective_id}/publish")
+def project_retrospective_publish(
+    request: Request,
+    project_id: str,
+    retrospective_id: str,
+    csrf_token: str = Form(...),
+    promote_to_collective: bool = Form(False),
+):
+    user = _guard(request, csrf_token)
+    if not user:
+        return _to(project_id, "learning", err="Session expired or invalid form token.")
+
+    return _run(
+        project_id,
+        "learning",
+        lambda: learn_svc.publish_project_retrospective(
+            retrospective_id=retrospective_id,
+            reviewed_by=user,
+            promote_to_collective=bool(promote_to_collective),
+        ),
+        "Retrospective published to knowledge vault and registered in project memory."
+    )
+
+
+@router.post("/projects/{project_id}/deliverables/evaluate")
+@router.post("/projects/{project_id}/deliverables/{deliverable_id}/evaluate")
+def project_deliverable_evaluate(
+    request: Request,
+    project_id: str,
+    csrf_token: str = Form(...),
+    evaluation_type: str = Form(...),
+    outcome_status: str = Form(...),
+    impact_summary: str = Form(...),
+    deliverable_id: Optional[str] = None,
+    form_deliverable_id: str = Form("", alias="deliverable_id"),
+    metric_observation_id: str = Form(""),
+    evidence_reference: str = Form(""),
+    lessons_learned: str = Form(""),
+):
+    user = _guard(request, csrf_token)
+    if not user:
+        return _to(project_id, "learning", err="Session expired or invalid form token.")
+
+    target_deliv_id = deliverable_id or form_deliverable_id
+    if not target_deliv_id:
+        return _to(project_id, "learning", err="Please select a deliverable to evaluate.")
+
+    return _run(
+        project_id,
+        "learning",
+        lambda: learn_svc.record_deliverable_evaluation(
+            deliverable_id=target_deliv_id,
+            evaluation_type=evaluation_type,
+            outcome_status=outcome_status,
+            impact_summary=impact_summary,
+            evaluated_by=user,
+            metric_observation_id=metric_observation_id.strip() or None,
+            evidence_reference=evidence_reference.strip(),
+            lessons_learned=lessons_learned.strip(),
+            project_id=project_id,
+        ),
+        "Deliverable outcome evaluation successfully recorded."
     )
 

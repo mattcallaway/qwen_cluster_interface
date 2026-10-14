@@ -38,11 +38,11 @@
   </div>
 </div>
 
-<div style="display:flex; gap:8px; margin-bottom:20px;">
-  {% for t in ['overview','paths','tasks','deliverables','knowledge','metrics','proposals'] %}
+<div style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+  {% for t in ['overview','paths','tasks','deliverables','knowledge','metrics','proposals','learning'] %}
     <a id="tab-{{ t }}" href="/projects/{{ project.id }}?tab={{ t }}" class="btn btn-sm {% if tab == t %}btn-primary{% else %}btn-secondary{% endif %}">
-      {{ t|capitalize }}
-      {% if t == 'paths' %}({{ paths|length }}){% elif t == 'tasks' %}({{ tasks|length }}){% elif t == 'deliverables' %}({{ deliverables|length }}){% elif t == 'knowledge' %}({{ knowledge|length }}){% elif t == 'metrics' %}({{ metrics|length }}){% elif t == 'proposals' %}({{ proposals|length }}){% endif %}
+      {% if t == 'learning' %}Learning & Retrospectives{% else %}{{ t|capitalize }}{% endif %}
+      {% if t == 'paths' %}({{ paths|length }}){% elif t == 'tasks' %}({{ tasks|length }}){% elif t == 'deliverables' %}({{ deliverables|length }}){% elif t == 'knowledge' %}({{ knowledge|length }}){% elif t == 'metrics' %}({{ metrics|length }}){% elif t == 'proposals' %}({{ proposals|length }}){% elif t == 'learning' %}({{ retrospectives|length }}){% endif %}
     </a>
   {% endfor %}
 </div>
@@ -1344,5 +1344,315 @@
     </div>
   {% endif %}
 </div>
+{% endif %}
+
+{# ============================ LEARNING & RETROSPECTIVES ============================ #}
+{% if tab == 'learning' %}
+
+{# Top KPI Summary: Model Calibration & Performance #}
+<div class="grid-cols-4" style="margin-bottom:20px;">
+  <div class="stat-widget">
+    <div class="stat-label">Model Proposal Acceptance</div>
+    <div class="stat-value">{{ (model_calibration.proposal_acceptance_rate * 100)|round(1) }}%</div>
+    <div class="stat-sub">{{ model_calibration.accepted_proposals }} accepted / {{ model_calibration.total_proposals }} proposed</div>
+  </div>
+
+  <div class="stat-widget">
+    <div class="stat-label">Mean Forecast Accuracy</div>
+    <div class="stat-value">
+      {% if model_calibration.mean_forecast_accuracy is not none and model_calibration.mean_forecast_accuracy > 0 %}
+        {{ (model_calibration.mean_forecast_accuracy * 100)|round(1) }}%
+      {% else %}
+        N/A
+      {% endif %}
+    </div>
+    <div class="stat-sub">
+      {% if model_calibration.mean_percentage_error is not none and model_calibration.mean_percentage_error is defined %}MPE: {{ model_calibration.mean_percentage_error }}%{% else %}No evaluated forecasts{% endif %}
+    </div>
+  </div>
+
+  <div class="stat-widget">
+    <div class="stat-label">Calibration Assessment</div>
+    <div class="stat-value" style="font-size:1.1rem; margin-top:4px;">
+      <span class="badge {% if 'Well' in model_calibration.calibration_assessment_label %}badge-accepted{% elif 'Insufficient' in model_calibration.calibration_assessment_label %}badge-role{% else %}badge-changes{% endif %}">
+        {{ model_calibration.calibration_assessment_label }}
+      </span>
+    </div>
+    <div class="stat-sub">Empirical model reliability index</div>
+  </div>
+
+  <div class="stat-widget">
+    <div class="stat-label">Impact Evaluations</div>
+    <div class="stat-value">{{ deliverable_evaluations|length }}</div>
+    <div class="stat-sub">{{ retrospectives|length }} project retrospectives</div>
+  </div>
+</div>
+
+{% if model_calibration.method_breakdown %}
+<div class="card" style="margin-bottom:20px; background:var(--bg-secondary);">
+  <h4 style="font-size:0.85rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin:0 0 10px 0;">
+    Forecast Method Accuracy Breakdown
+  </h4>
+  <div style="display:flex; gap:16px; flex-wrap:wrap;">
+    {% for method_name, stats in model_calibration.method_breakdown.items() %}
+    <div style="padding:10px 14px; background:var(--bg-surface); border:1px solid var(--border-color); border-radius:6px; font-size:0.85rem;">
+      <span style="font-weight:600; color:var(--text-main);">{{ method_name }}</span>
+      <span style="color:var(--text-muted); margin-left:6px;">({{ stats.count }} evaluations)</span>:
+      <span style="font-family:var(--font-mono); margin-left:4px; font-weight:600;">
+        Accuracy {{ (stats.mean_accuracy * 100)|round(1) }}%
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{# Section: Retrospectives #}
+<div class="card" style="margin-bottom:24px;">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <div>
+      <h3 class="card-title" style="margin:0;">Project Retrospectives & Strategic Lessons</h3>
+      <p style="font-size:0.8rem; color:var(--text-muted); margin:4px 0 0 0;">
+        Synthesize automated retrospectives across paths, stage gates, deliverables, and metrics.
+      </p>
+    </div>
+  </div>
+
+  <!-- Generator Form -->
+  <div style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:6px; padding:16px; margin-bottom:20px;">
+    <h4 style="font-size:0.95rem; font-weight:600; margin:0 0 8px 0;">✨ Synthesize Project Retrospective Draft</h4>
+    <form action="/projects/{{ project.id }}/retrospectives/generate" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="form-group" style="margin-bottom:12px;">
+        <label class="form-label" style="font-size:0.8rem;">Focus Guidance (Optional)</label>
+        <textarea name="user_guidance" rows="2" class="form-control" style="font-size:0.85rem;" placeholder="e.g. Focus on lessons from stage 2 delays and verification automation gains..."></textarea>
+      </div>
+      <button type="submit" class="btn btn-sm btn-primary">Generate Draft Retrospective</button>
+    </form>
+  </div>
+
+  <!-- Retrospectives List -->
+  {% if not retrospectives %}
+    <div style="padding:24px; text-align:center; color:var(--text-muted); font-size:0.9rem;">
+      No retrospectives recorded yet for this project. Generate a draft retrospective to synthesize achievements and lessons.
+    </div>
+  {% else %}
+    <div style="display:flex; flex-direction:column; gap:16px;">
+      {% for retro in retrospectives %}
+      <div class="card" style="background:var(--bg-secondary); border:1px solid var(--border-color); margin-bottom:0;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
+          <div>
+            <h4 style="font-size:1.1rem; font-weight:600; margin:0 0 4px 0;">{{ retro.title }}</h4>
+            <div style="font-size:0.75rem; color:var(--text-muted);">
+              Created by <strong>{{ retro.created_by }}</strong> on {{ retro.created_at[:16] }}
+              {% if retro.reviewed_by %} · Reviewed by <strong>{{ retro.reviewed_by }}</strong> on {{ retro.reviewed_at[:16] }}{% endif %}
+            </div>
+          </div>
+          <div>
+            <span class="badge {% if retro.status == 'published' %}badge-accepted{% else %}badge-draft{% endif %}">
+              {{ retro.status|upper }}
+            </span>
+          </div>
+        </div>
+
+        <div style="font-size:0.9rem; line-height:1.5; margin-bottom:12px; color:var(--text-main);">
+          <strong>Executive Summary:</strong> {{ retro.executive_summary or retro.summary }}
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+          <div style="padding:10px; background:var(--bg-surface); border:1px solid var(--border-color); border-radius:4px; font-size:0.85rem;">
+            <strong style="color:var(--text-accent);">🏆 Key Achievements:</strong>
+            <p style="margin:4px 0 0 0; white-space:pre-wrap;">{{ retro.key_achievements or '—' }}</p>
+          </div>
+          <div style="padding:10px; background:var(--bg-surface); border:1px solid var(--border-color); border-radius:4px; font-size:0.85rem;">
+            <strong style="color:#d9534f;">⚠️ Challenges & Blockers:</strong>
+            <p style="margin:4px 0 0 0; white-space:pre-wrap;">{{ retro.challenges_and_blockers or '—' }}</p>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+          <div style="padding:10px; background:var(--bg-surface); border:1px solid var(--border-color); border-radius:4px; font-size:0.85rem;">
+            <strong>💡 Reusable Lessons Learned:</strong>
+            <p style="margin:4px 0 0 0; white-space:pre-wrap;">{{ retro.lessons_learned or '—' }}</p>
+          </div>
+          <div style="padding:10px; background:var(--bg-surface); border:1px solid var(--border-color); border-radius:4px; font-size:0.85rem;">
+            <strong>🧭 Strategic Recommendations:</strong>
+            <p style="margin:4px 0 0 0; white-space:pre-wrap;">{{ retro.recommendations or '—' }}</p>
+          </div>
+        </div>
+
+        {% if retro.status == 'draft' %}
+        <div style="padding-top:12px; border-top:1px solid var(--border-color); display:flex; justify-content:flex-end;">
+          <form action="/projects/{{ project.id }}/retrospectives/{{ retro.id }}/publish" method="post" style="display:flex; align-items:center; gap:12px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label style="font-size:0.8rem; display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" name="promote_to_collective" value="true" checked>
+              Promote lessons to Collective Memory
+            </label>
+            <button type="submit" class="btn btn-sm btn-primary">Publish to Knowledge Vault</button>
+          </form>
+        </div>
+        {% else %}
+        <div style="padding-top:10px; border-top:1px solid var(--border-color); font-size:0.8rem; color:var(--text-muted); display:flex; justify-content:space-between; align-items:center;">
+          <span>Published in Vault: <code>{{ retro.knowledge_path }}</code></span>
+          <span class="badge badge-accepted">Active In Knowledge Vault</span>
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+
+{# Section: Deliverable Outcome Evaluations #}
+<div class="card" style="margin-bottom:24px;">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <div>
+      <h3 class="card-title" style="margin:0;">Deliverable Impact & Outcome Evaluations</h3>
+      <p style="font-size:0.8rem; color:var(--text-muted); margin:4px 0 0 0;">
+        Track real-world empirical performance, operational audits, and lessons from accepted deliverables.
+      </p>
+    </div>
+  </div>
+
+  <!-- Record Evaluation Form -->
+  <div style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:6px; padding:16px; margin-bottom:20px;">
+    <h4 style="font-size:0.95rem; font-weight:600; margin:0 0 12px 0;">Record Deliverable Impact Evaluation</h4>
+    <form action="/projects/{{ project.id }}/deliverables/evaluate" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-bottom:12px;">
+        <div class="form-group">
+          <label class="form-label" style="font-size:0.8rem;">Target Deliverable *</label>
+          <select name="deliverable_id" class="form-control" style="font-size:0.85rem;" required>
+            <option value="">Select Deliverable...</option>
+            {% for d in deliverables %}
+              <option value="{{ d.id }}">{{ d.name }} ({{ d.status }})</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" style="font-size:0.8rem;">Evaluation Type *</label>
+          <select name="evaluation_type" class="form-control" style="font-size:0.85rem;" required>
+            {% for et in deliverable_evaluation_types %}
+              <option value="{{ et }}">{{ et|replace('_', ' ')|title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" style="font-size:0.8rem;">Outcome Status *</label>
+          <select name="outcome_status" class="form-control" style="font-size:0.85rem;" required>
+            {% for os in deliverable_outcome_statuses %}
+              <option value="{{ os }}">{{ os|replace('_', ' ')|title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-bottom:12px;">
+        <label class="form-label" style="font-size:0.8rem;">Empirical Impact Summary *</label>
+        <textarea name="impact_summary" rows="2" class="form-control" style="font-size:0.85rem;" placeholder="Summarize measured impact, observed telemetry, or audit results..." required></textarea>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+        <div class="form-group">
+          <label class="form-label" style="font-size:0.8rem;">Evidence Reference (Optional)</label>
+          <input type="text" name="evidence_reference" class="form-control" style="font-size:0.85rem;" placeholder="e.g. telemetry-dashboard-url, benchmark-log-04">
+        </div>
+        <div class="form-group">
+          <label class="form-label" style="font-size:0.8rem;">Lessons Learned (Optional)</label>
+          <input type="text" name="lessons_learned" class="form-control" style="font-size:0.85rem;" placeholder="e.g. Caching layer reduced peak CPU by 40%">
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-sm btn-primary">Record Outcome Evaluation</button>
+    </form>
+  </div>
+
+  <!-- Evaluations List -->
+  {% if not deliverable_evaluations %}
+    <div style="padding:24px; text-align:center; color:var(--text-muted); font-size:0.9rem;">
+      No deliverable outcome evaluations recorded yet.
+    </div>
+  {% else %}
+    <div style="overflow-x:auto;">
+      <table class="table" style="width:100%; font-size:0.85rem;">
+        <thead>
+          <tr>
+            <th>Deliverable</th>
+            <th>Type</th>
+            <th>Outcome</th>
+            <th>Impact Summary</th>
+            <th>Evidence</th>
+            <th>Lessons</th>
+            <th>Evaluated By</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ev in deliverable_evaluations %}
+          <tr>
+            <td><strong>{{ ev.deliverable_name or ev.deliverable_id }}</strong></td>
+            <td><span class="badge badge-role">{{ ev.evaluation_type|replace('_', ' ')|title }}</span></td>
+            <td>
+              <span class="badge {% if 'exceeded' in ev.outcome_status or 'met' in ev.outcome_status %}badge-accepted{% elif 'failed' in ev.outcome_status %}badge-error{% else %}badge-changes{% endif %}">
+                {{ ev.outcome_status|replace('_', ' ')|title }}
+              </span>
+            </td>
+            <td style="max-width:280px;">{{ ev.impact_summary }}</td>
+            <td><code>{{ ev.evidence_reference or '—' }}</code></td>
+            <td style="max-width:200px;">{{ ev.lessons_learned or '—' }}</td>
+            <td style="font-size:0.75rem; color:var(--text-muted);">{{ ev.evaluated_by }}<br>{{ ev.evaluated_at[:10] }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</div>
+
+{# Section: Cross-Project Transfer Learning #}
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <div>
+      <h3 class="card-title" style="margin:0;">Cross-Project Transfer Learning & Collective Knowledge</h3>
+      <p style="font-size:0.8rem; color:var(--text-muted); margin:4px 0 0 0;">
+        Synthesized lessons, published retrospectives, and shared heuristics from across the collective.
+      </p>
+    </div>
+  </div>
+
+  {% if not cross_project_lessons %}
+    <div style="padding:24px; text-align:center; color:var(--text-muted); font-size:0.9rem;">
+      No cross-project lessons discovered yet. As retrospectives are published and promoted across projects, transferable patterns appear here.
+    </div>
+  {% else %}
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+      {% for lesson in cross_project_lessons %}
+      <div class="card" style="background:var(--bg-secondary); border:1px solid var(--border-color); margin-bottom:0;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;">
+          <h4 style="font-size:0.95rem; font-weight:600; margin:0;">{{ lesson.title }}</h4>
+          <span class="badge badge-role">{{ lesson.project_name }}</span>
+        </div>
+        <div style="font-size:0.85rem; color:var(--text-main); margin-bottom:8px;">
+          {{ lesson.summary }}
+        </div>
+        {% if lesson.lessons_learned %}
+        <div style="font-size:0.8rem; background:var(--bg-surface); padding:8px; border-radius:4px; border:1px solid var(--border-color); margin-bottom:6px;">
+          <strong>Key Lesson:</strong> {{ lesson.lessons_learned }}
+        </div>
+        {% endif %}
+        {% if lesson.recommendations %}
+        <div style="font-size:0.8rem; color:var(--text-muted);">
+          <strong>Recommendation:</strong> {{ lesson.recommendations }}
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+
 {% endif %}
 {% endblock %}

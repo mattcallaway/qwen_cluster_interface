@@ -220,9 +220,20 @@ Supports AI-assisted planning where the model proposes and a human operator auth
 * Accepting a `metric_suggestion` creates active `project_metrics`.
 * Rejecting a proposal updates status to `rejected` with recorded reason and creates zero application records.
 
+### `project_retrospectives` (Milestone 5)
+Synthesizes project lifecycle outcomes, model performance, key achievements, challenges, reusable lessons learned, and strategic recommendations.
+* Columns: `id`, `project_id`, `title`, `summary`, `executive_summary`, `key_achievements`, `challenges_and_blockers`, `lessons_learned`, `recommendations`, `model_performance_summary` (JSON), `status` (`draft`, `reviewed`, `published`), `knowledge_path`, `ai_model`, `created_by`, `reviewed_by`, `reviewed_at`, `created_at`, `updated_at`.
+* Status lifecycle: `draft` -> `reviewed` -> `published`.
+* Publication writes a structured Markdown document to the project knowledge vault (and optionally creates a collective memory lesson note).
+
+### `deliverable_evaluations` (Milestone 5)
+Tracks real-world empirical performance, operational audits, and lessons learned from accepted deliverables.
+* Columns: `id`, `deliverable_id`, `project_id`, `evaluation_type` (`immediate_acceptance`, `post_delivery_impact`, `operational_audit`), `outcome_status` (`exceeded_expectations`, `met_expectations`, `partially_met`, `failed_to_impact`, `inconclusive`), `impact_summary`, `metric_observation_id`, `evidence_reference`, `lessons_learned`, `evaluated_by`, `evaluated_at`.
+* Each recorded evaluation logs an immutable `deliverable_outcome_evaluation` decision in `project_decisions`.
+
 ### `project_decisions` (append-only)
 Expanded CHECK constraint allows:
-`decision_type ∈ {path_selection, path_status_change, project_status_change, project_parent_change, stage_advancement, stage_status_change, deliverable_acceptance, path_revision, knowledge_promotion, proposal_acceptance}`.
+`decision_type ∈ {path_selection, path_status_change, project_status_change, project_parent_change, stage_advancement, stage_status_change, deliverable_acceptance, path_revision, knowledge_promotion, proposal_acceptance, retrospective_publication, deliverable_outcome_evaluation}`.
 Each row records `subject_id`, `from_value`, `to_value`, `rationale` (required), `decided_by`, `decided_at`, and optional `evidence_knowledge_id`. The triggers `trg_decisions_no_update` and `trg_decisions_no_delete` abort any UPDATE or DELETE.
 
 ## Project Context Packet Hierarchy
@@ -236,7 +247,7 @@ Prompt retrieval adheres to an explicit priority ordering under a strict token b
 5. **Active Work & Task State:** Work in progress, dependencies, and execution history.
 6. **Metrics & Forecast Tracking:** Targets, current observations, variance, and forecast models.
 7. **Project Supporting Knowledge:** Verified and captured notes in the project knowledge dir.
-8. **Cross-Project Lessons & Shared Notes:** Collective wisdom and promoted insights.
+8. **Cross-Project Lessons & Published Retrospectives:** Empirical lessons and published retrospectives from other projects.
 
 When token budget limits are reached, sections are pruned from lowest priority (8 and 7 first) with explicit omission notices injected into the rendered prompt. Security separation labels (`[TRUSTED_PROJECT_BOUNDS]`, `[VERIFIED_RECORDS]`, `[EXTERNAL_UNTRUSTED]`) clearly separate verified project data from untrusted user content.
 

@@ -578,11 +578,95 @@ _M4: List[str] = [
     """,
 ]
 
+# ---------------------------------------------------------------------------
+# Migration 5 — Historical learning and performance evaluation (Milestone 5)
+# ---------------------------------------------------------------------------
+_M5: List[str] = [
+    # --- Project retrospectives (Lifecycle synthesis and collective lessons)
+    """
+    CREATE TABLE project_retrospectives (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        title TEXT NOT NULL CHECK (length(trim(title)) BETWEEN 1 AND 200),
+        summary TEXT NOT NULL CHECK (length(trim(summary)) > 0),
+        executive_summary TEXT NOT NULL DEFAULT '',
+        key_achievements TEXT NOT NULL DEFAULT '',
+        challenges_and_blockers TEXT NOT NULL DEFAULT '',
+        lessons_learned TEXT NOT NULL DEFAULT '',
+        recommendations TEXT NOT NULL DEFAULT '',
+        model_performance_summary TEXT NOT NULL DEFAULT '{}',
+        status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','reviewed','published')),
+        knowledge_path TEXT,
+        ai_model TEXT NOT NULL DEFAULT 'qwen',
+        created_by TEXT NOT NULL,
+        reviewed_by TEXT,
+        reviewed_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (project_id, title)
+    )
+    """,
+    "CREATE INDEX idx_retro_project ON project_retrospectives(project_id, status)",
+
+    # --- Deliverable outcome evaluations (Long-term impact verification) ---
+    """
+    CREATE TABLE deliverable_evaluations (
+        id TEXT PRIMARY KEY,
+        deliverable_id TEXT NOT NULL REFERENCES deliverables(id) ON DELETE CASCADE,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        evaluation_type TEXT NOT NULL CHECK (evaluation_type IN (
+            'immediate_acceptance','post_delivery_impact','operational_audit')),
+        outcome_status TEXT NOT NULL CHECK (outcome_status IN (
+            'exceeded_expectations','met_expectations','partially_met','failed_to_impact','inconclusive')),
+        impact_summary TEXT NOT NULL CHECK (length(trim(impact_summary)) > 0),
+        metric_observation_id TEXT REFERENCES metric_observations(id),
+        evidence_reference TEXT NOT NULL DEFAULT '',
+        lessons_learned TEXT NOT NULL DEFAULT '',
+        evaluated_by TEXT NOT NULL,
+        evaluated_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_deval_deliv ON deliverable_evaluations(deliverable_id)",
+    "CREATE INDEX idx_deval_proj ON deliverable_evaluations(project_id)",
+
+    # --- Rebuild project_decisions with retrospective_publication and deliverable_outcome_evaluation ---
+    """
+    CREATE TABLE project_decisions_m5 (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id),
+        decision_type TEXT NOT NULL CHECK (decision_type IN (
+            'path_selection','path_status_change','project_status_change','project_parent_change',
+            'stage_advancement','stage_status_change','deliverable_acceptance','path_revision','knowledge_promotion',
+            'proposal_acceptance','retrospective_publication','deliverable_outcome_evaluation')),
+        subject_id TEXT,
+        from_value TEXT,
+        to_value TEXT,
+        rationale TEXT NOT NULL CHECK (length(trim(rationale)) > 0),
+        decided_by TEXT NOT NULL,
+        decided_at TEXT NOT NULL,
+        evidence_knowledge_id TEXT REFERENCES knowledge_metadata(id)
+    )
+    """,
+    "INSERT INTO project_decisions_m5 SELECT * FROM project_decisions",
+    "DROP TABLE project_decisions",
+    "ALTER TABLE project_decisions_m5 RENAME TO project_decisions",
+    "CREATE INDEX idx_decisions_project ON project_decisions(project_id, decided_at)",
+    """
+    CREATE TRIGGER trg_decisions_no_update BEFORE UPDATE ON project_decisions
+    BEGIN SELECT RAISE(ABORT, 'project_decisions is append-only'); END
+    """,
+    """
+    CREATE TRIGGER trg_decisions_no_delete BEFORE DELETE ON project_decisions
+    BEGIN SELECT RAISE(ABORT, 'project_decisions is append-only'); END
+    """,
+]
+
 MIGRATIONS: List[Migration] = [
     (1, "project intelligence foundation", _M1),
     (2, "execution and evidence", _M2),
     (3, "measurement and forecasting", _M3),
     (4, "project-aware intelligence", _M4),
+    (5, "historical learning and performance evaluation", _M5),
 ]
 
 

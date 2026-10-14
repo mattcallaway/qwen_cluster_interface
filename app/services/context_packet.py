@@ -253,6 +253,17 @@ def build_project_context_packet(
         ).fetchall()
 
     has_cross = False
+    # Check published retrospectives from other projects
+    from app.services import learning as learn_svc
+    cross_retros = learn_svc.search_cross_project_lessons(current_project_id=project_id, limit=3)
+    if cross_retros:
+        cross_lines.append("**Published Retrospectives & Cross-Project Lessons:**")
+        for cr in cross_retros:
+            cross_lines.append(f"- *From Project '{cr['project_name']}'*: {cr['title']}")
+            if cr.get("lessons_learned"):
+                cross_lines.append(f"  > Lessons: {cr['lessons_learned'][:200]}")
+            has_cross = True
+
     if collective_items:
         cross_lines.append("**Promoted Collective Knowledge:**")
         for c in collective_items[:4]:

@@ -1,10 +1,11 @@
 # Project Intelligence — Status
 
-**Current milestone: 4 (Project-aware intelligence). Implemented and verified with 207 tests (100% passing).**
+**Current milestone: 5 (Historical Learning, Retrospectives & Performance Evaluation). Implemented and verified with 217 tests (100% passing).**
 Branch: `feature/project-intelligence`.
 * **Milestone 1:** Deployed to production Windows service (port 8000, DB `user_version = 1`, service wrapper active).
 * **Milestone 2:** Deployed to production Windows service (port 8000, DB `user_version = 2`, service wrapper active).
-* **Milestone 3 & 4:** Completed in development worktree (`scratch\qwen-collective-dev`), fully covered by unit and HTTP route test suites (207 tests passing). Ready for production deployment.
+* **Milestone 3 & 4:** Deployed to production Windows service (port 8000, DB `user_version = 4`, service wrapper active).
+* **Milestone 5:** Completed in development worktree (`scratch\qwen-collective-dev`), fully covered by unit and HTTP route test suites (217 tests passing). Ready for production deployment.
 
 ## What works now (verified)
 
@@ -32,7 +33,12 @@ Branch: `feature/project-intelligence`.
 | **AI Task Decomposition:** Deconstructs approved stages into bounded, traceable tasks with diagnostic prerequisites and verification gates | Proposals tab, `/projects/{pid}/proposals/generate-tasks` | `test_milestone4.py`, `test_milestone4_routes.py` |
 | **Stage Boundary Path Reviews:** Evaluates deliverables and metric health to recommend advance, continue, or reforecast | Proposals tab, `/projects/{pid}/proposals/generate-review` | `test_milestone4.py`, `test_milestone4_routes.py` |
 | **Human-in-the-Loop Authorization Workflow:** The model proposes, human authorizes. Authorization creates durable DB records and logs `proposal_acceptance` decisions; rejection records reasons with zero state alteration | Proposals tab, `/projects/{pid}/proposals/{id}/review` | `test_milestone4.py`, `test_milestone4_routes.py` |
-| **Migration 4:** Schema version upgraded to 4 with `project_proposals` table, expanded decision constraints, and automatic backup | `app/migrations.py` | `test_migrations.py` |
+| **Model Calibration Analytics:** Quantifies model reliability via proposal acceptance rate, forecast error (MPE, accuracy), method breakdowns, and calibration assessment categories | Learning tab, `app/services/learning.py` | `test_milestone5.py`, `test_milestone5_routes.py` |
+| **Deliverable Outcome Evaluations:** Post-delivery empirical audit tracking; connects real-world impacts to deliverables with immutable decision logging | Learning tab, `/projects/{pid}/deliverables/evaluate` | `test_milestone5.py`, `test_milestone5_routes.py` |
+| **Automated Retrospective Synthesis:** AI-assisted synthesis of project achievements, blockers, lessons learned, recommendations, and calibration summaries into draft state | Learning tab, `/projects/{pid}/retrospectives/generate` | `test_milestone5.py`, `test_milestone5_routes.py` |
+| **Retrospective Vault Publication & Collective Memory:** Operator review publishes retrospectives to project knowledge vaults and optionally promotes key lessons to collective memory | Learning tab, `/projects/{pid}/retrospectives/{id}/publish` | `test_milestone5.py`, `test_milestone5_routes.py` |
+| **Cross-Project Transfer Learning:** Feeds empirical lessons and published retrospectives from other projects into new project context packets under Priority 8 | Learning tab, Context Packet Builder | `test_milestone5.py`, `test_milestone5_routes.py` |
+| **Migration 5:** Schema version upgraded to 5 with `project_retrospectives`, `deliverable_evaluations`, and expanded decision types | `app/migrations.py` | `test_migrations.py` |
 
 ## Test Suite Summary
 
@@ -41,7 +47,7 @@ Branch: `feature/project-intelligence`.
 | Security, Auth, SSRF, & Web Isolation | 63 | Passed |
 | Tasks & UI States | 7 | Passed |
 | Machines & VPS Diagnostics | 12 | Passed |
-| Migrations (Baseline, M1, M2, M3, M4, Idempotency, Upgrades) | 8 | Passed |
+| Migrations (Baseline, M1, M2, M3, M4, M5, Idempotency, Upgrades) | 8 | Passed |
 | Milestone 1 Project Intelligence & Knowledge | 49 | Passed |
 | Milestone 2 Execution, Evidence & Dependencies | 8 | Passed |
 | Milestone 2 HTTP Routes (Deliverables, Gates, Events, Revisions) | 6 | Passed |
@@ -49,10 +55,13 @@ Branch: `feature/project-intelligence`.
 | Milestone 3 HTTP Routes (Metrics, Forecasts, Calculations) | 6 | Passed |
 | Milestone 4 Project-Aware Intelligence & Context Packets | 6 | Passed |
 | Milestone 4 HTTP Routes (Proposals, Reviews, Context Inspector) | 7 | Passed |
+| Milestone 5 Learning, Retrospectives & Calibration | 5 | Passed |
+| Milestone 5 HTTP Routes (Retrospectives, Evaluations, Tabs) | 5 | Passed |
 | Markdown Safety & Knowledge Core | 7 | Passed |
-| **Total Test Suite** | **207 passed** | **100% SUCCESS (0 failed)** |
+| **Total Test Suite** | **217 passed** | **100% SUCCESS (0 failed)** |
 
 ## Production deployment status
 * **Milestone 1:** Successfully deployed and verified live in production (`scratch\qwen-collective`, port 8000).
 * **Milestone 2:** Live in production (`Restart-Service QwenCollective` completed, DB `user_version = 2`).
-* **Milestones 3 & 4:** Completed in development worktree (`scratch\qwen-collective-dev`). All 207 tests pass cleanly. Ready for deployment upon authorization.
+* **Milestone 3 & 4:** Live in production (`Restart-Service QwenCollective` completed, DB `user_version = 4`).
+* **Milestone 5:** Completed in development worktree (`scratch\qwen-collective-dev`). All 217 tests pass cleanly. Ready for deployment upon authorization.
