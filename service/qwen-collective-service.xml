@@ -18,6 +18,7 @@
   <env name="QC_PORT" value="8000"/>
   <env name="QC_DATA_DIR" value="C:\Users\Matt C\.qwen-collective\data"/>
   <env name="QC_CONFIG_FILE" value="C:\Users\Matt C\.qwen-collective\qwen-collective.env"/>
+  <env name="QC_KNOWN_HOSTS_PATH" value="C:\Users\Matt C\.ssh\known_hosts"/>
   <env name="QC_SESSION_EXPIRE_HOURS" value="72"/>
   <env name="QC_LOG_LEVEL" value="INFO"/>
 
