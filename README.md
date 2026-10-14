@@ -1,158 +1,167 @@
-# Qwen Cluster Interface (Qwen Collective)
-### A Private, Modular, Distributed AI Operating System
+# Qwen Collective
+### A Sovereign, Distributed AI Coordination & Execution Platform
 
-[![Tests](https://img.shields.io/badge/Tests-85%20Passed-brightgreen.svg)]()
-[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-blue.svg)]()
-[![License](https://img.shields.io/badge/License-MIT-purple.svg)]()
-[![Security](https://img.shields.io/badge/Security-Strict%20Defensive%20Hardened-orange.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-233%20Passed-brightgreen.svg)]()
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20VPS-blue.svg)]()
+[![Python](https://img.shields.io/badge/Python-3.12%2B-blue.svg)]()
+[![FastAPI](https://img.shields.io/badge/FastAPI-Production%20Hardened-green.svg)]()
+[![SQLite](https://img.shields.io/badge/SQLite-WAL%20%2B%20FTS5-orange.svg)]()
+[![Security](https://img.shields.io/badge/Security-Zero%20Trust%20Hardened-red.svg)]()
+[![Tailscale](https://img.shields.io/badge/Tailscale-Private%20WireGuard%20Mesh-blueviolet.svg)]()
 
-> **"Use what we have. Understand what we control. Keep what we learn. Expand without rebuilding."**
+> *"Use what we have. Understand what we control. Keep what we learn. Expand without rebuilding."*
 
-**Qwen Cluster Interface** coordinates a self-hosted, sovereign AI cluster assembled from everyday computing hardware: a low-power always-on control machine, aging Linux laptops (e.g., 4GB RAM machines running distributed `llama.cpp` RPC), and an isolated external VPS companion worker.
+**Qwen Collective** transforms heterogeneous computing hardware—an always-on Windows coordination controller, local low-power Linux compute nodes running quantized Qwen inference models, and an isolated cloud VPS operational environment—into a sovereign, distributed AI operating system.
 
----
-
-## Key Highlights
-
-- **Lightweight & Transparent Control Server**: FastAPI, SQLite WAL mode, FTS5 full-text indexing, Jinja2, HTMX, and Vanilla CSS. Zero Node.js / heavy framework runtime dependencies.
-- **Hardware-Aware Model Coordination**: Supports standalone model inference (Ollama, llama-server) and experimental distributed inference (llama.cpp RPC over private LAN or Tailscale). Realistic baselines prioritize small quantized models (e.g., Qwen2.5 0.5B, 1.5B, or 3B Q4_K_M) on 4GB RAM laptops, treating larger models (7B+) as experimental targets evaluated against real RAM, CPU inspection, and actual token-per-second benchmarks. *Security Note: Unauthenticated llama.cpp RPC listeners must never be exposed on public networks.*
-- **Defensive Hardware Discovery**: Inspects Linux compute nodes via OpenSSH using strictly whitelisted, read-only diagnostic commands and strict `known_hosts` verification (`paramiko.RejectPolicy`). Never trusts arbitrary remote execution.
-- **Persistent Knowledge Base**: Raw Markdown notes stored in an **Obsidian-compatible** vault, indexed dynamically into SQLite FTS5 for instant search. Your notes are 100% human-readable files that outlive any application.
-- **Controlled VPS Companion Worker**: Isolates external web/probe tasks onto a cloud VPS behind strong Bearer token authentication, loopback binding by default, and strict task permission boundaries.
-- **Always-On Windows Service & Tailscale Remote Access**: Automatic boot startup with WinSW, crash recovery, rotating logs, and secure WireGuard mesh access via `tailscale serve` (zero public port exposure).
+It bridges the gap between **autonomous reasoning** and **safe, deterministic real-world execution**:
+- The **Windows Controller** provides authoritative coordination, strict human approval gates, persistent memory, and live infrastructure self-awareness.
+- **Local Qwen Nodes** provide local intelligence, planning, task decomposition, and code drafting without relying on cloud APIs.
+- The **Remote VPS Operational Node** runs approved programs, recurring scheduled jobs, browser automation, and data pipelines independently of AI inference.
 
 ---
 
-## System Architecture Map
+## 🏛️ System Architecture
 
 ```text
-+-------------------------------------------------------------------------+
-| Layer A: Control Server (Windows / Linux Local Anchor)                  |
-| - Local Host: 127.0.0.1:8000 only (No public ports)                     |
-| - Web UI: FastAPI + Jinja2 + HTMX + Vanilla CSS (No heavy JS frameworks)|
-| - Storage: SQLite WAL mode + FTS5 Full-Text Search                      |
-| - Machine Registry & Defensive Read-Only Hardware Inspection            |
-| - Persistent Task Queue with explicit Human Approval Gates              |
-+-------------------------------------------------------------------------+
-       |                                                   |
-       v (Local LAN / SSH)                                 v (Tailscale / HTTPS)
-+------------------------------------+        +---------------------------+
-| Layer B: Compute Nodes             |        | Layer C: Online Worker    |
-| - Laptops / Workstations           |        | - Internet-connected VPS  |
-| - Standalone (Ollama, llama-server)|        | - Isolated companion      |
-| - Distributed llama.cpp RPC workers|        | - Untrusted data barrier  |
-+------------------------------------+        +---------------------------+
-       ^
-       | (Feeds context & logs)
-+-------------------------------------------------------------------------+
-| Layer D: Persistent Knowledge (Durable & Independent)                   |
-| - Raw Markdown files in Obsidian-compatible directory tree              |
-| - SQLite FTS5 for fast local keyword searching                          |
-| - Staged inbox for external research before promotion                   |
-+-------------------------------------------------------------------------+
+                               +--------------------------------------------+
+                               |        AUTHORITATIVE COORDINATOR           |
+                               |    Windows Controller (Port 8000/8010)     |
+                               |  - Projects, Paths, Stages, Deliverables   |
+                               |  - Infrastructure & Capability Registry    |
+                               |  - Human Approval Gates & Audit Logs       |
+                               |  - SQLite WAL + Obsidian Markdown Vault    |
+                               |  - Token-Budgeted Architecture Context     |
+                               +--------------------------------------------+
+                                       /                             \
+                Tailscale / OpenSSH   /                               \  Tailscale HTTPS / Pull Protocol
+          (Strict Known Hosts, RO)  /                                 \ (Bearer Auth, Leased Tasks)
+                                   v                                   v
++--------------------------------------------+     +--------------------------------------------+
+|         LOCAL INFERENCE CLUSTER            |     |        REMOTE EXECUTION ENVIRONMENT        |
+|    Linux Compute Nodes / Laptops           |     |             Cloud VPS Companion            |
+|  - Quantized Qwen2.5 (0.5B - 7B Q4_K_M)    |     |  - Lightweight Python Worker Agent         |
+|  - Ollama & llama.cpp RPC workers          |     |  - Sandboxed Python & Shell Execution      |
+|  - Defensive Read-Only Hardware Probes     |     |  - Systemd Services & Timers (Independent) |
+|  - Local reasoning & proposal drafting     |     |  - Disconnect-Resilient Result Buffering   |
++--------------------------------------------+     +--------------------------------------------+
 ```
-
-For complete protocol details, network boundaries, and distributed memory allocation math, see the **[Technical Map (TECH_MAP.md)](TECH_MAP.md)**.
 
 ---
 
-## Quickstart
+## 🚀 Key Highlights & Capabilities
 
-### 1. Installation on Windows
+### 1. Infrastructure Self-Awareness & Capability Registry
+- **Persistent Infrastructure Topology**: Live inventory of CPU cores, exact physical and available RAM (via Windows `GlobalMemoryStatusEx`), storage free space, active system services, and installed Python runtimes.
+- **Three-Tier Capability Separation**:
+  - *Declared*: What configuration or admins propose a node should support.
+  - *Discovered*: Software, packages, and runtimes actually detected via read-only inspection.
+  - *Verified*: Operational functions proven through side-effect-free test probes.
+- **15 Structured Capability Categories**: AI Inference, Web Retrieval, Search, Browser Automation, Python Execution, Approved Shell, File Processing, Document Extraction, Data Transformation, API Integrations, Scheduled Execution, Persistent Services, Monitoring, Software Deployment, and Reporting.
+- **Side-Effect-Free Probes**: Verifies capability readiness (in-memory AST compilation, local permission checks, loopback socket binding) without modifying system state or executing external scripts.
+- **Token-Budgeted Architecture Context Packets**: Dynamically synthesizes live infrastructure facts into token-budgeted prompt packets (500 to 4,000 tokens) tailored for local Qwen models with priority pruning and omission notices.
+- **Durable Obsidian Vault Synchronization**: Synchronizes live infrastructure facts to durable Markdown notes in `knowledge/system/infrastructure_architecture.md`.
 
-Run PowerShell as Administrator or standard user:
-```powershell
-# Clone the repository
-git clone https://github.com/mattcallaway/qwen_cluster_interface.git
-cd qwen_cluster_interface
+### 2. Comprehensive Project Intelligence (Milestones 1–5)
+- **Hierarchical Decomposition**: `Project` → `Path` → `Stage` → `Task` → `Deliverable`.
+- **Evidence & Governance**: Strict approval gates, deliverable promotion workflows, cryptographic checksums, and immutable event logs.
+- **Metrics & Accuracy Tracking**: Versioned forecasts vs actual observations, task throughput, accuracy tracking, and automated calibration.
+- **Historical Learning & Retrospectives**: Captures project retrospectives, operational failure modes, and reusable procedural lessons directly into the persistent knowledge vault.
 
-# Run the idempotent Windows setup script
-powershell -ExecutionPolicy Bypass -File scripts\install-windows.ps1
-```
-*Creates the Python virtual environment, installs dependencies, provisions external storage at `%USERPROFILE%\.qwen-collective\data`, generates 256-bit secrets, and validates all 55 tests.*
+### 3. Secure VPS Execution Companion (Milestone 2)
+- **Outbound Pull-Based Protocol**: The VPS connects inbound to the controller over private Tailscale WireGuard. No public controller ports are exposed.
+- **Durable Task Leasing**: Atomic lease claims, configurable lease timeouts, heartbeat extensions, and duplicate submission guards.
+- **Local Disconnect Buffering**: If network connectivity drops, the VPS agent safely executes authorized tasks and buffers results in a local SQLite store until reconnection.
+- **Inference-Free Independence**: Approved recurring scheduled jobs and systemd services execute continuously on the VPS without requiring active Qwen model sessions.
 
-#### To Run Always-On in the Background:
-Double-click **`service\register-service.bat`** (accept UAC elevation) to register and start the Windows Background Service.
-
-#### To Run in Interactive Console:
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\start-windows.ps1
-```
-Navigate to **`http://127.0.0.1:8000`**. Sign in using `admin` and the password saved in `%USERPROFILE%\.qwen-collective\qwen-collective.env`.
+### 4. Zero-Trust Security Architecture
+- **Dedicated Worker Identities**: Granular Bearer tokens per machine; no shared administrative secrets.
+- **Secret Scrubbing**: Automatic redaction of passwords, tokens, and keys from AI prompts, execution logs, and knowledge notes.
+- **Defensive Hardware Probes**: Uses `paramiko.RejectPolicy` with strict `known_hosts` checks for SSH nodes.
+- **Web Security**: CSRF token validation on all mutating endpoints, HttpOnly/SameSite session cookies, bounded SQLite login rate-limiting lockout against brute-force attacks, and SSRF loopback protections.
+- **Windows Service Reliability**: Packaged with WinSW for automatic boot startup, crash recovery policies, and rotating logs.
 
 ---
 
-### 2. Installation on Linux
+## 🛠️ Technology Stack
 
-```bash
+| Component | Technology | Rationale |
+|---|---|---|
+| **Core Framework** | Python 3.12+, FastAPI | High performance, async I/O, native typing |
+| **Web UI** | Jinja2, HTMX, Vanilla CSS | Server-rendered, reactive, zero JavaScript bundle bloat |
+| **Persistence** | SQLite WAL Mode + FTS5 | ACID transactions, concurrent reads, instant full-text search |
+| **Knowledge Vault** | Markdown (Obsidian Compatible) | Future-proof, durable, portable human-readable knowledge |
+| **Service Host** | WinSW (Windows Service Wrapper) | Robust Windows service management and crash recovery |
+| **Networking** | Tailscale (WireGuard) | Private authenticated mesh with end-to-end encryption |
+| **Inference Engines**| llama.cpp, Ollama | Sovereign, local quantized open models (Qwen2.5) |
+
+---
+
+## 🚦 Quickstart
+
+### Prerequisites
+- Windows 10/11 or Windows Server (Controller)
+- Python 3.12 or newer
+- Git
+
+### 1. Clone & Set Up Virtual Environment
+```powershell
 git clone https://github.com/mattcallaway/qwen_cluster_interface.git
 cd qwen_cluster_interface
-
-python3 -m venv .venv
-source .venv/bin/activate
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-
-cp .env.example .env
-# Edit .env with your secrets and settings
-python -m app.main
 ```
 
-For production `systemd` configuration, user sandboxing, and cron backup jobs, see the **[Installation Guide (INSTALL.md)](INSTALL.md)**.
+### 2. Configure Environment Secrets
+Create a secure configuration file at `$HOME\.qwen-collective\qwen-collective.env`:
+```ini
+QC_APP_NAME=Qwen Collective
+QC_ENV=development
+QC_HOST=127.0.0.1
+QC_PORT=8000
+QC_DATA_DIR=C:\Users\<YourUser>\.qwen-collective\data
+QC_SECRET_KEY=your-secure-random-secret-key-min-32-chars
+QC_ADMIN_PASSWORD=your-secure-admin-password
+QC_SESSION_EXPIRE_HOURS=72
+QC_LOG_LEVEL=INFO
+```
 
----
-
-## Distributed Inference (Dual 4GB RAM Laptops)
-
-Pooled execution of `Qwen 2.5 7B Instruct` across two aging laptops:
-
-1. **On Laptop 2 (Worker)**:
-   ```bash
-   ./build/bin/rpc-server -H 0.0.0.0 -p 50052
-   ```
-2. **On Laptop 1 (Coordinator)**:
-   ```bash
-   ./build/bin/llama-server \
-     -m models/qwen2.5-7b-instruct-q4_k_m.gguf \
-     -c 4096 \
-     --host 0.0.0.0 \
-     --port 8080 \
-     --rpc <laptop-2-ip>:50052
-   ```
-3. In the Qwen Collective UI under **Inference & Models**, register `http://<laptop-1-ip>:8080` to route chat interactions across both machines seamlessly.
-
----
-
-## Secure Remote Access via Tailscale
-
-Keep your Control Server strictly bound to `127.0.0.1:8000` with **zero public ports** and **no router port forwarding**:
-
+### 3. Run the Development Server
 ```powershell
-# Authenticate machine to your tailnet
-tailscale up
-
-# Enable secure Tailscale Serve
-tailscale serve --bg 8000
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
-Access your dashboard from your phone or laptop at: `https://<your-machine>.<tailnet>.ts.net`.
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000) in your browser and sign in with `admin` and your configured password.
+
+### 4. Run the Test Suite
+```powershell
+pytest -v
+```
+*Current test suite: 233 automated unit, integration, and security tests passing.*
 
 ---
 
-## Backup & Disaster Recovery
+## 📖 Documentation Index
 
-* **Windows**: Run `powershell -File scripts\backup-windows.ps1` (atomic online SQLite snapshot + compressed Markdown vault with 14-day retention).
-* **Linux**: Configured via `/etc/cron.daily/qwen-backup` (documented in [INSTALL.md](INSTALL.md)).
-
----
-
-## Documentation Index
-
-- **[TECH_MAP.md](TECH_MAP.md)**: Deep dive into architecture, layers, data lifecycle, and hardware whitelist.
-- **[INSTALL.md](INSTALL.md)**: Complete production installation and hardening guide for Windows, Linux, and VPS.
-- **[WINDOWS_DEPLOYMENT.md](WINDOWS_DEPLOYMENT.md)**: WinSW service operations, log rotation, and OpenSSH permissions on Windows.
-- **[STATUS.md](STATUS.md)**: Verified test matrix (55/55 tests passing) and deployment audit.
+- **[Technical Architecture Map (TECHMAP.md)](TECHMAP.md)**: Deep dive into the database schema (Migrations 1–6), component communication mesh, leasing protocols, and security boundaries.
+- **[Operator & Administrator Guide (HOWTO.md)](HOWTO.md)**: Step-by-step instructions for running the Windows service, connecting Linux inference nodes, setting up the VPS agent, managing capabilities, and running projects.
+- **[Capability Registry Specification (CAPABILITY_REGISTRY_SPEC.md)](CAPABILITY_REGISTRY_SPEC.md)**: Typed schema, lifecycle stages, and verification probes for all 15 capability categories.
+- **[VPS Agent Protocol Specification (VPS_AGENT_PROTOCOL.md)](VPS_AGENT_PROTOCOL.md)**: Detailed message formats, leasing state machine, idempotency keys, and buffering rules.
+- **[Deployment Lifecycle (DEPLOYMENT_LIFECYCLE.md)](DEPLOYMENT_LIFECYCLE.md)**: The 8-stage deployment lifecycle from proposal to retirement.
+- **[Execution Security Guide (EXECUTION_SECURITY.md)](EXECUTION_SECURITY.md)**: Least privilege execution, sandbox containment, network guards, and secret isolation.
+- **[Infrastructure Context Specification (INFRASTRUCTURE_CONTEXT_SPEC.md)](INFRASTRUCTURE_CONTEXT_SPEC.md)**: Token-budgeted prompt packet synthesis and priority pruning rules.
+- **[Operations Runbook (VPS_OPERATIONS_RUNBOOK.md)](VPS_OPERATIONS_RUNBOOK.md)**: Troubleshooting, health check routines, and emergency disaster recovery.
 
 ---
 
-## Repository
+## 🔒 Security Policy
 
-* **GitHub**: [https://github.com/mattcallaway/qwen_cluster_interface](https://github.com/mattcallaway/qwen_cluster_interface)
+Qwen Collective enforces strict defensive controls:
+1. No unauthenticated public endpoints.
+2. The VPS execution environment runs as a non-privileged user and never receives root permissions.
+3. Arbitrary shell execution is forbidden; only approved, declared, and verified operations may run.
+4. AI-generated proposals require explicit human review and approval before execution.
+
+---
+
+## 📄 License
+MIT License. Created by Matt Callaway and the Qwen Collective Contributors.
