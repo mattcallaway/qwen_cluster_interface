@@ -38,6 +38,12 @@ class Settings(BaseModel):
     def knowledge_dir(self) -> Path:
         return self.data_dir / "knowledge"
 
+    @property
+    def evidence_dir(self) -> Path:
+        p = self.data_dir / "evidence"
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
 settings = Settings()
 
 def validate_production_settings():

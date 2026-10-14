@@ -183,9 +183,12 @@ def test_complete_intelligence_to_execution_to_knowledge_loop(auth_client, db_co
     task_script = (
         "import hashlib, json\n"
         "doc_text = 'Public Record: Municipal Notice 2026-Q3'\n"
-        "checksum = hashlib.sha256(doc_text.encode()).hexdigest()\n"
+        "with open('public_record.txt', 'w') as f:\n"
+        "    f.write(doc_text)\n"
+        "with open('public_record.txt', 'rb') as f:\n"
+        "    checksum = hashlib.sha256(f.read()).hexdigest()\n"
         "print(f'Retrieved {doc_text}. SHA256: {checksum}')\n"
-        "print(json.dumps({'metric_observation': {'metric_id': '" + metric_id + "', 'value': 1.0}}))\n"
+        "print(json.dumps({'metric_observation': {'metric_id': '" + metric_id + "', 'value': 1.0, 'evidence_reference': 'public_record.txt', 'artifact_checksum': checksum}}))\n"
     )
     db_conn.execute("UPDATE tasks SET input_data_json = ? WHERE id = ?", (json.dumps({"script": task_script}), task["id"]))
     db_conn.commit()
@@ -230,9 +233,12 @@ def test_complete_intelligence_to_execution_to_knowledge_loop(auth_client, db_co
     assert exec_outcome["status"] == "success"
     assert exec_outcome["exit_code"] == 0
     assert "Municipal Notice" in exec_outcome["stdout_summary"]
+    artifacts = exec_outcome["result_payload"].get("artifacts", [])
+    assert len(artifacts) >= 1
+    assert artifacts[0]["filename"] == "public_record.txt"
 
     # ---------------------------------------------------------------------------
-    # Step 10: Worker Submits Result
+    # Step 10: Worker Submits Result with Real Artifact Bytes
     # ---------------------------------------------------------------------------
     submit_payload = {
         "task_id": task["id"],
@@ -244,20 +250,15 @@ def test_complete_intelligence_to_execution_to_knowledge_loop(auth_client, db_co
         "stdout_summary": exec_outcome["stdout_summary"],
         "stderr_summary": exec_outcome["stderr_summary"],
         "deliverable_ids": [deliv_id],
-        "result_payload": {
-            "metric_observation": {
-                "metric_id": metric_id,
-                "value": 1.0,
-                "evidence_reference": f"deliverable:{deliv_id}",
-                "artifact_checksum": "283b68cf83948f4741923117d12b64e266ac1885b8cd6bf0efd230449787f3a9",
-                "notes": "Automated download verified with SHA256 checksum",
-            }
-        },
+        "artifacts": artifacts,
+        "result_payload": exec_outcome["result_payload"],
     }
 
     sub_resp = auth_client.post(f"/api/v1/worker/tasks/{task['id']}/submit", json=submit_payload, headers=worker_headers)
     assert sub_resp.status_code == 200
-    assert sub_resp.json()["status"] == "recorded"
+    sub_data = sub_resp.json()
+    assert sub_data["status"] == "recorded"
+    assert len(sub_data.get("stored_artifacts", [])) >= 1
 
     # ---------------------------------------------------------------------------
     # Step 11: Verify Execution Loop Artifacts in Database

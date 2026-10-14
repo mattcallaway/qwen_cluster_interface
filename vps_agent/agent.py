@@ -231,6 +231,7 @@ class VPSWorkerAgent:
             "error_category": exec_outcome.get("error_category"),
             "result_payload": exec_outcome.get("result_payload", {}),
             "deliverable_ids": [],
+            "artifacts": exec_outcome.get("result_payload", {}).get("artifacts", []),
         }
 
         # Submit to controller or buffer offline

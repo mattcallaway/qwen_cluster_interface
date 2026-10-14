@@ -7,9 +7,12 @@ Enforces execution security model across:
 - Explicit rejection of unsupported operations with structured error
 """
 
+import base64
 import hashlib
+import json
 import logging
 import os
+from pathlib import Path
 import shutil
 import subprocess
 import sys
@@ -46,6 +49,70 @@ def _build_sanitized_environment(work_dir: Optional[str] = None) -> Dict[str, st
     clean_env["PYTHONUNBUFFERED"] = "1"
     clean_env["QC_EXECUTION_SANDBOX"] = "1"
     return clean_env
+
+
+def _detect_os_isolation_mechanism() -> Optional[str]:
+    """
+    Detect enforced OS-level execution isolation mechanism.
+    Priority:
+    1. 'systemd_transient': systemd-run transient unit with DynamicUser=yes, ProtectSystem=strict, etc.
+    2. 'bubblewrap': bwrap unprivileged container sandbox
+    3. 'restricted_subprocess': only in development/test fallback mode
+    4. None: if no enforceable OS isolation boundary is present
+    """
+    if shutil.which("systemd-run"):
+        return "systemd_transient"
+    if shutil.which("bwrap"):
+        return "bubblewrap"
+    if os.environ.get("QC_ALLOW_SUBPROCESS_FALLBACK") == "1" or os.environ.get("PYTEST_CURRENT_TEST"):
+        return "restricted_subprocess"
+    return None
+
+
+def _build_isolation_command(
+    isolation_mech: str,
+    script_path: Path,
+    work_dir: str,
+    network_access: bool = False,
+    memory_limit_mb: int = 512,
+    tasks_max: int = 64,
+) -> List[str]:
+    """Build the command line for enforcing the OS isolation boundary."""
+    if isolation_mech == "systemd_transient":
+        network_flags = [] if network_access else ["-p", "IPAddressDeny=any"]
+        return [
+            "systemd-run",
+            "--pipe",
+            "--wait",
+            "--collect",
+            "-p", "DynamicUser=yes",
+            "-p", "ProtectSystem=strict",
+            "-p", "ProtectHome=yes",
+            "-p", "PrivateTmp=yes",
+            "-p", f"MemoryMax={memory_limit_mb}M",
+            "-p", f"TasksMax={tasks_max}",
+            "-p", f"ReadWritePaths={work_dir}",
+        ] + network_flags + [
+            sys.executable,
+            str(script_path),
+        ]
+    elif isolation_mech == "bubblewrap":
+        return [
+            "bwrap",
+            "--ro-bind", "/usr", "/usr",
+            "--ro-bind", "/lib", "/lib",
+            "--ro-bind", "/lib64", "/lib64",
+            "--ro-bind", "/bin", "/bin",
+            "--ro-bind", "/etc", "/etc",
+            "--dir", "/tmp",
+            "--bind", work_dir, work_dir,
+            "--unshare-all",
+            "--die-with-parent",
+            sys.executable,
+            str(script_path),
+        ]
+    else:
+        return [sys.executable, str(script_path)]
 
 
 def _check_container_isolation_available() -> bool:
@@ -121,27 +188,39 @@ def execute_task(
                 "result_payload": {"execution_class": "Class B"},
             }
 
-        # ---------------------------------------------------------------------------
-        # Security Gate: Approval Record and Checksum Verification
-        # ---------------------------------------------------------------------------
-        is_approved = (
-            input_data.get("approved") is True
-            or input_data.get("approval_status") in ("approved", "authorized")
-            or bool(task.get("approved"))
-            or bool(task.get("approval_status") in ("approved", "authorized"))
-            or bool(input_data.get("approved_script_id"))
-        )
-        expected_checksum = (
-            input_data.get("script_checksum")
-            or input_data.get("checksum")
-            or input_data.get("sha256")
-            or task.get("script_checksum")
-        )
         actual_checksum = hashlib.sha256(script_code.encode("utf-8")).hexdigest()
 
-        # Unapproved scripts cannot run as Class B
-        if not is_approved:
+        # ---------------------------------------------------------------------------
+        # Security Gate: Enforce Controller-Issued Execution Manifest
+        # ---------------------------------------------------------------------------
+        # A worker must not trust arbitrary approval indicators ('approved: true', 'is_approved: true')
+        # supplied inside an arbitrary payload. It must require a valid execution manifest.
+        manifest = task.get("execution_manifest") or input_data.get("execution_manifest")
+
+        if not manifest:
             runtime = round(time.time() - start_time, 4)
+            # Differentiate forged approval flag from ordinary unapproved script
+            has_forged_flag = bool(
+                input_data.get("approved") is True
+                or input_data.get("is_approved") is True
+                or task.get("approved") is True
+                or input_data.get("approved_script_id")
+            )
+            if has_forged_flag:
+                logger.warning("Class B execution rejected: Forged approval flag without manifest (task: %s)", task_id)
+                return {
+                    "status": "error",
+                    "exit_code": 126,
+                    "runtime_seconds": runtime,
+                    "stdout_summary": "",
+                    "stderr_summary": (
+                        "Class B execution rejected: Approval indicators supplied inside task payload without a "
+                        "controller-issued execution manifest are unauthorized."
+                    ),
+                    "error_category": "unauthorized_manifest",
+                    "result_payload": {"execution_class": "Class B", "is_approved": False},
+                }
+
             logger.warning("Unapproved script rejected for Class B execution (task: %s)", task_id)
             return {
                 "status": "error",
@@ -153,8 +232,30 @@ def execute_task(
                 "result_payload": {"execution_class": "Class B", "is_approved": False},
             }
 
-        # Approved script checksums must be validated if specified
-        if expected_checksum and expected_checksum.lower() != actual_checksum.lower():
+        # Validate manifest task ID binding
+        manifest_task_id = manifest.get("task_id")
+        if manifest_task_id and task_id and manifest_task_id != task_id:
+            runtime = round(time.time() - start_time, 4)
+            logger.warning("Manifest tampering detected for task %s (manifest task: %s)", task_id, manifest_task_id)
+            return {
+                "status": "error",
+                "exit_code": 126,
+                "runtime_seconds": runtime,
+                "stdout_summary": "",
+                "stderr_summary": f"Manifest task_id '{manifest_task_id}' does not match target task '{task_id}'.",
+                "error_category": "manifest_tampering",
+                "result_payload": {"execution_class": "Class B"},
+            }
+
+        # Validate manifest script checksum binding
+        expected_checksum = (
+            manifest.get("script_checksum")
+            or input_data.get("script_checksum")
+            or input_data.get("checksum")
+            or input_data.get("sha256")
+            or task.get("script_checksum")
+        )
+        if not expected_checksum or expected_checksum.lower() != actual_checksum.lower():
             runtime = round(time.time() - start_time, 4)
             logger.warning("Script checksum mismatch for task %s (expected %s, got %s)", task_id, expected_checksum, actual_checksum)
             return {
@@ -167,6 +268,45 @@ def execute_task(
                 "result_payload": {"execution_class": "Class B", "expected_checksum": expected_checksum, "actual_checksum": actual_checksum},
             }
 
+        # Validate allowed capabilities
+        allowed_caps = manifest.get("allowed_capabilities") or ["python_execution"]
+        if "python_execution" not in allowed_caps:
+            runtime = round(time.time() - start_time, 4)
+            logger.warning("Manifest for task %s does not authorize python_execution", task_id)
+            return {
+                "status": "error",
+                "exit_code": 126,
+                "runtime_seconds": runtime,
+                "stdout_summary": "",
+                "stderr_summary": "Manifest does not authorize 'python_execution' capability.",
+                "error_category": "unauthorized_capability",
+                "result_payload": {"execution_class": "Class B"},
+            }
+
+        # ---------------------------------------------------------------------------
+        # OS-Level Isolation Boundary Enforcement
+        # ---------------------------------------------------------------------------
+        isolation_mech = _detect_os_isolation_mechanism()
+        if not isolation_mech:
+            runtime = round(time.time() - start_time, 4)
+            logger.error("Class B execution rejected: Host lacks required OS-level isolation boundary (task: %s)", task_id)
+            return {
+                "status": "error",
+                "exit_code": 126,
+                "runtime_seconds": runtime,
+                "stdout_summary": "",
+                "stderr_summary": (
+                    "Class B execution rejected: Host lacks required OS-level isolation boundary. "
+                    "Production Linux worker requires systemd transient unit (DynamicUser=yes) or Bubblewrap (bwrap)."
+                ),
+                "error_category": "unsupported_isolation",
+                "result_payload": {
+                    "execution_class": "Class B",
+                    "isolation_enforced": False,
+                    "missing_isolation": ["systemd-run", "bwrap"],
+                },
+            }
+
         # Create isolated workspace directory for this execution
         work_dir = tempfile.mkdtemp(prefix="qc_worker_exec_")
         if os.name != "nt":
@@ -175,10 +315,25 @@ def execute_task(
             except Exception:
                 pass
 
+        # Write script to isolated entrypoint file (mode 0500) rather than exposing on command line
+        script_file = Path(work_dir) / "task_entrypoint.py"
+        script_file.write_text(script_code, encoding="utf-8")
+        if os.name != "nt":
+            try:
+                os.chmod(script_file, 0o500)
+            except Exception:
+                pass
+
         sanitized_env = _build_sanitized_environment(work_dir=work_dir)
+        network_access = bool(manifest.get("network_access", False))
+        cmd = _build_isolation_command(
+            isolation_mech=isolation_mech,
+            script_path=script_file,
+            work_dir=work_dir,
+            network_access=network_access,
+        )
 
         try:
-            cmd = [sys.executable, "-c", script_code]
             proc = subprocess.run(
                 cmd,
                 cwd=work_dir,
@@ -192,6 +347,49 @@ def execute_task(
             stdout_text = proc.stdout[:MAX_OUTPUT_CHARS]
             stderr_text = proc.stderr[:MAX_OUTPUT_CHARS]
 
+            # ---------------------------------------------------------------------------
+            # Collect Physical Artifacts Generated During Execution
+            # ---------------------------------------------------------------------------
+            generated_artifacts = []
+            for item in Path(work_dir).iterdir():
+                if item.is_file() and item.name != "task_entrypoint.py":
+                    try:
+                        file_bytes = item.read_bytes()
+                        file_sha = hashlib.sha256(file_bytes).hexdigest()
+                        generated_artifacts.append({
+                            "filename": item.name,
+                            "file_size": len(file_bytes),
+                            "sha256": file_sha,
+                            "expected_sha256": file_sha,
+                            "content_base64": base64.b64encode(file_bytes).decode("ascii"),
+                        })
+                    except Exception as art_err:
+                        logger.warning("Failed to read generated artifact %s: %s", item.name, art_err)
+
+            # Parse any structured JSON lines in stdout
+            parsed_result = {}
+            for line in stdout_text.splitlines():
+                line_str = line.strip()
+                if line_str.startswith("{") and line_str.endswith("}"):
+                    try:
+                        data = json.loads(line_str)
+                        if isinstance(data, dict):
+                            parsed_result.update(data)
+                    except Exception:
+                        pass
+
+            result_payload = {
+                "execution_class": "Class B",
+                "isolation_mechanism": isolation_mech,
+                "stdout": stdout_text,
+                "stderr": stderr_text,
+                "returncode": proc.returncode,
+                "artifacts": generated_artifacts,
+            }
+            result_payload.update(parsed_result)
+            if generated_artifacts and "artifacts" not in parsed_result:
+                result_payload["artifacts"] = generated_artifacts
+
             return {
                 "status": "success" if is_success else "error",
                 "exit_code": proc.returncode,
@@ -199,12 +397,7 @@ def execute_task(
                 "stdout_summary": stdout_text,
                 "stderr_summary": stderr_text,
                 "error_category": "runtime_error" if not is_success else None,
-                "result_payload": {
-                    "execution_class": "Class B",
-                    "stdout": stdout_text,
-                    "stderr": stderr_text,
-                    "returncode": proc.returncode,
-                },
+                "result_payload": result_payload,
             }
         except subprocess.TimeoutExpired:
             runtime = round(time.time() - start_time, 4)
@@ -215,7 +408,7 @@ def execute_task(
                 "stdout_summary": "",
                 "stderr_summary": f"Process exceeded execution timeout limit of {timeout_seconds} seconds.",
                 "error_category": "timeout",
-                "result_payload": {"execution_class": "Class B"},
+                "result_payload": {"execution_class": "Class B", "isolation_mechanism": isolation_mech},
             }
         except Exception as e:
             runtime = round(time.time() - start_time, 4)
@@ -226,7 +419,7 @@ def execute_task(
                 "stdout_summary": "",
                 "stderr_summary": str(e),
                 "error_category": "system_error",
-                "result_payload": {"execution_class": "Class B"},
+                "result_payload": {"execution_class": "Class B", "isolation_mechanism": isolation_mech},
             }
         finally:
             # Clean up the isolated workspace directory

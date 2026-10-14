@@ -8,7 +8,9 @@ Enforces:
 - Idempotent result submission with immutable execution history
 """
 
+import base64
 import hashlib
+import hmac
 import json
 import logging
 import math
@@ -20,6 +22,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
+from app.config import settings
 from app.database import get_db_connection
 
 logger = logging.getLogger("qwen_collective.worker")
@@ -415,6 +418,142 @@ def record_worker_heartbeat(
 
 
 # ---------------------------------------------------------------------------
+# Class B Execution Manifest & Artifact Verification
+# ---------------------------------------------------------------------------
+
+def create_execution_manifest(
+    task_id: str,
+    lease_id: str,
+    worker_id: str,
+    task_type: str,
+    script_content: str,
+    timeout_seconds: int = DEFAULT_LEASE_DURATION_SECONDS,
+    allowed_capabilities: Optional[List[str]] = None,
+    network_access: bool = False,
+    secret_key: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Generate an authenticated, tamper-evident execution manifest for Class B execution.
+    Binds authorization to:
+    - Target task_id, lease_id, and worker_id
+    - Exact SHA256 content checksum of approved code
+    - Strict execution limits and permissions
+    - Controller HMAC-SHA256 signature
+    """
+    key = (secret_key or settings.secret_key).encode("utf-8")
+    script_checksum = hashlib.sha256(script_content.encode("utf-8")).hexdigest()
+    now_iso = _utc_now_iso()
+    manifest: Dict[str, Any] = {
+        "task_id": task_id,
+        "lease_id": lease_id,
+        "worker_id": worker_id,
+        "task_type": task_type,
+        "script_checksum": script_checksum,
+        "max_runtime_seconds": timeout_seconds,
+        "allowed_capabilities": allowed_capabilities or ["python_execution"],
+        "network_access": network_access,
+        "issued_at": now_iso,
+    }
+    canonical = json.dumps(manifest, sort_keys=True)
+    manifest["signature"] = hmac.new(key, canonical.encode("utf-8"), hashlib.sha256).hexdigest()
+    return manifest
+
+
+def verify_execution_manifest(
+    manifest: Dict[str, Any],
+    script_content: str,
+    expected_task_id: Optional[str] = None,
+    expected_worker_id: Optional[str] = None,
+    secret_key: Optional[str] = None,
+) -> Tuple[bool, str]:
+    """
+    Independently verify the authenticity and integrity of an execution manifest.
+    """
+    if not isinstance(manifest, dict):
+        return False, "Manifest is missing or not a dictionary."
+
+    required_fields = ["task_id", "lease_id", "worker_id", "script_checksum", "signature"]
+    for f in required_fields:
+        if not manifest.get(f):
+            return False, f"Manifest missing required field '{f}'."
+
+    if expected_task_id and manifest["task_id"] != expected_task_id:
+        return False, f"Manifest task_id '{manifest['task_id']}' does not match expected '{expected_task_id}'."
+
+    if expected_worker_id and manifest["worker_id"] != expected_worker_id:
+        return False, f"Manifest worker_id '{manifest['worker_id']}' does not match expected '{expected_worker_id}'."
+
+    actual_checksum = hashlib.sha256(script_content.encode("utf-8")).hexdigest()
+    if actual_checksum.lower() != str(manifest["script_checksum"]).lower():
+        return False, f"Script checksum '{actual_checksum}' does not match manifest '{manifest['script_checksum']}'."
+
+    key = (secret_key or settings.secret_key).encode("utf-8")
+    expected_sig = manifest.get("signature", "")
+    unsigned_copy = {k: v for k, v in manifest.items() if k != "signature"}
+    canonical = json.dumps(unsigned_copy, sort_keys=True)
+    computed_sig = hmac.new(key, canonical.encode("utf-8"), hashlib.sha256).hexdigest()
+
+    if not hmac.compare_digest(str(expected_sig), computed_sig):
+        return False, "Manifest HMAC signature verification failed."
+
+    return True, "Manifest verified."
+
+
+def store_task_artifact(
+    task_id: str,
+    filename: str,
+    content_bytes: bytes,
+    expected_sha256: Optional[str] = None,
+    worker_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Store a physical artifact in controlled evidence storage and compute independent SHA256 checksum.
+    Enforces Correction 2 & 3:
+    - Path traversal prevention
+    - File size constraints (max 25MB)
+    - Independent controller-side SHA256 hashing
+    - Verification against expected worker checksum
+    """
+    MAX_ARTIFACT_SIZE = 25 * 1024 * 1024  # 25 MB
+    if len(content_bytes) > MAX_ARTIFACT_SIZE:
+        raise ValueError(f"Artifact exceeds maximum allowed size of {MAX_ARTIFACT_SIZE} bytes.")
+
+    safe_name = Path(filename).name
+    if not safe_name or safe_name in (".", ".."):
+        safe_name = f"artifact_{uuid4().hex[:8]}.bin"
+
+    evidence_base = settings.evidence_dir
+    task_evidence_dir = evidence_base / f"task_{task_id}"
+    task_evidence_dir.mkdir(parents=True, exist_ok=True)
+
+    dest_file = task_evidence_dir / safe_name
+    dest_file.write_bytes(content_bytes)
+
+    # Independently compute SHA256 over stored bytes
+    computed_sha256 = hashlib.sha256(content_bytes).hexdigest()
+
+    matches = True
+    if expected_sha256:
+        matches = (computed_sha256.lower() == expected_sha256.strip().lower())
+
+    logger.info(
+        "Stored artifact %s for task %s (%d bytes, sha256=%s, match=%s)",
+        safe_name, task_id, len(content_bytes), computed_sha256, matches
+    )
+
+    return {
+        "task_id": task_id,
+        "filename": safe_name,
+        "stored_path": str(dest_file.resolve()),
+        "file_size": len(content_bytes),
+        "computed_sha256": computed_sha256,
+        "expected_sha256": expected_sha256,
+        "checksum_matches": matches,
+        "verified_at": _utc_now_iso(),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Durable Task Leasing Protocol
 # ---------------------------------------------------------------------------
 
@@ -506,12 +645,13 @@ def lease_task_for_worker(
             except Exception:
                 input_data = {"raw": task_row["input_data_json"]}
 
-        # Class B security signing: if script is approved, generate immutable checksum
+        # Class B security signing: if script is approved, generate immutable checksum and signed manifest
         script_content = (
             input_data.get("script")
             or input_data.get("python_script")
             or input_data.get("code")
         )
+        manifest = None
         if script_content and isinstance(script_content, str):
             is_approved = bool(
                 task_row["status"] in ("queued", "approved")
@@ -523,8 +663,19 @@ def lease_task_for_worker(
             if is_approved:
                 input_data["is_approved"] = True
                 input_data["approved"] = True
-                if not input_data.get("script_checksum"):
-                    input_data["script_checksum"] = hashlib.sha256(script_content.encode("utf-8")).hexdigest()
+                script_checksum = hashlib.sha256(script_content.encode("utf-8")).hexdigest()
+                input_data["script_checksum"] = script_checksum
+                manifest = create_execution_manifest(
+                    task_id=task_id,
+                    lease_id=lease_id,
+                    worker_id=worker_id,
+                    task_type=task_row["task_type"],
+                    script_content=script_content,
+                    timeout_seconds=lease_duration,
+                    allowed_capabilities=["python_execution"],
+                    network_access=bool(input_data.get("network_access", False)),
+                )
+                input_data["execution_manifest"] = manifest
 
         return {
             "lease_id": lease_id,
@@ -537,6 +688,7 @@ def lease_task_for_worker(
             "purpose": task_row["purpose"],
             "expected_output": task_row["expected_output"],
             "input_data": input_data,
+            "execution_manifest": manifest,
             "leased_at": now_iso,
             "lease_expires_at": expires_iso,
             "timeout_seconds": lease_duration,
@@ -653,8 +805,26 @@ def _evaluate_and_record_metric_observation(
             verification_status = "rejected"
             notes += f" [Rejected: Invalid artifact checksum format: '{checksum}']"
         else:
-            # If artifact file path is specified and accessible on controller, verify hash
-            target_path = Path(file_path_str) if file_path_str else (Path(evidence_ref) if evidence_ref and Path(evidence_ref).exists() else None)
+            # Search candidate artifact files on controller
+            candidate_paths = []
+            if file_path_str:
+                candidate_paths.append(Path(file_path_str))
+                candidate_paths.append(settings.evidence_dir / f"task_{actual_task_id}" / Path(file_path_str).name)
+            if evidence_ref:
+                candidate_paths.append(Path(evidence_ref))
+                candidate_paths.append(settings.evidence_dir / f"task_{actual_task_id}" / Path(evidence_ref).name)
+            task_ev_dir = settings.evidence_dir / f"task_{actual_task_id}"
+            if task_ev_dir.exists():
+                for p in task_ev_dir.iterdir():
+                    if p.is_file():
+                        candidate_paths.append(p)
+
+            target_path = None
+            for cp in candidate_paths:
+                if cp.exists() and cp.is_file():
+                    target_path = cp
+                    break
+
             if target_path and target_path.exists() and target_path.is_file():
                 try:
                     file_bytes = target_path.read_bytes()
@@ -670,24 +840,22 @@ def _evaluate_and_record_metric_observation(
                     notes += f" [Error verifying artifact file: {ex}]"
             elif file_path_str and (target_path is None or not target_path.exists()):
                 verification_status = "rejected"
-                notes += f" [Rejected: Referenced artifact file '{file_path_str}' not found]"
+                notes += f" [Rejected: Referenced artifact file '{file_path_str}' not found on controller]"
             else:
-                # Valid checksum format provided with evidence reference
-                if evidence_ref:
-                    verification_status = "verified"
-                    notes += " [Verified: Valid evidence reference and artifact checksum]"
-                else:
-                    verification_status = "unverified"
+                # Shortcut A eliminated: Checksum provided without retrievable artifact file on controller CANNOT verify!
+                verification_status = "unverified"
+                notes += " [Reported: Checksum provided without retrievable artifact file on controller]"
 
     # Rule 3: Deliverable or trusted evidence linkage
     elif evidence_ref:
-        if task_row and task_row["deliverable_id"]:
-            verification_status = "verified"
-            notes += " [Verified: Linked to approved deliverable]"
-        elif evidence_ref.startswith("execution:"):
+        if evidence_ref.startswith("execution:"):
             # Controller execution telemetry
             verification_status = "verified"
             notes += " [Verified: Controller execution telemetry]"
+        elif task_row and task_row["deliverable_id"]:
+            # Shortcut B eliminated: Deliverable linkage alone does NOT verify!
+            verification_status = "unverified"
+            notes += f" [Reported: Linked to deliverable '{task_row['deliverable_id']}', awaiting independent artifact validation]"
         else:
             # Evidence reference provided but no independent checksum
             verification_status = "unverified"
@@ -751,6 +919,7 @@ def submit_task_result(
     error_category: Optional[str] = None,
     result_payload: Optional[Dict[str, Any]] = None,
     deliverable_ids: Optional[List[str]] = None,
+    artifacts: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """
     Record task outcome, enforce idempotency, update lease, and append to execution ledger.
@@ -920,6 +1089,41 @@ def submit_task_result(
             except Exception as ev_err:
                 logger.warning("Failed to record task_execution_event for %s: %s", actual_task_id, ev_err)
 
+            # Process physical artifacts submitted by worker
+            processed_artifacts = []
+            raw_artifacts = artifacts or (result_payload.get("artifacts") if isinstance(result_payload, dict) else None)
+            if not raw_artifacts and isinstance(result_payload, dict) and "artifact" in result_payload:
+                raw_artifacts = [result_payload["artifact"]]
+
+            if raw_artifacts and isinstance(raw_artifacts, list):
+                for art in raw_artifacts:
+                    if not isinstance(art, dict):
+                        continue
+                    filename = art.get("filename") or f"artifact_{uuid4().hex[:8]}.bin"
+                    expected_sha = art.get("expected_sha256") or art.get("sha256") or art.get("checksum")
+                    content_bytes = b""
+                    if "content_base64" in art and art["content_base64"]:
+                        try:
+                            content_bytes = base64.b64decode(art["content_base64"])
+                        except Exception as b64_err:
+                            logger.warning("Failed to decode artifact %s base64: %s", filename, b64_err)
+                            continue
+                    elif "content" in art and art["content"]:
+                        content_bytes = art["content"].encode("utf-8") if isinstance(art["content"], str) else art["content"]
+
+                    if content_bytes:
+                        try:
+                            stored = store_task_artifact(
+                                task_id=actual_task_id or task_id,
+                                filename=filename,
+                                content_bytes=content_bytes,
+                                expected_sha256=expected_sha,
+                                worker_id=worker_id,
+                            )
+                            processed_artifacts.append(stored)
+                        except Exception as art_err:
+                            logger.warning("Failed to store task artifact %s: %s", filename, art_err)
+
             # Update deliverable if task is linked to one
             if task_row and task_row["deliverable_id"]:
                 try:
@@ -927,7 +1131,11 @@ def submit_task_result(
                     deliv = conn.execute("SELECT * FROM deliverables WHERE id = ?", (deliv_id,)).fetchone()
                     if deliv and deliv["status"] in ("planned", "in_progress"):
                         new_deliv_status = "submitted" if status == "success" else deliv["status"]
-                        artifact_ref = f"execution:{idempotency_key}"
+                        artifact_ref_parts = [f"execution:{idempotency_key}"]
+                        for pa in processed_artifacts:
+                            artifact_ref_parts.append(f"artifact:{actual_task_id}/{pa['filename']}")
+                        artifact_ref = ";".join(artifact_ref_parts)
+
                         conn.execute(
                             """
                             UPDATE deliverables
@@ -955,7 +1163,7 @@ def submit_task_result(
                                 rev_count + 1,
                                 new_deliv_status,
                                 artifact_ref,
-                                f"exit_code={exit_code}, runtime={runtime_seconds}s",
+                                f"exit_code={exit_code}, runtime={runtime_seconds}s, artifacts={len(processed_artifacts)}",
                                 f"Automatic submission from VPS worker {worker_id}",
                                 worker_id,
                                 now,
@@ -1004,7 +1212,7 @@ def submit_task_result(
         )
 
         conn.commit()
-        logger.info("Recorded execution %s for task %s (status: %s)", execution_id, task_id, status)
+        logger.info("Recorded execution %s for task %s (status: %s, artifacts: %d)", execution_id, task_id, status, len(processed_artifacts))
 
         return {
             "status": "recorded",
@@ -1012,6 +1220,7 @@ def submit_task_result(
             "task_id": task_id,
             "task_status": task_status,
             "completed_at": now,
+            "stored_artifacts": processed_artifacts,
         }
     finally:
         conn.close()

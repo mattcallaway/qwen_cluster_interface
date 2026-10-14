@@ -8,6 +8,7 @@ Enforces:
 - Append-only execution history
 """
 
+import base64
 import logging
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
@@ -24,6 +25,13 @@ router = APIRouter(prefix="/api/v1/worker", tags=["worker"])
 # ---------------------------------------------------------------------------
 # Request & Response Schemas
 # ---------------------------------------------------------------------------
+
+class ArtifactUploadRequest(BaseModel):
+    filename: str = Field(..., min_length=1, max_length=255)
+    content_base64: str = Field(..., min_length=1)
+    expected_sha256: Optional[str] = None
+    artifact_type: str = "general"
+
 
 class EnrollmentTokenCreateRequest(BaseModel):
     allowed_node_id: Optional[str] = None
@@ -78,6 +86,7 @@ class TaskResultSubmission(BaseModel):
     error_category: Optional[str] = None
     result_payload: Dict[str, Any] = Field(default_factory=dict)
     deliverable_ids: List[str] = Field(default_factory=list)
+    artifacts: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -370,12 +379,43 @@ def submit_task_result(
             error_category=submission.error_category,
             result_payload=submission.result_payload,
             deliverable_ids=submission.deliverable_ids,
+            artifacts=submission.artifacts,
         )
         return result
     except PermissionError as pe:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(pe))
     except ValueError as ve:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
+
+
+@router.post("/tasks/{task_id}/artifacts")
+def upload_task_artifact(
+    task_id: str,
+    req: ArtifactUploadRequest,
+    worker: Dict[str, Any] = Depends(get_authenticated_worker),
+):
+    """
+    Upload a physical artifact produced by a worker task.
+    The controller independently stores the bytes in evidence storage and computes SHA256.
+    """
+    try:
+        content_bytes = base64.b64decode(req.content_base64)
+    except Exception as ex:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid base64 encoding: {ex}")
+
+    try:
+        stored = worker_svc.store_task_artifact(
+            task_id=task_id,
+            filename=req.filename,
+            content_bytes=content_bytes,
+            expected_sha256=req.expected_sha256,
+            worker_id=worker["node_id"],
+        )
+        return {"status": "stored", "artifact": stored}
+    except ValueError as ve:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
+    except Exception as ex:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(ex))
 
 
 @router.get("/executions")

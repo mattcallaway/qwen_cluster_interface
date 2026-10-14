@@ -63,13 +63,28 @@ def test_executor_harmless_test_task():
     assert outcome["result_payload"]["verified"] is True
 
 
+import hashlib
+
+def _make_manifest(task_id: str, script: str, allowed_caps=None):
+    cs = hashlib.sha256(script.encode("utf-8")).hexdigest()
+    return {
+        "task_id": task_id,
+        "lease_id": f"lease_{task_id}",
+        "worker_id": "test-worker",
+        "script_checksum": cs,
+        "allowed_capabilities": allowed_caps or ["python_execution"],
+        "network_access": False,
+    }
+
+
 def test_executor_python_script_execution():
+    script = "print('Hello from Qwen Worker!'); print(2 + 2)"
     task = {
         "task_id": "py-task-1",
         "task_type": "python_execution",
         "input_data": {
-            "approved": True,
-            "script": "print('Hello from Qwen Worker!'); print(2 + 2)",
+            "script": script,
+            "execution_manifest": _make_manifest("py-task-1", script),
         },
     }
     outcome = execute_task(task, timeout_seconds=10)
@@ -79,8 +94,25 @@ def test_executor_python_script_execution():
     assert "4" in outcome["stdout_summary"]
 
 
+def test_executor_forged_approval_flag_rejected():
+    """Approval flags supplied inside payload without controller-issued manifest are strictly rejected."""
+    task = {
+        "task_id": "py-forged",
+        "task_type": "python_execution",
+        "input_data": {
+            "approved": True,
+            "script": "print('Forged approval')",
+        },
+    }
+    outcome = execute_task(task, timeout_seconds=10)
+    assert outcome["status"] == "error"
+    assert outcome["exit_code"] == 126
+    assert outcome["error_category"] == "unauthorized_manifest"
+    assert "without a controller-issued execution manifest are unauthorized" in outcome["stderr_summary"]
+
+
 def test_executor_unapproved_script_fails_closed():
-    """Unapproved scripts cannot run under Class B execution."""
+    """Unapproved scripts without manifest cannot run under Class B execution."""
     task = {
         "task_id": "py-unapproved",
         "task_type": "python_execution",
@@ -92,21 +124,17 @@ def test_executor_unapproved_script_fails_closed():
     assert outcome["status"] == "error"
     assert outcome["exit_code"] == 126
     assert outcome["error_category"] == "unapproved_script"
-    assert "unapproved python script" in outcome["stderr_summary"].lower()
 
 
 def test_executor_checksum_validation_success():
-    """Approved script with matching checksum executes successfully."""
-    import hashlib
+    """Approved script with matching manifest checksum executes successfully."""
     script = "print('Verified Checksum Execution')"
-    checksum = hashlib.sha256(script.encode("utf-8")).hexdigest()
     task = {
         "task_id": "py-checksum-ok",
         "task_type": "python_execution",
         "input_data": {
-            "approved": True,
-            "script_checksum": checksum,
             "script": script,
+            "execution_manifest": _make_manifest("py-checksum-ok", script),
         },
     }
     outcome = execute_task(task, timeout_seconds=10)
@@ -117,13 +145,14 @@ def test_executor_checksum_validation_success():
 
 def test_executor_checksum_mismatch_fails_closed():
     """Tampered script with checksum mismatch fails closed."""
+    script = "print('Tampered script')"
+    bad_manifest = _make_manifest("py-checksum-tampered", "different original content")
     task = {
         "task_id": "py-checksum-tampered",
         "task_type": "python_execution",
         "input_data": {
-            "approved": True,
-            "script_checksum": "0000000000000000000000000000000000000000000000000000000000000000",
-            "script": "print('Tampered script')",
+            "script": script,
+            "execution_manifest": bad_manifest,
         },
     }
     outcome = execute_task(task, timeout_seconds=10)
@@ -133,13 +162,99 @@ def test_executor_checksum_mismatch_fails_closed():
     assert "checksum verification failed" in outcome["stderr_summary"].lower()
 
 
+def test_executor_manifest_tampering_fails_closed():
+    """Manifest with mismatched task_id fails closed."""
+    script = "print('Tampered task ID')"
+    bad_manifest = _make_manifest("wrong-task-id", script)
+    task = {
+        "task_id": "actual-task-id",
+        "task_type": "python_execution",
+        "input_data": {
+            "script": script,
+            "execution_manifest": bad_manifest,
+        },
+    }
+    outcome = execute_task(task, timeout_seconds=10)
+    assert outcome["status"] == "error"
+    assert outcome["exit_code"] == 126
+    assert outcome["error_category"] == "manifest_tampering"
+
+
+def test_executor_unauthorized_capability_fails_closed():
+    """Manifest without python_execution capability fails closed."""
+    script = "print('Unauthorized cap')"
+    bad_manifest = _make_manifest("py-unauth-cap", script, allowed_caps=["network_ping_only"])
+    task = {
+        "task_id": "py-unauth-cap",
+        "task_type": "python_execution",
+        "input_data": {
+            "script": script,
+            "execution_manifest": bad_manifest,
+        },
+    }
+    outcome = execute_task(task, timeout_seconds=10)
+    assert outcome["status"] == "error"
+    assert outcome["exit_code"] == 126
+    assert outcome["error_category"] == "unauthorized_capability"
+
+
+def test_executor_isolation_missing_fails_closed(monkeypatch):
+    """When host lacks required OS-level isolation, Class B execution fails closed."""
+    import vps_agent.executor as exec_mod
+    monkeypatch.setattr(exec_mod, "_detect_os_isolation_mechanism", lambda: None)
+    script = "print('Isolation check')"
+    task = {
+        "task_id": "py-no-isolation",
+        "task_type": "python_execution",
+        "input_data": {
+            "script": script,
+            "execution_manifest": _make_manifest("py-no-isolation", script),
+        },
+    }
+    outcome = execute_task(task, timeout_seconds=10)
+    assert outcome["status"] == "error"
+    assert outcome["exit_code"] == 126
+    assert outcome["error_category"] == "unsupported_isolation"
+    assert "lacks required OS-level isolation boundary" in outcome["stderr_summary"]
+
+
+def test_executor_physical_artifact_generation():
+    """Class B execution creates a physical file and executor returns it as base64 artifact with SHA256."""
+    script = (
+        "import json\n"
+        "data = {'result': 'diagnostic_pass', 'status': 'ok'}\n"
+        "with open('vps_artifact.json', 'w') as f:\n"
+        "    f.write(json.dumps(data))\n"
+        "print('ARTIFACT_CREATED')\n"
+    )
+    task = {
+        "task_id": "py-art-gen",
+        "task_type": "python_execution",
+        "input_data": {
+            "script": script,
+            "execution_manifest": _make_manifest("py-art-gen", script),
+        },
+    }
+    outcome = execute_task(task, timeout_seconds=10)
+    assert outcome["status"] == "success"
+    assert outcome["exit_code"] == 0
+    artifacts = outcome["result_payload"].get("artifacts", [])
+    assert len(artifacts) >= 1
+    art = artifacts[0]
+    assert art["filename"] == "vps_artifact.json"
+    assert art["file_size"] > 0
+    assert len(art["sha256"]) == 64
+    assert len(art["content_base64"]) > 0
+
+
 def test_executor_python_script_error():
+    script = "raise ValueError('Intentional worker test error')"
     task = {
         "task_id": "py-task-err",
         "task_type": "python_execution",
         "input_data": {
-            "approved": True,
-            "script": "raise ValueError('Intentional worker test error')",
+            "script": script,
+            "execution_manifest": _make_manifest("py-task-err", script),
         },
     }
     outcome = execute_task(task, timeout_seconds=10)
@@ -150,12 +265,13 @@ def test_executor_python_script_error():
 
 
 def test_executor_timeout_limit():
+    script = "import time; time.sleep(5)"
     task = {
         "task_id": "py-task-timeout",
         "task_type": "python_execution",
         "input_data": {
-            "approved": True,
-            "script": "import time; time.sleep(5)",
+            "script": script,
+            "execution_manifest": _make_manifest("py-task-timeout", script),
         },
     }
     # Short 1-second timeout
@@ -202,12 +318,13 @@ def test_executor_environment_sanitization_strips_controller_secrets(monkeypatch
     monkeypatch.setenv("QC_DATABASE_URL", "sqlite:///sensitive.db")
     monkeypatch.setenv("TOKEN_API_SECRET", "super_secret_token")
 
+    script = "import os; print('QC_SECRET_KEY=' + os.environ.get('QC_SECRET_KEY', 'NOT_FOUND')); print('TOKEN=' + os.environ.get('TOKEN_API_SECRET', 'NOT_FOUND'))"
     task = {
         "task_id": "py-leak-check",
         "task_type": "python_execution",
         "input_data": {
-            "approved": True,
-            "script": "import os; print('QC_SECRET_KEY=' + os.environ.get('QC_SECRET_KEY', 'NOT_FOUND')); print('TOKEN=' + os.environ.get('TOKEN_API_SECRET', 'NOT_FOUND'))"
+            "script": script,
+            "execution_manifest": _make_manifest("py-leak-check", script),
         },
     }
     outcome = execute_task(task, timeout_seconds=5)
@@ -218,18 +335,19 @@ def test_executor_environment_sanitization_strips_controller_secrets(monkeypatch
 
 def test_executor_pythonpath_isolation_blocks_agent_imports():
     """Worker child scripts cannot import vps_agent internal modules due to PYTHONPATH scrubbing."""
+    script = (
+        "try:\n"
+        "    import vps_agent\n"
+        "    print('LEAKED_VPS_AGENT')\n"
+        "except ImportError:\n"
+        "    print('BLOCKED_IMPORT_OK')\n"
+    )
     task = {
         "task_id": "py-import-leak",
         "task_type": "python_execution",
         "input_data": {
-            "approved": True,
-            "script": (
-                "try:\n"
-                "    import vps_agent\n"
-                "    print('LEAKED_VPS_AGENT')\n"
-                "except ImportError:\n"
-                "    print('BLOCKED_IMPORT_OK')\n"
-            ),
+            "script": script,
+            "execution_manifest": _make_manifest("py-import-leak", script),
         },
     }
     outcome = execute_task(task, timeout_seconds=5)

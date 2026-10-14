@@ -361,3 +361,173 @@ def test_forecast_calculation_ignores_unverified_observations(db_conn):
         verified_only=False,
     )
     assert fct_all["predicted_value"] > 5000.0
+
+
+def test_shortcut_a_valid_checksum_without_retrievable_evidence_is_unverified(client, db_conn):
+    """Shortcut A elimination: Valid SHA256 checksum string without retrievable artifact file remains unverified."""
+    pid, metric_id, node_id, worker_token = _setup_project_and_worker(client, db_conn, "vps-shortcut-a")
+    now = datetime.now(timezone.utc).isoformat()
+    task_id = f"task-shortcut-a-{uuid.uuid4().hex[:6]}"
+    idem_key = f"idem-shortcut-a-{uuid.uuid4().hex[:6]}"
+    db_conn.execute(
+        "INSERT INTO tasks (id, title, task_type, status, project_id, created_at, updated_at) VALUES (?, 'Shortcut A Task', 'test_task', 'in_progress', ?, ?, ?)",
+        (task_id, pid, now, now),
+    )
+    db_conn.commit()
+
+    # Valid hex SHA256 format, but no bytes on controller
+    phantom_checksum = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    sub_payload = {
+        "task_id": task_id,
+        "idempotency_key": idem_key,
+        "status": "success",
+        "exit_code": 0,
+        "result_payload": {
+            "metric_observation": {
+                "metric_id": metric_id,
+                "value": 15.0,
+                "evidence_reference": "remote_phantom_log.txt",
+                "artifact_checksum": phantom_checksum,
+            }
+        },
+    }
+    resp = client.post(f"/api/v1/worker/tasks/{task_id}/submit", json=sub_payload, headers={"Authorization": f"Bearer {worker_token}"})
+    assert resp.status_code == 200
+
+    obs = db_conn.execute("SELECT * FROM metric_observations WHERE metric_id = ?", (metric_id,)).fetchone()
+    assert obs is not None
+    # MUST NOT be marked verified!
+    assert obs["verification_status"] == "unverified"
+    assert "without retrievable artifact file" in obs["notes"]
+
+
+def test_shortcut_b_deliverable_association_without_evidence_is_unverified(client, db_conn):
+    """Shortcut B elimination: Deliverable association without physical evidence cannot mark observation verified."""
+    pid, metric_id, node_id, worker_token = _setup_project_and_worker(client, db_conn, "vps-shortcut-b")
+    now = datetime.now(timezone.utc).isoformat()
+    deliv_id = f"deliv-shortcut-b-{uuid.uuid4().hex[:6]}"
+    db_conn.execute(
+        "INSERT INTO deliverables (id, project_id, name, deliverable_type, status, created_by, created_at, updated_at) VALUES (?, ?, 'Test Deliverable', 'report', 'planned', 'admin', ?, ?)",
+        (deliv_id, pid, now, now),
+    )
+    task_id = f"task-shortcut-b-{uuid.uuid4().hex[:6]}"
+    idem_key = f"idem-shortcut-b-{uuid.uuid4().hex[:6]}"
+    db_conn.execute(
+        "INSERT INTO tasks (id, title, task_type, status, project_id, deliverable_id, created_at, updated_at) VALUES (?, 'Shortcut B Task', 'test_task', 'in_progress', ?, ?, ?, ?)",
+        (task_id, pid, deliv_id, now, now),
+    )
+    db_conn.commit()
+
+    sub_payload = {
+        "task_id": task_id,
+        "idempotency_key": idem_key,
+        "status": "success",
+        "exit_code": 0,
+        "result_payload": {
+            "metric_observation": {
+                "metric_id": metric_id,
+                "value": 25.0,
+                # Worker supplies deliverable link but no retrievable bytes
+                "evidence_reference": f"deliverable:{deliv_id}",
+            }
+        },
+    }
+    resp = client.post(f"/api/v1/worker/tasks/{task_id}/submit", json=sub_payload, headers={"Authorization": f"Bearer {worker_token}"})
+    assert resp.status_code == 200
+
+    obs = db_conn.execute("SELECT * FROM metric_observations WHERE metric_id = ?", (metric_id,)).fetchone()
+    assert obs is not None
+    # MUST NOT be marked verified!
+    assert obs["verification_status"] == "unverified"
+    assert "awaiting independent artifact validation" in obs["notes"]
+
+
+def test_real_artifact_upload_and_verification_lifecycle(client, db_conn):
+    """Demonstrate full artifact upload, independent hashing on controller, and observation verification."""
+    import base64
+    pid, metric_id, node_id, worker_token = _setup_project_and_worker(client, db_conn, "vps-art-cycle")
+    now = datetime.now(timezone.utc).isoformat()
+    deliv_id = f"deliv-art-{uuid.uuid4().hex[:6]}"
+    db_conn.execute(
+        "INSERT INTO deliverables (id, project_id, name, deliverable_type, status, created_by, created_at, updated_at) VALUES (?, ?, 'Verified Deliverable', 'report', 'planned', 'admin', ?, ?)",
+        (deliv_id, pid, now, now),
+    )
+    task_id = f"task-art-cycle-{uuid.uuid4().hex[:6]}"
+    idem_key = f"idem-art-cycle-{uuid.uuid4().hex[:6]}"
+    db_conn.execute(
+        "INSERT INTO tasks (id, title, task_type, status, project_id, deliverable_id, created_at, updated_at) VALUES (?, 'Artifact Task', 'test_task', 'in_progress', ?, ?, ?, ?)",
+        (task_id, pid, deliv_id, now, now),
+    )
+    db_conn.commit()
+
+    # Create real test artifact bytes
+    raw_content = b'{"diagnostic": "ok", "nonce": "real-12345"}'
+    actual_hash = hashlib.sha256(raw_content).hexdigest()
+    b64_content = base64.b64encode(raw_content).decode("ascii")
+
+    sub_payload = {
+        "task_id": task_id,
+        "idempotency_key": idem_key,
+        "status": "success",
+        "exit_code": 0,
+        "artifacts": [
+            {
+                "filename": "vps_diag.json",
+                "content_base64": b64_content,
+                "expected_sha256": actual_hash,
+            }
+        ],
+        "result_payload": {
+            "metric_observation": {
+                "metric_id": metric_id,
+                "value": 1.0,
+                "evidence_reference": "vps_diag.json",
+                "artifact_checksum": actual_hash,
+            }
+        },
+    }
+
+    resp = client.post(f"/api/v1/worker/tasks/{task_id}/submit", json=sub_payload, headers={"Authorization": f"Bearer {worker_token}"})
+    assert resp.status_code == 200
+    res_data = resp.json()
+    assert res_data["status"] == "recorded"
+    assert len(res_data["stored_artifacts"]) == 1
+    stored_art = res_data["stored_artifacts"][0]
+    assert stored_art["computed_sha256"] == actual_hash
+    assert stored_art["checksum_matches"] is True
+
+    # Check metric observation status
+    obs = db_conn.execute("SELECT * FROM metric_observations WHERE metric_id = ?", (metric_id,)).fetchone()
+    assert obs is not None
+    assert obs["verification_status"] == "verified"
+    assert "Artifact checksum matches" in obs["notes"]
+
+
+def test_observation_lifecycle_states_reported_validated_verified_accepted(db_conn):
+    """Verify distinct lifecycle states: reported, validated, verified, accepted."""
+    uid = uuid.uuid4().hex[:6]
+    p = proj_svc.create_project(name=f"Lifecycle Project {uid}", owner="admin")
+    pid = p["id"]
+    m = met_svc.define_metric(project_id=pid, name=f"Lifecycle Metric {uid}", unit="pts", owner="admin")
+    mid = m["id"]
+
+    # 1. Reported
+    obs_rep = met_svc.record_observation(metric_id=mid, value=10.0, verification_status="reported", created_by="admin")
+    assert obs_rep["lifecycle_state"] == "reported"
+    assert obs_rep["verification_status"] == "unverified"
+
+    # 2. Validated
+    obs_val = met_svc.record_observation(metric_id=mid, value=20.0, verification_status="validated", created_by="admin")
+    assert obs_val["lifecycle_state"] == "validated"
+    assert obs_val["verification_status"] == "unverified"
+
+    # 3. Verified
+    obs_ver = met_svc.record_observation(metric_id=mid, value=30.0, verification_status="verified", created_by="admin")
+    assert obs_ver["lifecycle_state"] == "verified"
+    assert obs_ver["verification_status"] == "verified"
+
+    # 4. Accepted (via administrative review)
+    obs_acc = met_svc.accept_observation(obs_val["id"], reviewer="lead_admin", notes="Formally accepted for milestone release")
+    assert obs_acc["lifecycle_state"] == "accepted"
+    assert obs_acc["verification_status"] == "verified"
+    assert "Accepted by lead_admin" in obs_acc["notes"]
