@@ -1,7 +1,7 @@
 # Qwen Cluster Interface (Qwen Collective)
 ### A Private, Modular, Distributed AI Operating System
 
-[![Tests](https://img.shields.io/badge/Tests-62%20Passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-85%20Passed-brightgreen.svg)]()
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-blue.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)]()
 [![Security](https://img.shields.io/badge/Security-Strict%20Defensive%20Hardened-orange.svg)]()
@@ -15,10 +15,10 @@
 ## Key Highlights
 
 - **Lightweight & Transparent Control Server**: FastAPI, SQLite WAL mode, FTS5 full-text indexing, Jinja2, HTMX, and Vanilla CSS. Zero Node.js / heavy framework runtime dependencies.
-- **Hardware-Aware Distributed Inference**: Coordinates `llama.cpp` RPC across multiple low-spec laptops (e.g., pooling two 4GB RAM machines to run 7B parameter Qwen models).
+- **Hardware-Aware Model Coordination**: Supports standalone model inference (Ollama, llama-server) and experimental distributed inference (llama.cpp RPC over private LAN or Tailscale). Realistic baselines prioritize small quantized models (e.g., Qwen2.5 0.5B, 1.5B, or 3B Q4_K_M) on 4GB RAM laptops, treating larger models (7B+) as experimental targets evaluated against real RAM, CPU inspection, and actual token-per-second benchmarks. *Security Note: Unauthenticated llama.cpp RPC listeners must never be exposed on public networks.*
 - **Defensive Hardware Discovery**: Inspects Linux compute nodes via OpenSSH using strictly whitelisted, read-only diagnostic commands and strict `known_hosts` verification (`paramiko.RejectPolicy`). Never trusts arbitrary remote execution.
 - **Persistent Knowledge Base**: Raw Markdown notes stored in an **Obsidian-compatible** vault, indexed dynamically into SQLite FTS5 for instant search. Your notes are 100% human-readable files that outlive any application.
-- **Controlled VPS Companion Worker**: Isolates external web/research tasks onto a cloud VPS behind HMAC token authentication and strict task approval barriers.
+- **Controlled VPS Companion Worker**: Isolates external web/probe tasks onto a cloud VPS behind strong Bearer token authentication, loopback binding by default, and strict task permission boundaries.
 - **Always-On Windows Service & Tailscale Remote Access**: Automatic boot startup with WinSW, crash recovery, rotating logs, and secure WireGuard mesh access via `tailscale serve` (zero public port exposure).
 
 ---

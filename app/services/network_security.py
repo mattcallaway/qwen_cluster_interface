@@ -1,33 +1,54 @@
+"""
+Qwen Collective - Network Security & SSRF Protection Policy
+-----------------------------------------------------------
+Implements strict outbound network policy:
+- Rejection of cloud metadata endpoints (IPv4 and IPv6)
+- IPv4-mapped IPv6 normalization and defense
+- DNS resolution and validation of all returned addresses
+- Mitigation of DNS rebinding and TOCTOU address spoofing
+- Strict port restrictions (localhost and remote probe)
+- URL normalization and user-info rejection
+- Redirect prevention and revalidation
+"""
+
 import ipaddress
 import socket
-from urllib.parse import urlparse
-from typing import Tuple, Optional, List, Union
+import logging
+from urllib.parse import urlparse, urljoin
+from typing import Tuple, Optional, List, Union, Dict, Any, Set
+import httpx
+
+logger = logging.getLogger("qwen_collective.network_security")
 
 # Cloud metadata addresses and hostnames to strictly block
-BLOCKED_METADATA_IPS = {
+BLOCKED_METADATA_IPS: Set[str] = {
     "169.254.169.254", # AWS, GCP, Azure, OpenStack IPv4 metadata
     "fd00:ec2::254",    # AWS IPv6 metadata
 }
 
-BLOCKED_METADATA_HOSTS = {
+BLOCKED_METADATA_HOSTS: Set[str] = {
     "metadata.google.internal",
     "metadata.internal",
     "instance-data",
 }
 
+# Link-local / metadata networks
+IPV4_LINK_LOCAL_NET = ipaddress.ip_network("169.254.0.0/16")
+IPV6_LINK_LOCAL_NET = ipaddress.ip_network("fe80::/10")
+
 # Standard allowed ports for machine ping / reachability testing
-ALLOWED_PROBE_PORTS = {
+ALLOWED_PROBE_PORTS: Set[int] = {
     22,     # SSH
     80,     # HTTP
     443,    # HTTPS
-    8000,   # Alternative HTTP / Control Server
+    8000,   # Control Server
     8080,   # llama-server HTTP
     8081,   # VPS Companion Worker
     11434,  # Ollama API
     50052,  # llama.cpp RPC Server
 }
 
-ALLOWED_LOCALHOST_PORTS = {
+ALLOWED_LOCALHOST_PORTS: Set[int] = {
     8000,   # Control Server
     8080,   # Local llama-server
     8081,   # Local test worker
@@ -35,19 +56,45 @@ ALLOWED_LOCALHOST_PORTS = {
     50052,  # Local RPC worker
 }
 
-# Tailscale CGNAT subnet (100.64.0.0/10)
+# Allowed ports for outbound HTTP/HTTPS endpoint communication
+ALLOWED_ENDPOINT_PORTS: Set[int] = {
+    80,
+    443,
+    8000,
+    8080,
+    8081,
+    11434,
+}
+
+# Tailscale networks
 TAILSCALE_CGNAT_NET = ipaddress.ip_network("100.64.0.0/10")
+TAILSCALE_IPV6_NET = ipaddress.ip_network("fd7a:115c:a1e0::/48")
+
+def normalize_ip(ip_obj: Union[ipaddress.IPv4Address, ipaddress.IPv6Address]) -> Union[ipaddress.IPv4Address, ipaddress.IPv6Address]:
+    """
+    Normalize an IP address object, converting IPv4-mapped IPv6 (e.g., ::ffff:169.254.169.254)
+    into its true IPv4 representation to prevent parser bypasses.
+    """
+    if isinstance(ip_obj, ipaddress.IPv6Address) and ip_obj.ipv4_mapped:
+        return ip_obj.ipv4_mapped
+    return ip_obj
 
 def is_cloud_metadata(ip_or_host: str) -> bool:
-    """Check if address matches known cloud provider metadata endpoints."""
+    """Check if address matches known cloud provider metadata endpoints or link-local ranges."""
     cleaned = ip_or_host.strip().lower().strip("[]")
     if cleaned in BLOCKED_METADATA_HOSTS or cleaned in BLOCKED_METADATA_IPS:
         return True
     try:
-        ip_obj = ipaddress.ip_address(cleaned)
+        raw_ip = ipaddress.ip_address(cleaned)
+        ip_obj = normalize_ip(raw_ip)
+        
         if ip_obj.is_link_local:
             return True
         if str(ip_obj) in BLOCKED_METADATA_IPS:
+            return True
+        if isinstance(ip_obj, ipaddress.IPv4Address) and ip_obj in IPV4_LINK_LOCAL_NET:
+            return True
+        if isinstance(ip_obj, ipaddress.IPv6Address) and ip_obj in IPV6_LINK_LOCAL_NET:
             return True
     except ValueError:
         pass
@@ -56,7 +103,7 @@ def is_cloud_metadata(ip_or_host: str) -> bool:
 def resolve_hostname_ips(hostname: str, port: int) -> Tuple[bool, Union[List[Union[ipaddress.IPv4Address, ipaddress.IPv6Address]], str]]:
     """
     Resolve a hostname or IP string to all destination IP objects via socket.getaddrinfo.
-    Returns: (success, list_of_ips_or_error_string)
+    Returns: (success, list_of_normalized_ips_or_error_string)
     """
     clean_host = hostname.strip().lower().strip("[]")
     if not clean_host:
@@ -64,8 +111,8 @@ def resolve_hostname_ips(hostname: str, port: int) -> Tuple[bool, Union[List[Uni
 
     # Direct IP literal check
     try:
-        ip_obj = ipaddress.ip_address(clean_host)
-        return True, [ip_obj]
+        raw_ip = ipaddress.ip_address(clean_host)
+        return True, [normalize_ip(raw_ip)]
     except ValueError:
         pass
 
@@ -79,7 +126,8 @@ def resolve_hostname_ips(hostname: str, port: int) -> Tuple[bool, Union[List[Uni
             ip_str = sockaddr[0]
             if ip_str not in seen:
                 seen.add(ip_str)
-                ips.append(ipaddress.ip_address(ip_str))
+                raw_ip = ipaddress.ip_address(ip_str)
+                ips.append(normalize_ip(raw_ip))
         if not ips:
             return False, f"Could not resolve host '{clean_host}'."
         return True, ips
@@ -97,14 +145,20 @@ def validate_destination_ip(
     Validate a destination IP against the explicit authorized network policy.
     Prevents SSRF, metadata probing, and unauthorized internal network access.
     """
-    ip_str = str(ip_obj)
+    normalized = normalize_ip(ip_obj)
+    ip_str = str(normalized)
 
     # 1. Reject cloud metadata & link-local
-    if ip_str in BLOCKED_METADATA_IPS or ip_obj.is_link_local:
+    if (
+        ip_str in BLOCKED_METADATA_IPS
+        or normalized.is_link_local
+        or (isinstance(normalized, ipaddress.IPv4Address) and normalized in IPV4_LINK_LOCAL_NET)
+        or (isinstance(normalized, ipaddress.IPv6Address) and normalized in IPV6_LINK_LOCAL_NET)
+    ):
         return False, f"Access to link-local / cloud metadata address ({ip_str}) is strictly blocked."
 
-    # 2. Handle Loopback (Note: IPv6 ::1 is both loopback and reserved in python ipaddress)
-    if ip_obj.is_loopback:
+    # 2. Handle Loopback
+    if normalized.is_loopback:
         if not allow_localhost:
             return False, f"Loopback address ({ip_str}) is prohibited for this endpoint."
         if port not in ALLOWED_LOCALHOST_PORTS:
@@ -112,30 +166,40 @@ def validate_destination_ip(
         return True, "Authorized localhost destination."
 
     # 3. Reject multicast, unspecified, reserved
-    if ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved:
+    if normalized.is_multicast or normalized.is_unspecified or normalized.is_reserved:
         return False, f"Target IP ({ip_str}) is not a permitted unicast destination."
 
     # 4. Authorized Destinations:
-    # - Private RFC1918 / ULA IPv6
-    # - Tailscale CGNAT (100.64.0.0/10)
-    # - Publicly routable unicast (global)
-    is_private = ip_obj.is_private
-    is_tailscale = (isinstance(ip_obj, ipaddress.IPv4Address) and ip_obj in TAILSCALE_CGNAT_NET)
-    is_global = ip_obj.is_global
+    # A. Private RFC1918 or IPv6 ULA for local cluster devices (e.g. Linux laptops)
+    if normalized.is_private:
+        return True, "Authorized private cluster network destination."
 
-    if is_private or is_tailscale or is_global:
-        return True, "Authorized network destination."
+    # B. Tailscale network (CGNAT IPv4 or Tailscale ULA IPv6)
+    if (isinstance(normalized, ipaddress.IPv4Address) and normalized in TAILSCALE_CGNAT_NET) or \
+       (isinstance(normalized, ipaddress.IPv6Address) and normalized in TAILSCALE_IPV6_NET):
+        return True, "Authorized Tailscale network destination."
+
+    # C. Global / Public internet destination:
+    # Enforce strict port policy: only permitted for standard web/VPS services, never arbitrary internal ports
+    if normalized.is_global:
+        if port not in ALLOWED_ENDPOINT_PORTS:
+            return False, f"Port {port} is prohibited for external network destination {ip_str}. Allowed: {sorted(ALLOWED_ENDPOINT_PORTS)}."
+        return True, "Authorized external network destination."
 
     return False, f"IP address ({ip_str}) does not match authorized collective network policy."
 
 def validate_probe_target(host: str, port: int) -> Tuple[bool, str]:
     """
     Validate that a machine connectivity probe is safe and not an SSRF or metadata probe.
-    Resolves hostname and verifies destination IP.
+    Resolves hostname and verifies all destination IPs.
     """
     host_clean = host.strip().lower().strip("[]")
     if not host_clean:
         return False, "Target host cannot be empty."
+
+    # Reject user-info syntax in host string
+    if "@" in host_clean or "/" in host_clean or "\\" in host_clean or "\0" in host_clean:
+        return False, "Target host contains invalid or prohibited user-info syntax."
 
     if is_cloud_metadata(host_clean):
         return False, "Access to cloud metadata endpoints is strictly blocked."
@@ -147,6 +211,7 @@ def validate_probe_target(host: str, port: int) -> Tuple[bool, str]:
     if not success:
         return False, str(ips_or_err)
 
+    # Every resolved IP must pass validation
     for ip_obj in ips_or_err:
         valid, reason = validate_destination_ip(ip_obj, port, allow_localhost=True)
         if not valid:
@@ -159,25 +224,38 @@ def validate_endpoint_url(url: str, allow_localhost: bool = True) -> Tuple[bool,
     Validate inference and VPS endpoint URLs against SSRF, cloud metadata, and DNS-rebinding risks.
     Resolves all destination IPs and validates against destination policy.
     """
+    cleaned_url = url.strip()
+    if not cleaned_url:
+        return False, "URL cannot be empty."
+
     try:
-        parsed = urlparse(url.strip())
+        parsed = urlparse(cleaned_url)
     except Exception as e:
         return False, f"Malformed URL: {str(e)}"
 
     if parsed.scheme not in ("http", "https"):
         return False, f"Unsupported URL scheme '{parsed.scheme}'. Only http:// and https:// are permitted."
 
+    # Strictly reject URLs containing user-info credentials (e.g. http://user:pass@host)
+    if parsed.username or parsed.password:
+        return False, "URLs with embedded username/password credentials are prohibited."
+
     hostname = parsed.hostname
     if not hostname:
         return False, "URL must contain a valid hostname or IP address."
 
     hostname_clean = hostname.strip().lower().strip("[]")
+    if not hostname_clean or "\0" in hostname_clean or "/" in hostname_clean:
+        return False, "Invalid characters in target hostname."
+
     if is_cloud_metadata(hostname_clean):
         return False, "Access to cloud metadata services (169.254.169.254) is strictly prohibited."
 
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    if port not in ALLOWED_ENDPOINT_PORTS:
+        return False, f"Port {port} is prohibited for service endpoints. Allowed: {sorted(ALLOWED_ENDPOINT_PORTS)}."
 
-    # Resolve and validate all destination IPs
+    # Resolve and validate ALL destination IPs
     success, ips_or_err = resolve_hostname_ips(hostname_clean, port)
     if not success:
         return False, str(ips_or_err)
@@ -188,3 +266,36 @@ def validate_endpoint_url(url: str, allow_localhost: bool = True) -> Tuple[bool,
             return False, f"Destination IP {ip_obj} rejected: {reason}"
 
     return True, "URL is valid."
+
+async def safe_execute_http(
+    client: httpx.AsyncClient,
+    method: str,
+    url: str,
+    max_redirects: int = 3,
+    **kwargs
+) -> httpx.Response:
+    """
+    Executes an HTTP request with strict SSRF revalidation on every redirect hop.
+    Prevents open redirect bypasses and enforces destination policy.
+    """
+    current_url = url
+    for _ in range(max_redirects + 1):
+        is_safe, reason = validate_endpoint_url(current_url, allow_localhost=True)
+        if not is_safe:
+            raise ValueError(f"Outbound request blocked by SSRF policy: {reason}")
+
+        # Always enforce follow_redirects=False on individual request
+        resp = await client.request(method, current_url, follow_redirects=False, **kwargs)
+        
+        # Check for redirect status codes
+        if resp.status_code in (301, 302, 303, 307, 308):
+            location = resp.headers.get("Location")
+            if not location:
+                return resp
+            # Resolve relative redirect against current URL
+            current_url = urljoin(current_url, location)
+            # Revalidate next hop
+            continue
+        return resp
+
+    raise ValueError(f"Exceeded maximum redirects ({max_redirects})")

@@ -1,7 +1,11 @@
+import os
 import pytest
+os.environ["QC_AUTH_TOKEN"] = "a-very-secure-test-token-at-least-32-characters-long"
+
 from starlette.testclient import TestClient
 from worker.vps_worker import app, AUTH_TOKEN
 
+AUTH_TOKEN = os.environ["QC_AUTH_TOKEN"]
 client = TestClient(app)
 
 def test_vps_worker_unauthorized():

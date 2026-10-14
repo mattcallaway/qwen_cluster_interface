@@ -17,16 +17,31 @@
       <a href="/inference" class="btn btn-primary">Configure & Verify Inference Backend</a>
     </div>
   {% else %}
-    <!-- Active Chat Session -->
-    <div class="card" style="margin-bottom: 16px; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center;">
+    <!-- Active Chat Session Header -->
+    <div class="card" style="margin-bottom: 16px; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
       <div>
-        <span style="font-size: 0.85rem; color: var(--text-muted);">Active Backend:</span>
+        <span style="font-size: 0.85rem; color: var(--text-muted);">Backend:</span>
         <strong style="color: var(--primary);">{{ active_backend.name }}</strong>
         <span style="font-size: 0.8rem; color: var(--text-muted);">({{ active_backend.model_name or "Loaded Model" }})</span>
+        <span style="margin: 0 8px; color: var(--border-color);">|</span>
+        <span style="font-size: 0.85rem; color: var(--text-muted);">Topic:</span>
+        <strong style="color: var(--text-main); font-size: 0.9rem;">{{ active_title }}</strong>
       </div>
-      <div>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        {% if conversations and conversations|length > 1 %}
+          <select class="form-control" style="font-size: 0.8rem; padding: 4px 8px; width: auto;" onchange="if(this.value) window.location.href='/chat?session_id=' + this.value;">
+            {% for conv in conversations %}
+              <option value="{{ conv.id }}" {% if conv.id == session_id %}selected{% endif %}>{{ conv.title }}</option>
+            {% endfor %}
+          </select>
+        {% endif %}
+        <form action="/chat/new" method="post" style="display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="btn btn-primary btn-sm">+ New Chat</button>
+        </form>
         <form action="/chat/clear" method="post" style="display:inline;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="session_id" value="{{ session_id }}">
           <button type="submit" class="btn btn-secondary btn-sm">Clear History</button>
         </form>
       </div>
@@ -52,7 +67,7 @@
         {% endfor %}
       {% else %}
         <div style="text-align: center; color: var(--text-muted); margin: auto; padding: 40px;">
-          <p>No messages yet. Send a prompt to query the local model.</p>
+          <p>No messages in this conversation yet. Send a prompt to query the local model.</p>
         </div>
       {% endif %}
     </div>
@@ -60,12 +75,13 @@
     <!-- Message Input Box -->
     <form action="/chat/send" method="post" class="card" style="padding: 16px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="session_id" value="{{ session_id }}">
       <div style="display: flex; gap: 12px;">
         <textarea class="form-control" name="message" placeholder="Ask a question or provide context..." rows="2" required style="resize: vertical;"></textarea>
         <button type="submit" class="btn btn-primary" style="padding: 0 24px; align-self: flex-end; height: 42px;">Send</button>
       </div>
       <div class="form-help" style="margin-top: 8px;">
-        Prompt will be routed to <code>{{ active_backend.endpoint_url }}</code>. Context and history persist in local SQLite.
+        Prompt will be routed to <code>{{ active_backend.endpoint_url }}</code>. Conversation context and history persist in local SQLite.
       </div>
     </form>
   {% endif %}

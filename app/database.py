@@ -162,7 +162,17 @@ def init_db():
     );
     """)
     
-    # 9. Chat history
+    # 9. Chat conversations and message history
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS chat_conversations (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    """)
+
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS chat_messages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -186,10 +196,22 @@ def init_db():
     );
     """)
     
+    # 11. Bounded persistent rate-limiting table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS login_attempts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        key_type TEXT NOT NULL, -- 'ip' or 'user'
+        key_value TEXT NOT NULL,
+        attempt_time REAL NOT NULL
+    );
+    """)
+
     # Create indexes for performance
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_machines_status ON machines(connection_status);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_conv_user ON chat_conversations(user_id, updated_at);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_session ON chat_messages(session_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_login_attempts ON login_attempts(key_type, key_value, attempt_time);")
     
     conn.commit()
     conn.close()

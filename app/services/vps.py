@@ -60,7 +60,7 @@ def register_vps_node(
         id, name, endpoint_url, auth_token,
         status, capabilities_json, permission_policy,
         created_at, updated_at
-    ) VALUES (?, ?, ?, ?, 'unknown', '["health_check", "test_task"]', ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, 'unknown', '["health_check", "echo_ping", "network_probe"]', ?, ?, ?)
     """, (vps_id, name.strip(), endpoint_url.strip(), auth_token.strip(), permission_policy, now, now))
     conn.commit()
     conn.close()
@@ -87,7 +87,7 @@ async def probe_vps_health(vps_id: str) -> Tuple[bool, List[str], str]:
             resp = await client.get(f"{url}/health", headers=headers)
             if resp.status_code == 200:
                 data = resp.json()
-                caps = data.get("capabilities", ["health_check", "test_task"])
+                caps = data.get("capabilities", ["health_check", "echo_ping", "network_probe"])
                 conn.execute("""
                 UPDATE vps_nodes SET
                     status = 'online',

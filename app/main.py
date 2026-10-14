@@ -59,6 +59,10 @@ app.include_router(tasks.router)
 app.include_router(settings_route.router)
 
 if __name__ == "__main__":
+    import os
     import uvicorn
-    is_dev = settings.environment == "development"
-    uvicorn.run("app.main:app", host=settings.host, port=settings.port, reload=is_dev)
+    # Reload is strictly forbidden in production mode; requires explicit QC_DEV_RELOAD in development
+    should_reload = False
+    if settings.environment == "development" and os.getenv("QC_DEV_RELOAD", "0").lower() in ("1", "true"):
+        should_reload = True
+    uvicorn.run("app.main:app", host=settings.host, port=settings.port, reload=should_reload)

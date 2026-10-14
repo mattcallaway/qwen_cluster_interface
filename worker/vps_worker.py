@@ -1,19 +1,21 @@
 """
 Qwen Collective - VPS Companion Worker Service
 ----------------------------------------------
-A lightweight, isolated worker service intended to run on an internet-connected VPS.
+A lightweight, isolated worker service intended to run on an internet-connected VPS
+or Tailscale node.
 Provides:
 - Authenticated health check
-- Capability reporting
+- Capability reporting (reflecting actual implemented handlers)
 - Harmless test task execution
 - Strict permission boundaries (NO arbitrary shell execution)
 """
 
 import os
 import sys
+import secrets
 import logging
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from fastapi import FastAPI, Depends, HTTPException, Header, status
 from pydantic import BaseModel
 import uvicorn
@@ -22,9 +24,47 @@ import uvicorn
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("qwen_vps_worker")
 
-AUTH_TOKEN = os.getenv("QC_AUTH_TOKEN", "default-vps-secret-token")
+INSECURE_TOKENS = {
+    "default-vps-secret-token",
+    "secret",
+    "admin123",
+    "changeme",
+    "password",
+    ""
+}
+
+def validate_auth_token(token: Optional[str]) -> str:
+    """Validate that a strong, unique authentication token is provided."""
+    if not token or token.strip() in INSECURE_TOKENS or len(token.strip()) < 32:
+        raise RuntimeError(
+            "VPS WORKER STARTUP ERROR: A unique, strong QC_AUTH_TOKEN (minimum 32 characters) "
+            "is strictly required. Set the QC_AUTH_TOKEN environment variable."
+        )
+    return token.strip()
+
+def validate_host_binding(host: str, allow_public: bool = False) -> str:
+    """Ensure worker binds to loopback or private/tailscale interface unless explicitly allowed."""
+    cleaned = host.strip()
+    if cleaned in ("0.0.0.0", "::") and not allow_public:
+        raise RuntimeError(
+            "VPS WORKER SECURITY ERROR: Binding to 0.0.0.0 exposes the worker to all network interfaces. "
+            "Default to '127.0.0.1' or an explicit private/Tailscale IP. To force public binding, set QC_ALLOW_PUBLIC_BIND=1."
+        )
+    return cleaned
+
+AUTH_TOKEN = os.getenv("QC_AUTH_TOKEN")
+# Enforce security validation if running as main or worker service
 PORT = int(os.getenv("QC_WORKER_PORT", "8081"))
-HOST = os.getenv("QC_WORKER_HOST", "0.0.0.0")
+ALLOW_PUBLIC_BIND = os.getenv("QC_ALLOW_PUBLIC_BIND", "0").lower() in ("1", "true", "yes")
+HOST = os.getenv("QC_WORKER_HOST", "127.0.0.1")
+
+# Actual implemented capabilities
+IMPLEMENTED_CAPABILITIES: List[str] = [
+    "health_check",
+    "test_task",
+    "echo_ping",
+    "network_probe"
+]
 
 app = FastAPI(title="Qwen Collective VPS Companion Worker", version="0.1.0")
 
@@ -32,7 +72,12 @@ def verify_token(authorization: Optional[str] = Header(None)):
     if not authorization:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing Authorization header")
     parts = authorization.split()
-    if len(parts) != 2 or parts[0].lower() != "bearer" or parts[1] != AUTH_TOKEN:
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid token format")
+    
+    # Constant-time comparison to prevent timing side-channel attacks
+    current_token = os.getenv("QC_AUTH_TOKEN")
+    if not current_token or not secrets.compare_digest(parts[1], current_token):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid token")
     return parts[1]
 
@@ -54,12 +99,7 @@ def health(token: str = Depends(verify_token)):
     return {
         "status": "healthy",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "capabilities": [
-            "health_check",
-            "test_task",
-            "page_retrieval_sandbox",
-            "structured_research_inbox"
-        ]
+        "capabilities": IMPLEMENTED_CAPABILITIES
     }
 
 @app.post("/tasks/execute")
@@ -67,7 +107,7 @@ def execute_task(req: TaskRequest, token: str = Depends(verify_token)):
     """Execute a strictly bounded, harmless task."""
     logger.info(f"Received task request of type: {req.task_type}")
     
-    if req.task_type == "echo_ping":
+    if req.task_type in ("echo_ping", "test_task"):
         msg = req.payload.get("message", "ping")
         return {
             "status": "success",
@@ -90,6 +130,11 @@ def execute_task(req: TaskRequest, token: str = Depends(verify_token)):
             detail=f"Unsupported or unauthorized task type: '{req.task_type}'. Shell execution is strictly prohibited."
         )
 
+def main():
+    token = validate_auth_token(os.getenv("QC_AUTH_TOKEN"))
+    host = validate_host_binding(HOST, allow_public=ALLOW_PUBLIC_BIND)
+    logger.info(f"Starting Qwen Collective VPS Companion Worker on {host}:{PORT}")
+    uvicorn.run(app, host=host, port=PORT)
+
 if __name__ == "__main__":
-    logger.info(f"Starting Qwen Collective VPS Companion Worker on {HOST}:{PORT}")
-    uvicorn.run(app, host=HOST, port=PORT)
+    main()
