@@ -129,6 +129,7 @@ def _build_isolation_command(
             "-p", "ProtectSystem=strict",
             "-p", "ProtectHome=yes",
             "-p", "PrivateTmp=yes",
+            "-p", f"WorkingDirectory={work_dir}",
             "-p", f"MemoryMax={memory_limit_mb}M",
             "-p", f"TasksMax={tasks_max}",
             "-p", f"ReadWritePaths={work_dir}",

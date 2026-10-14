@@ -522,4 +522,93 @@ def test_production_sandbox_adversarial_boundary_protections(monkeypatch, tmp_pa
     assert outcome["error_category"] == "unsupported_isolation"
 
 
+def test_systemd_working_directory_propagation(tmp_path):
+    """Verify explicit WorkingDirectory propagation to systemd transient units."""
+    from vps_agent import executor
+
+    script_path = tmp_path / "task_entrypoint.py"
+    cmd = executor._build_isolation_command(
+        isolation_mech="systemd_transient",
+        script_path=script_path,
+        work_dir=str(tmp_path),
+    )
+    assert "-p" in cmd
+    idx = cmd.index(f"WorkingDirectory={tmp_path}")
+    assert cmd[idx - 1] == "-p"
+
+    # Also verify in qwen-sandbox-runner.py source code
+    runner_script = Path(__file__).resolve().parent.parent / "scripts" / "qwen-sandbox-runner.py"
+    source = runner_script.read_text(encoding="utf-8")
+    assert 'f"WorkingDirectory={workspace}"' in source
+
+
+def test_verify_vps_sandbox_failure_handling_and_cleanup(tmp_path):
+    """
+    Verify verify_vps_sandbox.py failure handling and verifiable cleanup:
+    1. Rejects non-isolated UIDs (< 61184)
+    2. Rejects mismatched working directory
+    3. Rejects filesystem isolation leaks
+    4. Rejects network isolation leaks
+    5. Accepts completely isolated valid probe
+    6. Verifies clean workspace deletion
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+    import importlib.util
+    verify_script = Path(__file__).resolve().parent.parent / "scripts" / "verify_vps_sandbox.py"
+    spec = importlib.util.spec_from_file_location("verify_vps_sandbox", str(verify_script))
+    verify_mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(verify_mod)
+
+    test_ws = tmp_path / "test_eval_ws"
+    test_ws.mkdir()
+
+    base_valid = {
+        "isolated_uid": 61200,
+        "cwd": str(test_ws.resolve()),
+        "filesystem_denials": {
+            "/etc/test": "BLOCKED: PermissionError",
+            "/root/test": "BLOCKED: PermissionError",
+        },
+        "network_access": "BLOCKED: OSError",
+        "artifact_written": True,
+    }
+
+    # 1. Valid probe passes
+    ok, reason = verify_mod.evaluate_probe_data(base_valid, test_ws)
+    assert ok is True
+
+    # 2. Non-isolated UID (< 61184, e.g. root or regular user) fails
+    invalid_uid_data = dict(base_valid, isolated_uid=1001)
+    ok_uid, reason_uid = verify_mod.evaluate_probe_data(invalid_uid_data, test_ws)
+    assert ok_uid is False
+    assert "DynamicUser" in reason_uid
+
+    # 3. Mismatched WorkingDirectory fails
+    invalid_cwd_data = dict(base_valid, cwd="/tmp")
+    ok_cwd, reason_cwd = verify_mod.evaluate_probe_data(invalid_cwd_data, test_ws)
+    assert ok_cwd is False
+    assert "WorkingDirectory" in reason_cwd
+
+    # 4. Filesystem write allowed fails
+    invalid_fs_data = dict(base_valid, filesystem_denials={"/etc/test": "VULNERABLE_WRITE_ALLOWED"})
+    ok_fs, reason_fs = verify_mod.evaluate_probe_data(invalid_fs_data, test_ws)
+    assert ok_fs is False
+    assert "Filesystem" in reason_fs or "filesystem" in reason_fs
+
+    # 5. Network connection allowed fails
+    invalid_net_data = dict(base_valid, network_access="VULNERABLE_CONNECTED")
+    ok_net, reason_net = verify_mod.evaluate_probe_data(invalid_net_data, test_ws)
+    assert ok_net is False
+    assert "network" in reason_net.lower()
+
+    # 6. Verifiable cleanup test
+    dummy_file = test_ws / "artifact.json"
+    dummy_file.write_text("data", encoding="utf-8")
+    assert test_ws.exists()
+    cleanup_ok, cleanup_diag = verify_mod.perform_verifiable_cleanup(test_ws)
+    assert cleanup_ok is True
+    assert not test_ws.exists()
+
+
+
 

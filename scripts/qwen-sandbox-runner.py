@@ -162,6 +162,7 @@ def main():
         "-p", "ProtectHome=yes",
         "-p", "PrivateTmp=yes",
         "-p", "IPAddressDeny=any",
+        "-p", f"WorkingDirectory={workspace}",
         "-p", f"MemoryMax={mem_mb}M",
         "-p", f"TasksMax={tasks_max}",
         "-p", f"ReadWritePaths={workspace}",
