@@ -19,6 +19,21 @@
       <span class="badge badge-role">{{ note.category }}</span>
     </div>
 
+    {% if kmeta %}
+      <div id="knowledge-metadata" style="border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; font-size: 0.8rem;">
+        <strong>Knowledge record</strong> <span style="font-family: var(--font-mono); color: var(--text-muted);">{{ kmeta.id }}</span><br>
+        Type: {{ kmeta.knowledge_type|replace('_',' ') }} ·
+        Origin: {% if kmeta.origin in untrusted_origins %}<span class="badge badge-warning">{{ kmeta.origin|replace('_',' ') }} (untrusted evidence)</span>{% else %}{{ kmeta.origin|replace('_',' ') }}{% endif %} ·
+        Review status: <span class="badge badge-role">{{ kmeta.trust_status }}</span>
+        {% if kmeta.reviewed_by %} by {{ kmeta.reviewed_by }} {{ kmeta.reviewed_at[:10] }}{% endif %}
+        {% if kmeta.project_id %} · <a href="/projects/{{ kmeta.project_id }}?tab=knowledge">Project</a>{% endif %}
+        {% if kmeta.source_url %}<br>Source: <a href="{{ kmeta.source_url }}" rel="noopener noreferrer nofollow" target="_blank">{{ kmeta.source_url|truncate(80) }}</a>{% endif %}
+        {% if kmeta.source_citation %}<br>Citation: {{ kmeta.source_citation }}{% endif %}
+        {% if kmeta.source_retrieved_at %} (retrieved {{ kmeta.source_retrieved_at }}){% endif %}
+        <div style="color: var(--text-muted); margin-top: 4px;">Review status records human review, not guaranteed truth.</div>
+      </div>
+    {% endif %}
+
     {% if note.meta %}
       <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 14px; margin-bottom: 20px; font-size: 0.8rem;">
         <strong>Frontmatter Metadata:</strong>

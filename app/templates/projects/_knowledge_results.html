@@ -1,0 +1,18 @@
+{% if query %}
+  {% if results %}
+    <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:6px;">{{ results|length }} result(s) in this project for “{{ query }}”</div>
+    {% for r in results %}
+      <div style="padding:8px 0; border-bottom:1px solid var(--border, #e5e7eb);">
+        <a href="/knowledge/view?path={{ r.path|urlencode }}" style="font-weight:600; color:var(--primary); text-decoration:none;">{{ r.title }}</a>
+        <span class="badge badge-role">{{ r.knowledge_type|replace('_',' ') }}</span>
+        <span class="badge {% if r.trust_status in ('verified','accepted') %}badge-online{% elif r.trust_status == 'disputed' %}badge-error{% elif r.trust_status == 'superseded' %}badge-offline{% else %}badge-warning{% endif %}">{{ r.trust_status }}</span>
+        {% if r.link_kind == 'linked' %}<span class="badge badge-offline">reused from another project</span>{% endif %}
+        {% if r.origin in ('ai_generated', 'external_source', 'vps_extracted') %}<span class="badge badge-warning">{{ r.origin|replace('_',' ') }} (untrusted evidence)</span>{% endif %}
+        {# snippet is HTML-escaped server-side; only <mark> highlighting is re-inserted #}
+        <div style="font-size:0.82rem; margin-top:4px;">{{ r.snippet|safe }}</div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div style="font-size:0.85rem; color:var(--text-muted);">No project knowledge matches “{{ query }}”.</div>
+  {% endif %}
+{% endif %}

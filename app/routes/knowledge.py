@@ -12,6 +12,7 @@ from app.services.knowledge import (
     rebuild_knowledge_index,
     get_knowledge_categories
 )
+from app.services.knowledge_meta import get_metadata_by_path, UNTRUSTED_ORIGINS
 
 router = APIRouter(tags=["knowledge"])
 templates = Jinja2Templates(directory="app/templates")
@@ -61,7 +62,9 @@ def view_note(request: Request, path: str):
         "active_nav": "knowledge",
         "current_user": user,
         "csrf_token": get_csrf_token(request),
-        "note": note
+        "note": note,
+        "kmeta": get_metadata_by_path(note["path"]),
+        "untrusted_origins": UNTRUSTED_ORIGINS,
     })
 
 @router.get("/knowledge/new", response_class=HTMLResponse)

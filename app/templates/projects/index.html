@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}Projects - Qwen Collective{% endblock %}
+{% block page_title %}Projects{% endblock %}
+
+{% macro status_badge(s) -%}
+  {%- set cls = {'active':'badge-online','planning':'badge-primary','draft':'badge-offline','paused':'badge-warning',
+                 'completed':'badge-role','cancelled':'badge-error','archived':'badge-offline'}[s] -%}
+  <span class="badge {{ cls }}">{{ s|replace('_',' ')|capitalize }}</span>
+{%- endmacro %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+  <div>
+    <h2 style="font-size:1.25rem; font-weight:600;">Projects</h2>
+    <p style="font-size:0.85rem; color:var(--text-muted);">
+      Purpose → strategy (Paths) → stages → tasks → evidence. Figures below are persisted counts, never estimates.
+    </p>
+  </div>
+  <div style="display:flex; gap:8px;">
+    <a href="/projects{% if not show_archived %}?show_archived=1{% endif %}" class="btn btn-secondary btn-sm">
+      {% if show_archived %}Hide archived{% else %}Show archived{% endif %}
+    </a>
+  </div>
+</div>
+
+<details class="card" id="new-project" style="margin-bottom:20px;" {% if not rows %}open{% endif %}>
+  <summary style="cursor:pointer; font-weight:600;">New project</summary>
+  <form action="/projects/create" method="post" style="margin-top:14px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="form-group">
+      <label class="form-label" for="np_name">Name *</label>
+      <input class="form-control" id="np_name" name="name" maxlength="200" required>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="np_objective">Objective</label>
+      <textarea class="form-control" id="np_objective" name="objective" rows="2" placeholder="The measurable outcome this project exists to achieve"></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="np_desc">Description</label>
+      <textarea class="form-control" id="np_desc" name="description" rows="2"></textarea>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px;">
+      <div class="form-group">
+        <label class="form-label" for="np_priority">Priority</label>
+        <select class="form-control" id="np_priority" name="priority">
+          {% for p in priorities %}<option value="{{ p }}" {% if p == 'medium' %}selected{% endif %}>{{ p|capitalize }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="np_parent">Parent project (optional)</label>
+        <select class="form-control" id="np_parent" name="parent_id">
+          <option value="">— none —</option>
+          {% for p in all_projects %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="np_target">Target completion</label>
+        <input class="form-control" type="date" id="np_target" name="target_date">
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary" id="np_submit">Create project</button>
+  </form>
+</details>
+
+<div class="card" style="padding:0;">
+  {% if rows %}
+  <div class="table-container">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Project</th><th>Status</th><th>Priority</th><th>Selected Path</th><th>Current stage</th>
+          <th>Tasks</th><th>Pending approval</th><th>Paths awaiting decision</th><th>Knowledge</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in rows %}
+        {% set p = r.project %}{% set s = r.summary %}
+        <tr>
+          <td>
+            <a href="/projects/{{ p.id }}" style="font-weight:600; color:var(--primary); text-decoration:none;">{{ p.name }}</a>
+            {% if p.objective %}<div style="font-size:0.78rem; color:var(--text-muted); max-width:340px;">{{ p.objective|truncate(110) }}</div>{% endif %}
+          </td>
+          <td>{{ status_badge(p.status) }}</td>
+          <td style="font-size:0.85rem;">{{ p.priority|capitalize }}</td>
+          <td style="font-size:0.85rem;">{{ s.selected_path.name if s.selected_path else '—' }}</td>
+          <td style="font-size:0.85rem;">{{ s.current_stage.name if s.current_stage else '—' }}</td>
+          <td style="font-size:0.85rem;">{{ s.task_total }}</td>
+          <td style="font-size:0.85rem;">{% if s.pending_approvals %}<span class="badge badge-warning">{{ s.pending_approvals }}</span>{% else %}0{% endif %}</td>
+          <td style="font-size:0.85rem;">{{ s.paths_awaiting_decision }}</td>
+          <td style="font-size:0.85rem;">{{ s.knowledge_count }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state" style="border:none;">
+    <h3 class="empty-state-title">No projects yet</h3>
+    <p class="empty-state-text">Create a project to define an objective, compare strategic Paths, and organize work into stages.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

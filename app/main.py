@@ -15,6 +15,7 @@ from app.routes import (
     chat,
     knowledge,
     tasks,
+    projects,
     settings as settings_route
 )
 
@@ -56,6 +57,7 @@ app.include_router(inference.router)
 app.include_router(chat.router)
 app.include_router(knowledge.router)
 app.include_router(tasks.router)
+app.include_router(projects.router)
 app.include_router(settings_route.router)
 
 if __name__ == "__main__":
