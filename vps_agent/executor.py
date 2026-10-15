@@ -29,7 +29,7 @@ INFERENCE_OPERATIONS = {"inference", "model_inference", "local_inference"}
 
 MAX_OUTPUT_CHARS = 10000
 MAX_PROMPT_CHARS = 8000
-MAX_NUM_PREDICT = 256
+MAX_NUM_PREDICT = 1024
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 
@@ -68,6 +68,10 @@ def _run_local_inference(task_id: str, input_data: Dict[str, Any], start_time: f
         num_predict = max(1, min(int(input_data.get("num_predict", 64)), MAX_NUM_PREDICT))
     except (TypeError, ValueError):
         return _inference_error(start_time, "validation_error", "num_predict must be an integer.")
+    try:
+        temperature = max(0.0, min(float(input_data.get("temperature", 0)), 1.0))
+    except (TypeError, ValueError):
+        temperature = 0.0
 
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # never route loopback via a proxy
     try:
@@ -81,7 +85,7 @@ def _run_local_inference(task_id: str, input_data: Dict[str, Any], start_time: f
 
     body = json.dumps({
         "model": model, "prompt": prompt, "stream": False,
-        "options": {"num_predict": num_predict, "temperature": 0},
+        "options": {"num_predict": num_predict, "temperature": temperature},
     }).encode()
     req = urllib.request.Request(base.rstrip("/") + "/api/generate", body, {"Content-Type": "application/json"})
     try:
