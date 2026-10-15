@@ -19,7 +19,9 @@ from vps_agent.agent import VPSWorkerAgent
 from vps_agent.buffer import OfflineBuffer
 from vps_agent.config import (
     AgentConfig,
+    ensure_runtime_directories,
     load_config,
+    parse_env_file,
     save_worker_token,
     scrub_enrollment_token,
     validate_config,
@@ -54,9 +56,28 @@ def test_validate_config_rejects_missing_credentials(tmp_path):
         enrollment_token="",
         data_dir=tmp_path / "empty_data",
     )
+    # Default validation requires credentials
     is_valid, err = validate_config(cfg)
     assert is_valid is False
     assert "No worker authentication token or enrollment token found" in err
+
+    # With allow_pending_credentials=True (CLI --validate before enrollment), it passes
+    is_valid_pending, err_pending = validate_config(cfg, allow_pending_credentials=True)
+    assert is_valid_pending is True
+    assert err_pending is None
+
+
+def test_validate_config_rejects_data_dir_inside_source():
+    source_dir = Path(__file__).resolve().parent.parent
+    cfg = AgentConfig(
+        controller_url="https://desktop-44h6qvp.tailb5d90b.ts.net",
+        worker_id="qwen-vps",
+        worker_token="qcw_dummy_token",
+        data_dir=source_dir / "worker_data",
+    )
+    is_valid, err = validate_config(cfg)
+    assert is_valid is False
+    assert "cannot be inside the source repository" in err
 
 
 def test_validate_config_rejects_invalid_url():
@@ -295,22 +316,106 @@ def test_intermittent_connectivity_and_recovery(client, tmp_path):
 
 
 def test_daemon_cli_validate_flag(tmp_path):
-    # Missing credentials -> exit code 1
-    code_invalid = main(["--validate"])
-    assert code_invalid == 1
+    # 1. Structurally invalid config (invalid URL) -> exit code 1
+    bad_env = tmp_path / "bad.env"
+    bad_env.write_text("QC_CONTROLLER_URL=not-a-valid-url\nQC_WORKER_ID=qwen-vps\n", encoding="utf-8")
+    assert main(["--config", str(bad_env), "--validate"]) == 1
 
-    # Valid config with token -> exit code 0
+    # 2. Structurally invalid config (insecure data directory inside source) -> exit code 1
+    source_dir = Path(__file__).resolve().parent.parent
+    insecure_env = tmp_path / "insecure.env"
+    insecure_env.write_text(
+        f"QC_CONTROLLER_URL=https://desktop-44h6qvp.tailb5d90b.ts.net\nQC_WORKER_ID=qwen-vps\nQC_WORKER_DATA_DIR={source_dir / 'worker_data'}\n",
+        encoding="utf-8",
+    )
+    assert main(["--config", str(insecure_env), "--validate"]) == 1
+
+    # 3. Valid config with pending credentials (pre-enrollment state) -> exit code 0
+    pending_env = tmp_path / "pending.env"
+    pending_env.write_text(
+        f"QC_WORKER_ID=qwen-vps\nQC_CONTROLLER_URL=https://desktop-44h6qvp.tailb5d90b.ts.net\nQC_WORKER_DATA_DIR={tmp_path / 'data'}\n",
+        encoding="utf-8",
+    )
+    assert main(["--config", str(pending_env), "--validate"]) == 0
+
+    # 4. Valid config with token -> exit code 0
     token_file = tmp_path / "worker_token.json"
     token_file.write_text('{"worker_token": "qcw_valid_token"}', encoding="utf-8")
 
     env_file = tmp_path / "test.env"
     env_file.write_text(
-        f"QC_WORKER_ID=qwen-vps\nQC_WORKER_TOKEN_FILE={token_file}\nQC_CONTROLLER_URL=https://desktop-44h6qvp.tailb5d90b.ts.net\n",
+        f"QC_WORKER_ID=qwen-vps\nQC_WORKER_TOKEN_FILE={token_file}\nQC_CONTROLLER_URL=https://desktop-44h6qvp.tailb5d90b.ts.net\nQC_WORKER_DATA_DIR={tmp_path / 'data'}\n",
+        encoding="utf-8",
+    )
+    assert main(["--config", str(env_file), "--validate"]) == 0
+
+
+def test_parse_env_file_zero_dependency(tmp_path):
+    env_file = tmp_path / "sample.env"
+    env_file.write_text(
+        "# Comment line\n"
+        "QC_ENV=production\n"
+        "  # Indented comment\n"
+        "QC_WORKER_ID='qwen-vps'\n"
+        'QC_WORKER_NAME="Qwen VPS Companion"\n'
+        "export QC_CONTROLLER_URL=https://controller.ts.net\n"
+        "QC_POLL_INTERVAL=10\n"
+        "\n"
+        "INVALID_LINE_NO_EQUALS\n",
+        encoding="utf-8",
+    )
+    parsed = parse_env_file(env_file)
+    assert parsed["QC_ENV"] == "production"
+    assert parsed["QC_WORKER_ID"] == "qwen-vps"
+    assert parsed["QC_WORKER_NAME"] == "Qwen VPS Companion"
+    assert parsed["QC_CONTROLLER_URL"] == "https://controller.ts.net"
+    assert parsed["QC_POLL_INTERVAL"] == "10"
+    assert "INVALID_LINE_NO_EQUALS" not in parsed
+
+
+def test_load_config_precedence_and_no_side_effects(tmp_path, monkeypatch):
+    """
+    Verify:
+    1. load_config parses target file and respects override_env.
+    2. load_config does NOT create directories or perform filesystem mutations.
+    """
+    non_existent_data_dir = tmp_path / "uncreated_data_dir"
+    assert not non_existent_data_dir.exists()
+
+    env_file = tmp_path / "custom.env"
+    env_file.write_text(
+        f"QC_WORKER_ID=env-file-worker\n"
+        f"QC_CONTROLLER_URL=https://env-file-controller.ts.net\n"
+        f"QC_WORKER_DATA_DIR={non_existent_data_dir}\n",
         encoding="utf-8",
     )
 
-    code_valid = main(["--config", str(env_file), "--validate"])
-    assert code_valid == 0
+    monkeypatch.setenv("QC_WORKER_ID", "os-environ-worker")
+
+    # Load with override_env=True (config file overrides ambient env)
+    cfg = load_config(config_file=env_file, override_env=True)
+    assert cfg.worker_id == "env-file-worker"
+    assert cfg.controller_url == "https://env-file-controller.ts.net"
+    assert cfg.data_dir == non_existent_data_dir
+
+    # CRITICAL: Verify load_config() did NOT create the data directory!
+    assert not non_existent_data_dir.exists()
+
+
+def test_ensure_runtime_directories(tmp_path):
+    target_data_dir = tmp_path / "startup_data_dir"
+    assert not target_data_dir.exists()
+
+    cfg = AgentConfig(
+        controller_url="https://controller.ts.net",
+        worker_id="qwen-vps",
+        worker_token="qcw_dummy_token",
+        data_dir=target_data_dir,
+    )
+
+    ensure_runtime_directories(cfg)
+    assert target_data_dir.exists()
+    assert target_data_dir.is_dir()
 
 
 def test_daemon_graceful_shutdown():

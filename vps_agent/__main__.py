@@ -24,7 +24,12 @@ import time
 from typing import Optional
 
 from vps_agent.agent import VPSWorkerAgent
-from vps_agent.config import AgentConfig, load_config, validate_config
+from vps_agent.config import (
+    AgentConfig,
+    ensure_runtime_directories,
+    load_config,
+    validate_config,
+)
 
 __version__ = "1.0.0"
 
@@ -95,6 +100,8 @@ def run_daemon(config: AgentConfig, once: bool = False, stop_event: Optional[thr
             signal.signal(signal.SIGTERM, handle_signal)
         except (ValueError, AttributeError):
             pass
+
+    ensure_runtime_directories(config)
 
     logger.info("==================================================================")
     logger.info("Qwen Collective VPS Worker Daemon starting")
@@ -177,7 +184,7 @@ def main(args=None) -> int:
     cli_args = parse_args(args)
     configure_logging()
 
-    # 1. Load configuration
+    # 1. Load configuration (pure read, no filesystem mutations)
     try:
         config = load_config(config_file=cli_args.config)
     except Exception as e:
@@ -188,13 +195,17 @@ def main(args=None) -> int:
     configure_logging()
 
     # 3. Validate configuration
-    is_valid, error_msg = validate_config(config)
+    is_valid, error_msg = validate_config(config, allow_pending_credentials=cli_args.validate)
     if not is_valid:
         logger.error("Configuration validation error: %s", error_msg)
         return 1
 
     if cli_args.validate:
-        logger.info("Configuration is valid.")
+        has_creds = bool(config.worker_token) or config.token_file_path.exists() or bool(config.enrollment_token)
+        if not has_creds:
+            logger.info("Configuration is valid (credential provisioning pending).")
+        else:
+            logger.info("Configuration is valid.")
         return 0
 
     # 4. Run worker daemon

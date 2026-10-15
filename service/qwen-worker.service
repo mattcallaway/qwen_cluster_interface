@@ -3,6 +3,8 @@ Description=Qwen Collective VPS Execution Worker Daemon
 Documentation=https://github.com/mattcallaway/qwen_cluster_interface
 After=network-online.target tailscaled.service
 Wants=network-online.target
+StartLimitIntervalSec=300s
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -17,8 +19,6 @@ ExecStart=/opt/qwen-collective/.venv/bin/python -m vps_agent
 # Lifecycle & Restart Management (Bounded retry behavior prevents crash loops)
 Restart=on-failure
 RestartSec=10s
-StartLimitIntervalSec=300s
-StartLimitBurst=5
 TimeoutStopSec=15s
 KillMode=mixed
 
