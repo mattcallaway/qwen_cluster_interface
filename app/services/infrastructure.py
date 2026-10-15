@@ -219,6 +219,36 @@ def sync_from_existing_machines_and_vps() -> None:
                 ))
                 ensure_default_capabilities(m_id)
 
+        # 3. Sync from infrastructure_nodes back to machines table
+        infra_nodes = conn.execute("SELECT * FROM infrastructure_nodes WHERE id <> 'controller-local'").fetchall()
+        for node in infra_nodes:
+            m_exists = conn.execute("SELECT id FROM machines WHERE id = ?", (node["id"],)).fetchone()
+            role_mapping = "distributed_worker" if node["role"] in ("inference_node", "compute_worker") else "vps_worker"
+            ip_val = node["tailscale_ip"] or node["ip_address"] or "127.0.0.1"
+            if not m_exists:
+                conn.execute("""
+                    INSERT INTO machines (
+                        id, display_name, hostname, ip_address, connection_type,
+                        os_info, cpu_info, ram_total_mb, ram_avail_mb, disk_info,
+                        role, connection_status, last_checked_at, last_successful_connection,
+                        capabilities_json, notes, is_enabled, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, 'api', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    node["id"], node["name"], node["hostname"], ip_val,
+                    f"{node['os_name']} {node['os_version']}".strip(), node["cpu_info"] or "",
+                    node["installed_ram_mb"], node["available_ram_mb"],
+                    f"{node['storage_total_gb']} GB" if node["storage_total_gb"] else "",
+                    role_mapping, node["health_status"], node["last_contact_at"], node["last_contact_at"],
+                    node["installed_runtimes_json"] or "[]", node["notes"] or "", node["is_enabled"], now, now
+                ))
+            else:
+                conn.execute("""
+                    UPDATE machines SET
+                        display_name = ?, connection_status = ?, last_checked_at = ?,
+                        ram_avail_mb = ?, updated_at = ?
+                    WHERE id = ?
+                """, (node["name"], node["health_status"], node["last_contact_at"], node["available_ram_mb"], now, node["id"]))
+
 
 def register_or_update_node(
     node_id: str,
