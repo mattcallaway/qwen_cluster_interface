@@ -76,7 +76,7 @@ def discover_local_hardware() -> Dict[str, Any]:
 
     # Check installed tools & runtimes
     installed_runtimes = [f"python-{sys.version_info.major}.{sys.version_info.minor}"]
-    for tool in ("sh", "bash", "curl", "git", "systemctl", "cron"):
+    for tool in ("sh", "bash", "curl", "git", "systemctl", "cron", "ollama"):
         if shutil.which(tool):
             installed_runtimes.append(tool)
 
@@ -87,6 +87,20 @@ def discover_local_hardware() -> Dict[str, Any]:
     if shutil.which("systemctl"):
         declared_capabilities.append("persistent_services")
         declared_capabilities.append("scheduled_execution")
+
+    # Discover local AI models & runtimes
+    available_models = discover_local_models()
+    if shutil.which("ollama") or available_models:
+        if "ollama" not in installed_runtimes:
+            installed_runtimes.append("ollama")
+        declared_capabilities.append("model_inference")
+        declared_capabilities.append("ollama_serving")
+        for m in available_models:
+            m_lower = m.lower()
+            if "qwen" in m_lower and "qwen_inference" not in declared_capabilities:
+                declared_capabilities.append("qwen_inference")
+            if "llama" in m_lower and "llama_inference" not in declared_capabilities:
+                declared_capabilities.append("llama_inference")
 
     return {
         "hostname": hostname,
@@ -100,5 +114,39 @@ def discover_local_hardware() -> Dict[str, Any]:
         "disk_free_gb": disk_free_gb,
         "installed_runtimes": installed_runtimes,
         "declared_capabilities": declared_capabilities,
+        "available_models": available_models,
         "agent_version": "1.0.0",
     }
+
+
+def discover_local_models() -> List[str]:
+    """Inspect local Ollama runtime to discover installed models."""
+    models: List[str] = []
+    # 1. Try querying local Ollama HTTP API (fast, cross-platform)
+    try:
+        import urllib.request
+        import json
+        req = urllib.request.Request("http://127.0.0.1:11434/api/tags", headers={"User-Agent": "qwen-collective-agent"})
+        with urllib.request.urlopen(req, timeout=1.5) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read().decode("utf-8"))
+                for item in data.get("models", []):
+                    name = item.get("name")
+                    if name and name not in models:
+                        models.append(name)
+    except Exception:
+        pass
+
+    # 2. Fallback to CLI inspection if API did not return
+    if not models and shutil.which("ollama"):
+        try:
+            import subprocess
+            out = subprocess.check_output(["ollama", "list"], text=True, timeout=2.0)
+            for line in out.strip().splitlines()[1:]:
+                parts = line.split()
+                if parts and parts[0] not in models:
+                    models.append(parts[0])
+        except Exception:
+            pass
+
+    return models

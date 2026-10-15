@@ -290,6 +290,7 @@ def register_worker_node(
     installed_runtimes: Optional[List[str]] = None,
     registered_services: Optional[List[str]] = None,
     declared_capabilities: Optional[List[str]] = None,
+    available_models: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     Register or update an execution worker node in the infrastructure registry.
@@ -302,6 +303,7 @@ def register_worker_node(
     runtimes_json = json.dumps(installed_runtimes or ["python3"])
     services_json = json.dumps(registered_services or ["qwen-worker.service"])
     caps_json = json.dumps(declared_capabilities or ["python_execution", "scheduled_execution"])
+    models_json = json.dumps(available_models or [])
 
     conn = get_db_connection()
     try:
@@ -311,9 +313,9 @@ def register_worker_node(
                 id, name, role, hostname, ip_address, tailscale_ip, tailscale_status,
                 os_name, os_version, architecture, cpu_info,
                 installed_ram_mb, available_ram_mb, storage_total_gb, storage_free_gb,
-                installed_runtimes_json, registered_services_json, health_status,
+                installed_runtimes_json, registered_services_json, available_models_json, health_status,
                 last_contact_at, last_inventory_at, is_enabled, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'online', ?, ?, 1, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'online', ?, ?, 1, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 role = excluded.role,
@@ -331,6 +333,7 @@ def register_worker_node(
                 storage_free_gb = excluded.storage_free_gb,
                 installed_runtimes_json = excluded.installed_runtimes_json,
                 registered_services_json = excluded.registered_services_json,
+                available_models_json = excluded.available_models_json,
                 health_status = 'online',
                 last_contact_at = excluded.last_contact_at,
                 updated_at = excluded.updated_at
@@ -339,7 +342,7 @@ def register_worker_node(
                 node_id, name, role, hostname, ip_str, ts_ip, ts_status,
                 os_name, os_version, architecture, cpu_info,
                 ram_total_mb, ram_available_mb, disk_total_gb, disk_free_gb,
-                runtimes_json, services_json,
+                runtimes_json, services_json, models_json,
                 now, now, now, now,
             ),
         )
@@ -360,6 +363,7 @@ def record_worker_heartbeat(
     ram_available_mb: Optional[int] = None,
     disk_free_gb: Optional[float] = None,
     running_jobs_count: int = 0,
+    available_models: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     Record an authenticated worker heartbeat, update health state, and auto-renew active leases.
@@ -368,18 +372,34 @@ def record_worker_heartbeat(
     conn = get_db_connection()
     try:
         # 1. Update node health
-        conn.execute(
-            """
-            UPDATE infrastructure_nodes
-            SET health_status = 'online',
-                last_contact_at = ?,
-                available_ram_mb = COALESCE(?, available_ram_mb),
-                storage_free_gb = COALESCE(?, storage_free_gb),
-                updated_at = ?
-            WHERE id = ?
-            """,
-            (now, ram_available_mb, disk_free_gb, now, node_id),
-        )
+        if available_models is not None:
+            models_json = json.dumps(available_models)
+            conn.execute(
+                """
+                UPDATE infrastructure_nodes
+                SET health_status = 'online',
+                    last_contact_at = ?,
+                    available_ram_mb = COALESCE(?, available_ram_mb),
+                    storage_free_gb = COALESCE(?, storage_free_gb),
+                    available_models_json = ?,
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (now, ram_available_mb, disk_free_gb, models_json, now, node_id),
+            )
+        else:
+            conn.execute(
+                """
+                UPDATE infrastructure_nodes
+                SET health_status = 'online',
+                    last_contact_at = ?,
+                    available_ram_mb = COALESCE(?, available_ram_mb),
+                    storage_free_gb = COALESCE(?, storage_free_gb),
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (now, ram_available_mb, disk_free_gb, now, node_id),
+            )
 
         # 2. Touch heartbeat on all active leases for this worker
         lease_cutoff = datetime.now(timezone.utc).timestamp() + DEFAULT_LEASE_DURATION_SECONDS
@@ -561,6 +581,8 @@ def lease_task_for_worker(
     worker_id: str,
     supported_categories: Optional[List[str]] = None,
     lease_duration_seconds: int = DEFAULT_LEASE_DURATION_SECONDS,
+    available_models: Optional[List[str]] = None,
+    available_ram_mb: Optional[int] = None,
 ) -> Optional[Dict[str, Any]]:
     """
     Atomically lease a pending, eligible task to an authenticated worker.
@@ -568,6 +590,7 @@ def lease_task_for_worker(
     - Task must be approved or approval_required=0
     - Task must not already be actively leased
     - Worker capability matching
+    - Resource-aware and model-aware constraints matching
     - Atomic database transaction
     """
     lease_duration = min(max(30, lease_duration_seconds), MAX_LEASE_DURATION_SECONDS)
@@ -581,7 +604,7 @@ def lease_task_for_worker(
         # First reconcile expired leases inside the transaction
         _reconcile_expired_leases_conn(conn)
 
-        # Find candidate task: approved or approval_required=0, pending status
+        # Find candidate tasks: approved or approval_required=0, pending status
         # Note: tasks table has columns: id, title, description, task_type, status, assigned_worker,
         # approval_required, input_data_json, idempotency_key, project_id, path_id, stage_id
         query = """
@@ -601,9 +624,38 @@ def lease_task_for_worker(
             query += f" AND t.task_type IN ({placeholders})"
             params.extend(supported_categories)
 
-        query += " ORDER BY t.created_at ASC LIMIT 1"
+        query += " ORDER BY t.created_at ASC LIMIT 25"
         cursor = conn.execute(query, params)
-        task_row = cursor.fetchone()
+        candidate_rows = cursor.fetchall()
+        if not candidate_rows:
+            return None
+
+        # Resource-aware & capability-aware filtering
+        task_row = None
+        for cand in candidate_rows:
+            input_data = {}
+            if cand["input_data_json"]:
+                try:
+                    input_data = json.loads(cand["input_data_json"])
+                except Exception:
+                    input_data = {}
+
+            # Check model constraint if specified by task
+            req_model = input_data.get("required_model") or input_data.get("model")
+            if req_model and available_models is not None:
+                # Require model to be present in worker's available models
+                if not any(req_model.lower() in m.lower() or m.lower() in req_model.lower() for m in available_models):
+                    continue
+
+            # Check RAM constraint if specified by task
+            req_ram = input_data.get("min_ram_mb") or input_data.get("required_ram_mb")
+            if req_ram and available_ram_mb is not None:
+                if available_ram_mb < int(req_ram):
+                    continue
+
+            task_row = cand
+            break
+
         if not task_row:
             return None
 

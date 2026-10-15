@@ -90,6 +90,7 @@ class VPSWorkerAgent:
             "disk_free_gb": hardware_info["disk_free_gb"],
             "installed_runtimes": hardware_info["installed_runtimes"],
             "declared_capabilities": hardware_info["declared_capabilities"],
+            "available_models": hardware_info.get("available_models", []),
             "agent_version": hardware_info["agent_version"],
         }
 
@@ -151,6 +152,7 @@ class VPSWorkerAgent:
             "ram_available_mb": hardware_info["ram_available_mb"],
             "disk_free_gb": hardware_info["disk_free_gb"],
             "running_jobs_count": 0,
+            "available_models": hardware_info.get("available_models", []),
         }
 
         try:
@@ -231,13 +233,19 @@ class VPSWorkerAgent:
             return None
 
         url = f"{self.config.controller_url}/api/v1/worker/tasks/lease"
+        hardware_info = discover_local_hardware()
+        categories = [
+            "test_task", "health_check", "diagnostic", "capability_probe", "ping",
+            "python_execution", "approved_shell", "file_processing", "monitoring",
+        ]
+        if "model_inference" in hardware_info.get("declared_capabilities", []):
+            categories.extend(["inference", "model_inference", "local_inference"])
         payload = {
             "worker_id": self.config.worker_id,
-            "supported_categories": [
-                "test_task", "health_check", "diagnostic", "capability_probe", "ping",
-                "python_execution", "approved_shell", "file_processing", "monitoring",
-            ],
+            "supported_categories": categories,
             "lease_duration_seconds": self.config.lease_duration,
+            "available_models": hardware_info.get("available_models", []),
+            "available_ram_mb": hardware_info.get("ram_available_mb"),
         }
 
         try:

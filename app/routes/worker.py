@@ -58,6 +58,7 @@ class WorkerRegistrationRequest(BaseModel):
     installed_runtimes: List[str] = Field(default_factory=list)
     registered_services: List[str] = Field(default_factory=list)
     declared_capabilities: List[str] = Field(default_factory=list)
+    available_models: List[str] = Field(default_factory=list)
 
 
 class WorkerHeartbeatRequest(BaseModel):
@@ -66,12 +67,15 @@ class WorkerHeartbeatRequest(BaseModel):
     ram_available_mb: Optional[int] = None
     disk_free_gb: Optional[float] = None
     running_jobs_count: int = 0
+    available_models: Optional[List[str]] = None
 
 
 class TaskLeaseRequest(BaseModel):
     worker_id: str
     supported_categories: List[str] = Field(default_factory=list)
     lease_duration_seconds: int = Field(default=300, ge=30, le=3600)
+    available_models: List[str] = Field(default_factory=list)
+    available_ram_mb: Optional[int] = None
 
 
 class TaskResultSubmission(BaseModel):
@@ -212,6 +216,7 @@ def register_worker(
         installed_runtimes=req.installed_runtimes,
         registered_services=req.registered_services,
         declared_capabilities=req.declared_capabilities,
+        available_models=req.available_models,
     )
 
     # 3. Create persistent worker Bearer token for newly enrolled nodes
@@ -314,6 +319,7 @@ def worker_heartbeat(
         ram_available_mb=req.ram_available_mb,
         disk_free_gb=req.disk_free_gb,
         running_jobs_count=req.running_jobs_count,
+        available_models=req.available_models,
     )
 
 
@@ -335,6 +341,8 @@ def lease_task(
         worker_id=req.worker_id,
         supported_categories=req.supported_categories,
         lease_duration_seconds=req.lease_duration_seconds,
+        available_models=req.available_models,
+        available_ram_mb=req.available_ram_mb,
     )
 
     if not task:
