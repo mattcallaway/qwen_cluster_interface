@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Orchestrator - {{ project.name }} - Qwen Collective{% endblock %}
+{% block page_title %}Project Orchestrator{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="/static/css/orchestrator.css">
+<div id="orch-root" class="orch-wrap" data-project="{{ project.id }}" data-csrf="{{ csrf_token }}">
+  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+    <div>
+      <h1 style="font-size:1.25rem; font-weight:600;">{{ project.name }}</h1>
+      <p class="orch-muted"><a href="/projects/{{ project.id }}">&larr; Project details</a> &middot; <span id="orch-updated">Loading...</span></p>
+    </div>
+    <div id="orch-state-pill"></div>
+  </div>
+
+  <div id="orch-flash" role="status" aria-live="polite"></div>
+
+  <section class="card" id="section-overview" aria-labelledby="h-overview">
+    <div class="orch-section-title"><span id="h-overview">Project overview</span></div>
+    <div id="orch-overview"></div>
+    <div id="orch-controls" class="orch-controls" style="margin-top:12px;"></div>
+  </section>
+
+  <section class="card" id="section-decisions" aria-labelledby="h-decisions">
+    <div class="orch-section-title"><span id="h-decisions">Decisions required</span></div>
+    <div id="orch-decisions"></div>
+  </section>
+
+  <div class="orch-grid-2">
+    <section class="card" id="section-live" aria-labelledby="h-live">
+      <div class="orch-section-title"><span id="h-live">Live activity</span></div>
+      <div id="orch-live"></div>
+      <h4>Models &amp; nodes</h4>
+      <div id="orch-models"></div>
+    </section>
+    <section class="card" id="section-deliverables" aria-labelledby="h-deliv">
+      <div class="orch-section-title"><span id="h-deliv">Deliverables &amp; artifacts</span></div>
+      <div id="orch-artifacts"></div>
+    </section>
+  </div>
+
+  <section class="card" id="section-plan" aria-labelledby="h-plan">
+    <div class="orch-section-title"><span id="h-plan">Execution plan</span></div>
+    <div id="orch-plan"></div>
+    <h4>Dependency graph</h4>
+    <div id="orch-graph"></div>
+    <h4>Execution status</h4>
+    <div id="orch-tasks"></div>
+    <div id="orch-editor" style="margin-top:12px;"></div>
+  </section>
+
+  <section class="card" id="section-history" aria-labelledby="h-history">
+    <div class="orch-section-title"><span id="h-history">History (audit trail)</span></div>
+    <div id="orch-history"></div>
+  </section>
+</div>
+<script src="/static/js/orchestrator.js"></script>
+{% endblock %}

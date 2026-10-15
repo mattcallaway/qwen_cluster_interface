@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}New Orchestrated Project - Qwen Collective{% endblock %}
+{% block page_title %}New Orchestrated Project{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="/static/css/orchestrator.css">
+<div class="orch-wrap" id="orch-new" data-csrf="{{ csrf_token }}">
+  <div>
+    <h1 style="font-size:1.25rem; font-weight:600;">Describe the goal</h1>
+    <p class="orch-muted">The orchestrator analyses your objective, drafts a validated plan (paths, stages, tasks, dependencies, deliverables, risks) and waits for your approval before anything runs. Describe the goal &rarr; review the plan &rarr; approve &rarr; monitor &rarr; receive deliverables.</p>
+  </div>
+  <div id="new-flash" role="status" aria-live="polite"></div>
+  <form class="card" id="new-form" autocomplete="off">
+    <div class="orch-form-grid">
+      <div class="full"><label for="f-name">Project name</label>
+        <input class="form-control" id="f-name" required maxlength="120" placeholder="Distributed System Health Report"></div>
+      <div class="full"><label for="f-objective">Project objective</label>
+        <textarea class="form-control" id="f-objective" rows="4" required maxlength="4000"
+          placeholder="Collect basic health information from the VPS and laptop, use a local AI model to summarize the results, and generate a consolidated system report."></textarea>
+        <div class="orch-hint">Natural language. You do not need to create paths, stages or tasks.</div></div>
+      <div><label for="f-deliverables">Desired deliverables</label>
+        <textarea class="form-control" id="f-deliverables" rows="2" maxlength="2000" placeholder="A consolidated report with measured data and a summary"></textarea></div>
+      <div><label for="f-success">Success criteria</label>
+        <textarea class="form-control" id="f-success" rows="2" maxlength="2000" placeholder="Every node reports validated telemetry"></textarea></div>
+      <div><label for="f-constraints">Constraints</label>
+        <textarea class="form-control" id="f-constraints" rows="2" maxlength="2000" placeholder="No network access; read-only diagnostics"></textarea></div>
+      <div><label for="f-resources">Available resources</label>
+        <textarea class="form-control" id="f-resources" rows="2" maxlength="2000" placeholder="Leave blank to use all registered workers"></textarea></div>
+      <div><label for="f-deadline">Deadline</label><input class="form-control" id="f-deadline" type="date"></div>
+      <div><label for="f-priority">Priority</label>
+        <select class="form-control" id="f-priority">
+          <option value="">Default</option>
+          {% for p in priorities %}<option value="{{ p }}">{{ p|capitalize }}</option>{% endfor %}
+        </select></div>
+      <div><label for="f-autonomy">Autonomy level</label>
+        <select class="form-control" id="f-autonomy">
+          <option value="0">0 - Manual: you trigger every step</option>
+          <option value="1" selected>1 - Assisted: AI plans, you approve each task</option>
+          <option value="2">2 - Supervised: approve the plan, routine low-risk tasks run automatically</option>
+          <option value="3">3 - Delegated: may also replan within budgets (replans still need your approval)</option>
+        </select>
+        <div class="orch-hint">High-impact actions always need separate approval at every level.</div></div>
+      <div><label for="f-mode">Planner</label>
+        <select class="form-control" id="f-mode">
+          <option value="auto" selected>Auto (template if the goal is recognised, otherwise local model)</option>
+          <option value="template">Template only</option>
+          <option value="model">Local model</option>
+        </select></div>
+    </div>
+    <div style="margin-top:16px; display:flex; gap:8px;">
+      <button type="submit" class="btn btn-primary" id="btn-generate">Generate Project Plan</button>
+      <a href="/projects" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+<script src="/static/js/orchestrator_new.js"></script>
+{% endblock %}

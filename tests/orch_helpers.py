@@ -24,10 +24,13 @@ def register_node(node_id, role="vps_worker", models=None, runtimes=None, token=
     runtimes = runtimes if runtimes is not None else (["python-3.12", "ollama"] if models else ["python-3.12"])
     with db_transaction() as c:
         c.execute("DELETE FROM worker_auth_tokens WHERE node_id=?", (node_id,))
-        c.execute("DELETE FROM infrastructure_nodes WHERE id=? AND id NOT IN (SELECT DISTINCT worker_id FROM worker_task_leases)", (node_id,))
-        c.execute("""INSERT OR REPLACE INTO infrastructure_nodes (id, name, role, installed_runtimes_json, available_models_json,
+        c.execute("""INSERT INTO infrastructure_nodes (id, name, role, installed_runtimes_json, available_models_json,
                      health_status, last_contact_at, available_ram_mb, is_enabled, created_at, updated_at)
-                     VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                     VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                     ON CONFLICT(id) DO UPDATE SET role=excluded.role, installed_runtimes_json=excluded.installed_runtimes_json,
+                       available_models_json=excluded.available_models_json, health_status=excluded.health_status,
+                       last_contact_at=excluded.last_contact_at, available_ram_mb=excluded.available_ram_mb,
+                       is_enabled=excluded.is_enabled, updated_at=excluded.updated_at""",
                   (node_id, node_id, role, json.dumps(runtimes), json.dumps(models or []), health, now(), ram, enabled, now(), now()))
         if token:
             c.execute("INSERT INTO worker_auth_tokens (id, node_id, token_hash, token_prefix, created_at, revoked) VALUES (?,?,?,?,?,0)",
@@ -41,11 +44,24 @@ def set_health(node_id, health="online", age_seconds=0):
         c.execute("UPDATE infrastructure_nodes SET health_status=?, last_contact_at=? WHERE id=?", (health, ts, node_id))
 
 
+_disabled_by_us = set()
+
+
 def disable_other_nodes(keep):
     with db_transaction() as c:
+        for r in c.execute(f"SELECT id FROM infrastructure_nodes WHERE is_enabled=1 AND id NOT IN ({','.join('?' * len(keep))})", list(keep)).fetchall():
+            _disabled_by_us.add(r["id"])
         c.execute(f"UPDATE infrastructure_nodes SET is_enabled=0 WHERE id NOT IN ({','.join('?' * len(keep))})", list(keep))
         for k in keep:
             c.execute("UPDATE infrastructure_nodes SET is_enabled=1 WHERE id=?", (k,))
+
+
+def restore_nodes():
+    with db_transaction() as c:
+        c.execute("UPDATE infrastructure_nodes SET is_enabled=0 WHERE id LIKE 't-%'")
+        for nid in list(_disabled_by_us):
+            c.execute("UPDATE infrastructure_nodes SET is_enabled=1 WHERE id=?", (nid,))
+    _disabled_by_us.clear()
 
 
 def _art(name, data: bytes):

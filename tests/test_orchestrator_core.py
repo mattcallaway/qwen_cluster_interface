@@ -15,7 +15,7 @@ def cluster():
     H.register_node("t-laptop", "inference_node", models=["qwen2.5:1.5b", "llama3.2:1b"])
     H.disable_other_nodes(["t-vps", "t-laptop"])
     yield
-    H.disable_other_nodes([])
+    H.restore_nodes()
 
 
 def make_run(level=2, name="Health Project"):

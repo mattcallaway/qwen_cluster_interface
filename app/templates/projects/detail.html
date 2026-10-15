@@ -32,6 +32,7 @@
     <div style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">{{ project.id }}</div>
   </div>
   <div style="display:flex; gap:8px;">
+    <a id="open-orchestrator-btn" href="/projects/{{ project.id }}/orchestrator" class="btn btn-sm btn-primary">Orchestrator</a>
     <a id="inspect-context-btn" href="/projects/{{ project.id }}/context-packet" class="btn btn-sm btn-secondary" target="_blank">
       🔍 Inspect Context Packet
     </a>

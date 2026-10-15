@@ -18,6 +18,7 @@ from app.routes import (
     projects,
     infrastructure,
     worker,
+    orchestration,
     settings as settings_route
 )
 
@@ -38,8 +39,17 @@ async def lifespan(app: FastAPI):
     seed_initial_knowledge()
     rebuild_knowledge_index()
     logger.info(f"Control Server ready at http://{settings.host}:{settings.port}")
+    if settings.orchestrator_enabled:
+        from app.services.orchestration import engine as orch_engine
+        orch_engine.start_background()
+        logger.info("Project Orchestrator engine loop started.")
+    else:
+        logger.info("Project Orchestrator engine loop disabled (set QC_ORCHESTRATOR_ENABLED=1 to enable).")
     yield
     # Shutdown sequence
+    if settings.orchestrator_enabled:
+        from app.services.orchestration import engine as orch_engine
+        orch_engine.stop_background()
     logger.info("Shutting down Qwen Collective Control Server.")
 
 app = FastAPI(
@@ -60,6 +70,7 @@ app.include_router(chat.router)
 app.include_router(knowledge.router)
 app.include_router(tasks.router)
 app.include_router(projects.router)
+app.include_router(orchestration.router)
 app.include_router(infrastructure.router)
 app.include_router(worker.router)
 app.include_router(settings_route.router)

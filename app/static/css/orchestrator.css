@@ -1,0 +1,26 @@
+.orch-wrap { display: grid; gap: 16px; }
+.orch-row { display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-end; margin-bottom: 12px; }
+.orch-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); margin-bottom: 3px; }
+.orch-muted { color: var(--text-muted); font-size: 0.82rem; }
+.orch-err { color: #b91c1c; font-size: 0.78rem; margin-top: 2px; max-width: 340px; overflow-wrap: anywhere; }
+.orch-objective { margin: 10px 0 4px; font-size: 0.95rem; line-height: 1.45; color: var(--text-main); }
+.orch-bar { height: 8px; border-radius: 99px; background: #e2e8f0; overflow: hidden; margin-top: 4px; }
+.orch-bar-fill { height: 100%; background: linear-gradient(90deg, var(--primary), var(--accent-teal)); transition: width 0.6s ease; }
+.orch-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.orch-decision { border: 1px solid var(--border-color); border-left: 4px solid var(--status-warning); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 8px; display: grid; gap: 8px; }
+.orch-actions { display: flex; gap: 8px; }
+.orch-live-item { padding: 6px 0; border-bottom: 1px dashed var(--border-color); }
+.orch-event { font-size: 0.82rem; padding: 3px 0; border-bottom: 1px solid #f1f5f9; font-family: var(--font-mono); overflow-wrap: anywhere; }
+#orch-history { max-height: 340px; overflow: auto; }
+#orch-graph { overflow-x: auto; padding: 4px; }
+.orch-json { font-family: var(--font-mono); font-size: 0.8rem; }
+.orch-mono { font-family: var(--font-mono); font-size: 0.78rem; }
+.orch-grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 16px; }
+.orch-section-title { font-size: 1rem; font-weight: 600; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+.orch-wrap h4 { margin: 14px 0 6px; font-size: 0.9rem; }
+.orch-wrap ul, .orch-wrap ol { margin: 4px 0 4px 20px; font-size: 0.88rem; }
+.orch-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+.orch-form-grid .full { grid-column: 1 / -1; }
+.orch-form-grid label { display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 4px; }
+.orch-hint { font-size: 0.75rem; color: var(--text-muted); margin-top: 3px; }
+@media (max-width: 800px) { .orch-grid-2 { grid-template-columns: 1fr; } }

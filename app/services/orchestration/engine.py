@@ -354,6 +354,14 @@ def _collect_one(run: Dict[str, Any], ot: Dict[str, Any], nodes: List[Dict[str, 
 
 
 def _check_inflight(run, ot, t, nodes, elapsed) -> None:
+    if t["status"] == "pending":
+        # Expired-lease reconciliation resets the task to 'pending'; it was already authorised by this run's approvals.
+        with db_transaction() as c:
+            cur = c.execute("UPDATE tasks SET status='queued', updated_at=? WHERE id=? AND status='pending'", (now_iso(), t["id"]))
+            if cur.rowcount:
+                log_event(c, get_run(run["id"], c), "task_requeued_after_lease_expiry", "orchestrator-recovery",
+                          ot["plan_key"], task_id=ot["id"])
+        t = T.get_task_by_id(t["id"])
     node = next((n for n in nodes if n["id"] == ot["dispatched_node"]), None)
     never_started = t["status"] in ("queued", "awaiting_approval")
     if never_started and node is not None and (not node["authenticated"] or node["health"] != "online") and elapsed > 45:
@@ -713,10 +721,11 @@ def _evaluate_deliverables(run: Dict[str, Any]) -> None:
                 with db_transaction() as cn:
                     ap = cn.execute("SELECT status, decided_by, rationale FROM orchestration_approvals WHERE run_id=? AND kind='deliverable' AND subject_id=? ORDER BY requested_at DESC LIMIT 1",
                                     (run["id"], did)).fetchone()
-                    if ap and ap["status"] == "approved":
-                        D.review_deliverable(did, "accepted", ap["decided_by"] or "user", ap["rationale"] or "Accepted by user.")
-                    elif not ap or ap["status"] == "superseded":
+                    ap = dict(ap) if ap else None
+                    if not ap or ap["status"] == "superseded":
                         approval_manager.request_approval(cn, run, "deliverable", did, f"Accept deliverable '{d['name']}'", "medium")
+                if ap and ap["status"] == "approved":
+                    D.review_deliverable(did, "accepted", ap["decided_by"] or "user", ap["rationale"] or "Accepted by user.")
             dd = D.get_deliverable(did)
         if dd["status"] != "accepted":
             all_accepted = False
