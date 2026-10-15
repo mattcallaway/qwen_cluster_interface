@@ -70,14 +70,36 @@ Execution time for the full test suite: **135.58 seconds**.
   - `Linux VPS Worker` (`qwen-vps`, `100.71.194.68`): Executes `sys_health_basic` script in sandboxed Python.
   - `Linux Laptop Worker` (`qwen-laptop`, `100.101.187.115`): Executes `sys_health_basic` script and provides Ollama inference for `qwen2.5:1.5b`.
 
-### 3.2 Current Production Status and Authorization Blocker
-- **Current State**:
-  - The live Windows production service (`QwenCollective` on port 8000) is currently running codebase commit `9d279fc` on database schema v8.
-  - The workers on VPS and laptop poll port 8000.
-  - Per the explicit constraints of this engagement:
-    > *"Do not automatically deploy to the Windows production service. Do not modify production database schema or restart production services without explicit approval. Prepare a clear production deployment and rollback procedure. Do not claim completion from unit tests alone. Mark partial features honestly."*
-- **Live Test Gating**:
-  - The feature branch `feature/autonomous-project-orchestrator` has been committed and pushed to GitHub.
-  - The full regression and unit suites pass (410/410).
-  - The production database backup, code deployment, migration v9 application, and worker executor updates are staged and documented in `PROJECT_ORCHESTRATOR_DEPLOYMENT.md`.
-  - Executing the live three-node test on production requires the operator's explicit authorization to apply the migration and restart the production service.
+### 3.2 Deployment Actions Completed
+Following operator authorization, the following deployment steps were executed:
+1. **Database Pre-Deployment Backup**:
+   - Created atomic SQLite backup at `C:\Users\Matt C\.qwen-collective\data\qwen_collective_pre_deployment_backup.db`.
+   - Verified schema migration v9 is applied and intact (`PRAGMA user_version = 9`).
+2. **Production Codebase Updated**:
+   - Production repository at `C:\Users\Matt C\.gemini\antigravity-ide\scratch\qwen-collective` checked out to `feature/autonomous-project-orchestrator` (commit `7f591b2`).
+3. **Environment Configuration**:
+   - Added `QC_ORCHESTRATOR_ENABLED=1` to `C:\Users\Matt C\.qwen-collective\qwen-collective.env`.
+4. **Linux VPS Worker (`qwen-vps`, 100.71.194.68)**:
+   - Deployed updated `vps_agent/executor.py` (with 1024 token ceiling and temperature support) via SFTP.
+   - Successfully restarted `qwen-worker.service`. Service verified active and polling.
+
+### 3.3 Active Blockers Preventing Three-Node Execution
+1. **Linux Laptop Worker (`qwen-laptop`, 100.101.187.115) Offline**:
+   - Tailscale diagnostics indicate `qwen-laptop` went offline (last seen ~21 minutes ago; lid closed or asleep).
+   - SSH connection timed out.
+   - Because the laptop hosts the target local inference model (`qwen2.5:1.5b`), the three-node health report workflow cannot execute tasks 2 and 3 on the laptop until the machine is opened/powered on.
+2. **Windows Production Service Restart Requires Elevation**:
+   - The Windows Service `QwenCollective` runs under LocalSystem / Administrator.
+   - Non-elevated PowerShell execution cannot stop process 41484 or execute `Restart-Service QwenCollective` (`Access is denied`).
+   - The operator must run `Restart-Service QwenCollective` in an elevated Administrator PowerShell prompt (or reboot the controller) to load the updated orchestrator code and enable the engine loop.
+
+### 3.4 Verification Procedure Upon Resolving Blockers
+Once the laptop is opened and the Windows service is restarted by the operator:
+1. Run `python tests/orch_deploy_laptop.py` to push `executor.py` to the laptop and restart `qwen-worker.service`.
+2. Create project via web UI at `http://127.0.0.1:8000/projects/orchestrate/new` with the objective:
+   *"Collect basic health information from the VPS and Linux laptop, use a local AI model to summarize the results, and generate a consolidated system report."*
+3. Set Autonomy Level to 2 (Supervised Autonomous) and click **"Create & Start Plan"**.
+4. Review the generated plan in `/projects/{id}/orchestrator` and click **"Approve & Launch"**.
+5. Observe live task execution across VPS, Laptop, and Controller.
+6. Verify deliverables (`consolidated_health_report.md` and telemetry JSON) upon reaching `COMPLETED`.
+
