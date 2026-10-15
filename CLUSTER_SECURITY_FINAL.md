@@ -29,3 +29,9 @@
 | Class B script approval auto-granted for queued tasks | Low | design note |
 | Prod tree drifted from git | Medium | reconcile on deploy |
 | Dead laptop battery | Low | power loss = hard shutdown |
+
+## Update 2026-10-15 13:45 PDT - laptop Ollama reachable over Tailscale only (user-approved)
+- Ollama itself is unchanged (still 127.0.0.1:11434). A systemd socket proxy (`qc-ollama-ts.socket`/`.service`, `systemd-socket-proxyd`) listens on the laptop's Tailscale address `100.101.187.115:11434` only and forwards to loopback.
+- Verified: Windows controller -> `100.101.187.115:11434` succeeds; LAN `192.168.4.48:11434` fails (closed); no public listener. No firewall/ACL/SSH change was made.
+- Risk accepted: any device on the tailnet can call the unauthenticated Ollama API. Mitigate with Tailscale ACLs (not inspected). Rollback: `bash /var/backups/qc-audit-20261015T105938Z/ROLLBACK-memory.sh` (also removes the proxy), then set the two backend rows back to `error`/inactive.
+- Controller backend rows `backend-qwen-laptop-qwen` / `-llama` set to `ready` only after a live controller-side test: `send_chat_completion` returned `READY 42` from `qwen2.5:1.5b`.
