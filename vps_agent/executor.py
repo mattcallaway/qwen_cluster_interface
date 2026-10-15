@@ -25,8 +25,89 @@ logger = logging.getLogger("qwen_collective.worker_executor")
 CLASS_A_OPERATIONS = {"test_task", "health_check", "diagnostic", "capability_probe", "ping"}
 CLASS_B_OPERATIONS = {"python_execution", "python_script", "approved_script"}
 CLASS_C_OPERATIONS = {"experimental_code", "untrusted_script", "ai_generated_code"}
+INFERENCE_OPERATIONS = {"inference", "model_inference", "local_inference"}
 
 MAX_OUTPUT_CHARS = 10000
+MAX_PROMPT_CHARS = 8000
+MAX_NUM_PREDICT = 256
+_LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+def _inference_error(start_time: float, category: str, message: str, extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    payload = {"execution_class": "Inference"}
+    payload.update(extra or {})
+    return {
+        "status": "error", "exit_code": 1,
+        "runtime_seconds": round(time.time() - start_time, 4),
+        "stdout_summary": "", "stderr_summary": message,
+        "error_category": category, "result_payload": payload,
+    }
+
+
+def _run_local_inference(task_id: str, input_data: Dict[str, Any], start_time: float, timeout_seconds: int) -> Dict[str, Any]:
+    """Run one bounded generation against the node-local Ollama service.
+
+    Security: the endpoint must be loopback (Ollama is never exposed off-host), the model must
+    already be installed (no implicit pulls), and prompt/output sizes are capped.
+    """
+    import urllib.parse
+    import urllib.request
+
+    base = os.getenv("QC_OLLAMA_URL", "http://127.0.0.1:11434")
+    host = urllib.parse.urlparse(base).hostname or ""
+    if host not in _LOOPBACK_HOSTS:
+        return _inference_error(start_time, "unsafe_endpoint", f"Refusing non-loopback Ollama endpoint host '{host}'.")
+
+    model = input_data.get("model") or input_data.get("required_model")
+    prompt = input_data.get("prompt")
+    if not isinstance(model, str) or not model.strip() or not isinstance(prompt, str) or not prompt.strip():
+        return _inference_error(start_time, "validation_error", "Inference task requires string 'model' and 'prompt'.")
+    if len(prompt) > MAX_PROMPT_CHARS:
+        return _inference_error(start_time, "validation_error", f"Prompt exceeds {MAX_PROMPT_CHARS} characters.")
+    try:
+        num_predict = max(1, min(int(input_data.get("num_predict", 64)), MAX_NUM_PREDICT))
+    except (TypeError, ValueError):
+        return _inference_error(start_time, "validation_error", "num_predict must be an integer.")
+
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # never route loopback via a proxy
+    try:
+        with opener.open(base.rstrip("/") + "/api/tags", timeout=10) as r:
+            installed = [m.get("name") for m in json.loads(r.read()).get("models", [])]
+    except Exception as e:
+        return _inference_error(start_time, "inference_unreachable", f"Local Ollama unreachable: {e}")
+    if model not in installed:
+        return _inference_error(start_time, "model_unavailable", f"Model '{model}' is not installed on this node.",
+                                {"installed_models": installed})
+
+    body = json.dumps({
+        "model": model, "prompt": prompt, "stream": False,
+        "options": {"num_predict": num_predict, "temperature": 0},
+    }).encode()
+    req = urllib.request.Request(base.rstrip("/") + "/api/generate", body, {"Content-Type": "application/json"})
+    try:
+        with opener.open(req, timeout=max(30, min(timeout_seconds, 300))) as r:
+            out = json.loads(r.read())
+    except Exception as e:
+        return _inference_error(start_time, "inference_failed", f"Ollama generation failed: {e}")
+
+    text = (out.get("response") or "")[:MAX_OUTPUT_CHARS]
+    eval_count = out.get("eval_count", 0)
+    eval_ns = out.get("eval_duration", 0) or 0
+    return {
+        "status": "success", "exit_code": 0,
+        "runtime_seconds": round(time.time() - start_time, 4),
+        "stdout_summary": text, "stderr_summary": "", "error_category": None,
+        "result_payload": {
+            "execution_class": "Inference", "engine": "ollama",
+            "model_requested": model, "model_returned": out.get("model"),
+            "response": text, "gen_tokens": eval_count,
+            "prompt_tokens": out.get("prompt_eval_count"),
+            "load_duration_s": round(out.get("load_duration", 0) / 1e9, 3),
+            "eval_duration_s": round(eval_ns / 1e9, 3),
+            "tokens_per_second": round(eval_count / (eval_ns / 1e9), 2) if eval_count and eval_ns else None,
+            "total_duration_s": round(out.get("total_duration", 0) / 1e9, 3),
+        },
+    }
 
 # Environment variables to strip to prevent secret leakage to worker scripts
 SENSITIVE_ENV_PREFIXES = ("QC_", "SECRET", "API_KEY", "TOKEN", "PASSWORD", "AWS_", "SSH_", "DATABASE_", "AUTH")
@@ -517,6 +598,12 @@ def execute_task(
             "error_category": "approval_required",
             "result_payload": {"execution_class": "Class C"},
         }
+
+    # ---------------------------------------------------------------------------
+    # Inference: local Ollama (loopback only). Model must already be installed.
+    # ---------------------------------------------------------------------------
+    if task_type in INFERENCE_OPERATIONS:
+        return _run_local_inference(task_id, input_data, start_time, timeout_seconds)
 
     # ---------------------------------------------------------------------------
     # Unsupported Operations (Must Fail Explicitly, Never Report False Success)

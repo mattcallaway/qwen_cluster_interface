@@ -604,6 +604,18 @@ def lease_task_for_worker(
         # First reconcile expired leases inside the transaction
         _reconcile_expired_leases_conn(conn)
 
+        # Controller-side RAM fallback: do not trust a worker to self-report in lease polls.
+        # Use the last RAM figure from an authenticated heartbeat/registration when absent.
+        if available_ram_mb is None:
+            try:
+                _r = conn.execute(
+                    "SELECT available_ram_mb FROM infrastructure_nodes WHERE id = ?", (worker_id,)
+                ).fetchone()
+                if _r and _r["available_ram_mb"] is not None:
+                    available_ram_mb = int(_r["available_ram_mb"])
+            except Exception:
+                available_ram_mb = None
+
         # Find candidate tasks: approved or approval_required=0, pending status
         # Note: tasks table has columns: id, title, description, task_type, status, assigned_worker,
         # approval_required, input_data_json, idempotency_key, project_id, path_id, stage_id
@@ -649,8 +661,13 @@ def lease_task_for_worker(
 
             # Check RAM constraint if specified by task
             req_ram = input_data.get("min_ram_mb") or input_data.get("required_ram_mb")
-            if req_ram and available_ram_mb is not None:
-                if available_ram_mb < int(req_ram):
+            if req_ram:
+                # Fail closed: unknown RAM never satisfies an explicit RAM requirement.
+                try:
+                    _need = int(req_ram)
+                except (TypeError, ValueError):
+                    continue
+                if available_ram_mb is None or available_ram_mb < _need:
                     continue
 
             task_row = cand

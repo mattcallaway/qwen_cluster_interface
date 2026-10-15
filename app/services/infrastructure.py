@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from app.config import settings
 from app.database import db_transaction, get_db_connection
 from app.services import knowledge_meta as km_svc
+from app.services.node_health import effective_health
 from app.services.knowledge import write_note_atomic
 from app.services.projects import NotFound, ValidationError, NAME_MAX, TEXT_MAX
 
@@ -334,6 +335,8 @@ def get_node(node_id: str) -> Optional[Dict[str, Any]]:
         d["installed_runtimes"] = json.loads(d.get("installed_runtimes_json") or "[]")
         d["registered_services"] = json.loads(d.get("registered_services_json") or "[]")
         d["available_models"] = json.loads(d.get("available_models_json") or "[]")
+        d["health_status_recorded"] = d.get("health_status")
+        d["health_status"] = effective_health(d.get("role"), d.get("health_status"), d.get("last_contact_at"))
         d["capability_restrictions"] = json.loads(d.get("capability_restrictions_json") or "{}")
         return d
 
@@ -351,6 +354,8 @@ def list_nodes(role: Optional[str] = None) -> List[Dict[str, Any]]:
             d["installed_runtimes"] = json.loads(d.get("installed_runtimes_json") or "[]")
             d["registered_services"] = json.loads(d.get("registered_services_json") or "[]")
             d["available_models"] = json.loads(d.get("available_models_json") or "[]")
+            d["health_status_recorded"] = d.get("health_status")
+            d["health_status"] = effective_health(d.get("role"), d.get("health_status"), d.get("last_contact_at"))
             d["capability_restrictions"] = json.loads(d.get("capability_restrictions_json") or "{}")
             res.append(d)
         return res

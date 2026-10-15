@@ -1,0 +1,145 @@
+== HOST ==
+localhost
+localhost
+2026-10-15T10:46:53Z
+ 10:46:53 up 14:50,  3 users,  load average: 0.06, 0.01, 0.00
+== WORKER SVC ==
+active
+enabled
+== SOURCE REV ==
+total 488
+drwxr-xr-x 9 root root  4096 Oct 15 08:31 .
+drwxr-xr-x 6 root root  4096 Oct 14 22:43 ..
+drwxr-xr-x 6 root root  4096 Oct 14 20:26 app
+-rwxr-xr-x 1 root root  3713 Oct 14 20:17 ARCHITECTURE.md
+-rwxr-xr-x 1 root root  6706 Oct 14 20:26 ARTIFACT_TRANSFER_VALIDATION.md
+-rwxr-xr-x 1 root root  2637 Oct 14 20:17 AUDIT_BASELINE.md
+-rwxr-xr-x 1 root root  5994 Oct 14 20:17 CAPABILITY_REGISTRY_SPEC.md
+-rwxr-xr-x 1 root root  7158 Oct 14 20:17 CLAIM_RECONCILIATION.md
+-rwxr-xr-x 1 root root  6864 Oct 15 07:45 CONFIGURATION_REPAIR_REPORT.md
+-rwxr-xr-x 1 root root  5137 Oct 15 07:45 CONNECTIVITY_AUDIT_REPORT.md
+-rwxr-xr-x 1 root root  6587 Oct 14 20:26 CONTEXT_INTEGRATION_REPORT.md
+-rwxr-xr-x 1 root root  4660 Oct 14 20:17 DEPLOYMENT_CHECKLIST.md
+-rwxr-xr-x 1 root root  2354 Oct 14 20:17 DEPLOYMENT_LIFECYCLE.md
+-rwxr-xr-x 1 root root  4894 Oct 15 07:45 DEPLOYMENT_READINESS_CHECKLIST.md
+-rwxr-xr-x 1 root root  4515 Oct 14 20:17 DEPLOYMENT_READINESS.md
+-rwxr-xr-x 1 root root  5353 Oct 14 20:26 END_TO_END_ACCEPTANCE.md
+-rwxr-xr-x 1 root root   261 Oct 14 20:17 .env.example
+-rwxr-xr-x 1 root root  8969 Oct 14 20:26 EXECUTION_ISOLATION_VALIDATION.md
+-rwxr-xr-x 1 root root  2427 Oct 14 20:17 EXECUTION_SECURITY.md
+0ae351c86b76ef7a04a82d932555d4783d0a347547c72304de5d8017d77a49c1  -
+== TOKEN PERMS ==
+600 qwen-worker:qwen-worker /opt/qwen-collective/data/worker_token.json
+600 qwen-worker:qwen-worker /etc/qwen-collective/worker.env
+755 root:root /usr/local/bin/qwen-sandbox-runner
+440 root:root /etc/sudoers.d/qwen-worker
+== ENV (redacted) ==
+# ==============================================================================
+# Qwen Collective ? VPS Worker Environment Configuration Template
+# ==============================================================================
+# Location on Linux VPS: /etc/qwen-collective/worker.env
+# Permissions: chmod 0600 /etc/qwen-collective/worker.env
+# Ownership  : chown qwen-worker:qwen-worker /etc/qwen-collective/worker.env
+# ==============================================================================
+
+# Operational Environment (enforces strict production security gates)
+QC_ENV=production
+
+# Controller URL (Tailscale HTTPS endpoint, never exposed to public internet)
+QC_CONTROLLER_URL=https://desktop-44h6qvp.tailb5d90b.ts.net
+
+# Worker Identity
+QC_WORKER_ID=qwen-vps
+QC_WORKER_NAME=Qwen VPS
+QC_WORKER_ROLE=vps_worker
+
+# Storage Paths
+QC_WORKER_DATA_DIR=/opt/qwen-collective/data
+QC_WORKER_TOKEN_FILE=/opt/qwen-collective/data/worker_token.json
+
+# Polling and Heartbeat Cadence (seconds)
+QC_POLL_INTERVAL=5
+QC_HEARTBEAT_INTERVAL=15
+QC_LEASE_DURATION=300
+QC_TASK_TIMEOUT=600
+
+# Logging Level (DEBUG, INFO, WARNING, ERROR)
+QC_LOG_LEVEL=INFO
+
+# ==============================================================================
+# Initial Enrollment Credential (ONE-TIME USE ONLY)
+# ==============================================================================
+# When provisioning a new worker node, provide the single-use enrollment token
+# created on the controller below. After first successful registration, the
+# daemon will automatically persist the issued worker Bearer token to
+# /opt/qwen-collective/data/worker_token.json and comment out this line.
+#
+# QC_ENROLLMENT_TOKEN consumed and scrubbed after successful registration
+QC_WORKER_WORKSPACE_DIR=/opt/qwen-collective/workspaces
+QC_MAX_CONCURRENT_JOBS=1
+QC_ALLOW_SUBPROCESS_FALLBACK=0
+QC_ALLOW_ALT_ISOLATION=0
+== MEM ==
+               total        used        free      shared  buff/cache   available
+Mem:             961         391         106          12         625         569
+Swap:            495          49         446
+NAME     TYPE      SIZE  USED PRIO
+/dev/sdb partition 496M 49.3M   -2
+== LISTEN ==
+State  Recv-Q Send-Q               Local Address:Port  Peer Address:PortProcess                                                   
+LISTEN 0      4096                 127.0.0.53%lo:53         0.0.0.0:*    users:(("systemd-resolve",pid=10565,fd=15))              
+LISTEN 0      511                        0.0.0.0:80         0.0.0.0:*    users:(("nginx",pid=15152,fd=5),("nginx",pid=15151,fd=5))
+LISTEN 0      4096                    127.0.0.54:53         0.0.0.0:*    users:(("systemd-resolve",pid=10565,fd=17))              
+LISTEN 0      4096                       0.0.0.0:22         0.0.0.0:*    users:(("sshd",pid=10084,fd=3),("systemd",pid=1,fd=189)) 
+LISTEN 0      200                      127.0.0.1:5432       0.0.0.0:*    users:(("postgres",pid=15198,fd=7))                      
+LISTEN 0      4096                 100.71.194.68:61970      0.0.0.0:*    users:(("tailscaled",pid=3127,fd=23))                    
+LISTEN 0      200                          [::1]:5432          [::]:*    users:(("postgres",pid=15198,fd=6))                      
+LISTEN 0      4096   [fd7a:115c:a1e0::7136:c245]:49379         [::]:*    users:(("tailscaled",pid=3127,fd=24))                    
+LISTEN 0      4096                          [::]:22            [::]:*    users:(("sshd",pid=10084,fd=4),("systemd",pid=1,fd=190)) 
+LISTEN 0      511                              *:4000             *:*    users:(("node /home/matt",pid=893,fd=26))                
+== UFW ==
+Status: active
+Logging: on (low)
+Default: deny (incoming), allow (outgoing), disabled (routed)
+New profiles: skip
+
+To                         Action      From
+--                         ------      ----
+22/tcp                     ALLOW IN    Anywhere                  
+80/tcp                     ALLOW IN    Anywhere                  
+443/tcp                    ALLOW IN    Anywhere                  
+4000/tcp                   ALLOW IN    Anywhere                  
+22/tcp (v6)                ALLOW IN    Anywhere (v6)             
+80/tcp (v6)                ALLOW IN    Anywhere (v6)             
+443/tcp (v6)               ALLOW IN    Anywhere (v6)             
+4000/tcp (v6)              ALLOW IN    Anywhere (v6)             
+
+== TAILSCALE ==
+100.71.194.68    qwen-vps         mattcallawaysemail@  linux    -                                                                                     
+100.122.228.19   desktop-44h6qvp  mattcallawaysemail@  windows  active; direct [2001:5a8:4495:a100:e430:a805:cef1:4308]:41641, tx 2018652 rx 1071652  
+100.97.174.81    hvm-chicago      mattcallawaysemail@  linux    -                                                                                     
+100.109.111.79   msi              mattcallawaysemail@  windows  -                                                                                     
+100.104.134.43   office-pi        mattcallawaysemail@  linux    -                                                                                     
+100.101.187.115  qwen-laptop      mattcallawaysemail@  linux    -                                                                                     
+1.102.3
+== SANDBOX RUNNER SHA ==
+bc7c8fca1af2f868c0a280e86873e4241cb71e4b38717b65c082aa6442edd739  /usr/local/bin/qwen-sandbox-runner
+== SUDOERS ==
+qwen-worker ALL=(root) NOPASSWD: /usr/local/bin/qwen-sandbox-runner
+== OLLAMA ==
+bash: line 12: ollama: command not found
+inactive
+
+== TEMP/THERMAL ==
+== SLEEP TARGETS ==
+static
+static
+== WORKER LOG TAIL ==
+Oct 15 08:32:50 localhost qwen-worker[20113]: 2026-10-15 08:32:50 [INFO] qwen_collective.vps_daemon: Poll Interval   : 5s
+Oct 15 08:32:50 localhost qwen-worker[20113]: 2026-10-15 08:32:50 [INFO] qwen_collective.vps_daemon: Heartbeat Intvl : 15s
+Oct 15 08:32:50 localhost qwen-worker[20113]: 2026-10-15 08:32:50 [INFO] qwen_collective.vps_daemon: Data Directory  : /opt/qwen-collective/data
+Oct 15 08:32:50 localhost qwen-worker[20113]: 2026-10-15 08:32:50 [INFO] qwen_collective.vps_daemon: Token File Path : /opt/qwen-collective/data/worker_token.json (exists=True)
+Oct 15 08:32:50 localhost qwen-worker[20113]: 2026-10-15 08:32:50 [INFO] qwen_collective.vps_daemon: Auth Status     : worker_token_ready=True, enrollment_token_ready=False
+Oct 15 08:32:50 localhost qwen-worker[20113]: 2026-10-15 08:32:50 [INFO] qwen_collective.vps_daemon: PID             : 20113
+Oct 15 08:32:50 localhost qwen-worker[20113]: 2026-10-15 08:32:50 [INFO] qwen_collective.vps_daemon: ==================================================================
+Oct 15 08:32:51 localhost qwen-worker[20113]: 2026-10-15 08:32:51 [INFO] qwen_collective.worker_agent: Successfully registered worker node qwen-vps with controller

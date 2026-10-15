@@ -20,13 +20,38 @@ def log_machine_audit(machine_id: str, action: str, details: str = ""):
     conn.commit()
     conn.close()
 
+def _overlay_worker_health(machines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """For machines that are authenticated daemon workers, derive status from heartbeat age.
+
+    The machines table holds a copied snapshot; without this overlay a dead worker
+    would stay 'online' forever on /machines and the dashboard counters.
+    """
+    if not machines:
+        return machines
+    from app.services.node_health import effective_health
+    conn = get_db_connection()
+    try:
+        rows = conn.execute("SELECT id, role, health_status, last_contact_at FROM infrastructure_nodes").fetchall()
+    finally:
+        conn.close()
+    infra = {r["id"]: r for r in rows}
+    for m in machines:
+        n = infra.get(m["id"])
+        if not n:
+            continue
+        eff = effective_health(n["role"], n["health_status"], n["last_contact_at"])
+        if n["role"] in ("vps_worker", "inference_node", "compute_worker", "general_worker") and n["last_contact_at"]:
+            m["connection_status"] = "online" if eff == "online" else "offline"
+            m["last_checked_at"] = n["last_contact_at"]
+    return machines
+
 def get_all_machines() -> List[Dict[str, Any]]:
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM machines ORDER BY created_at DESC")
     rows = cursor.fetchall()
     conn.close()
-    return [dict(row) for row in rows]
+    return _overlay_worker_health([dict(row) for row in rows])
 
 def get_machine_by_id(machine_id: str) -> Optional[Dict[str, Any]]:
     conn = get_db_connection()
@@ -35,7 +60,7 @@ def get_machine_by_id(machine_id: str) -> Optional[Dict[str, Any]]:
     row = cursor.fetchone()
     conn.close()
     if row:
-        return dict(row)
+        return _overlay_worker_health([dict(row)])[0]
     return None
 
 def get_machine_audits(machine_id: str) -> List[Dict[str, Any]]:
