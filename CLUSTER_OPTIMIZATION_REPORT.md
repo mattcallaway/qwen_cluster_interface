@@ -29,3 +29,16 @@
 
 ## Baseline metrics
 Heartbeat interval ≈10 s (observed hb_age cadence). Queue→lease: 1.2 s (VPS), 4.6 s (laptop), 0.2 s (laptop post-change), 8.4 s (unpinned F4). Sandbox task runtime ≈2.1 s unit time on both nodes (VPS memory peak 1.2 MB). Registration/auth: 0 failures observed. Worker recovery: service start → lease in 3.8 s.
+
+## Addendum - memory/swap tuning on qwen-laptop (2026-10-15 13:35 PDT, requested by user)
+| Change | Detail | Rollback |
+|---|---|---|
+| `vm.swappiness` 15 -> **100** | Edited `/etc/sysctl.d/99-qwen-performance.conf` (it overrode my new drop-in); also `/etc/sysctl.d/99-qc-memory.conf` | `bash /var/backups/qc-audit-20261015T105938Z/ROLLBACK-memory.sh` |
+| **zswap** enabled (zstd, 25 % max pool) via `qc-zswap.service`, persistent | compressed RAM cache in front of the 36 GB `/swap.img` | same script |
+
+Measured (`audit_evidence/bench_v3_swap100_zswap.json`, quick mode): no throughput change (Qwen 16.9 / 12.7 tok/s, Llama 14.0-14.4 / 10.6 tok/s warm; all `READY 42`). Idle desktop pages are now pushed out: swap in use ~1.2 GB, of which zswap holds ~0.4 GB of pages in ~0.1 GB of RAM (~3.5:1). Free-for-model memory before the run 612 MB -> 959 MB at start and 2.4 GB after. Llama cold load showed 699 swap-in pages (mild; 27 s vs 25 s earlier, within noise).
+
+**Why not "use all 36 GB":** swap only ever holds *idle* pages. Using more of it means paging out memory the model/desktop still needs; with ~90 MB/s disk that turns inference into minutes per token. The setting above uses swap as aggressively as is useful (idle anon memory goes to compressed RAM first, then disk) without hurting generation. Larger models (e.g. 7B) were **not** pulled: they would exceed RAM and page continuously.
+
+Remaining memory hogs (not changed, user desktop): `gnome-system-monitor` ~350 MB, `snap-store` ~190 MB, `gnome-control-center` ~195 MB, GNOME shell ~140 MB. Booting to `multi-user.target` (headless) would free ~0.7-1 GB; needs a reboot and is not done.
+
