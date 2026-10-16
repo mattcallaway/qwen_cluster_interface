@@ -140,11 +140,52 @@ def normalize_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
         if not isinstance(t, dict):
             continue
         act = t.get("action") if isinstance(t.get("action"), dict) else {}
+        if not act.get("type"):
+            # Model may put action_type at task root, or as a string in 'action'
+            cand_type = t.get("action_type") or t.get("type") or (t.get("action") if isinstance(t.get("action"), str) else None)
+            if cand_type in ACTION_TYPES:
+                act["type"] = cand_type
+            elif t.get("script_id") or "health" in (t.get("title") or "").lower() or "collect" in (t.get("title") or "").lower():
+                act["type"] = "library_script"
+                act["script_id"] = t.get("script_id") or "sys_health_basic"
+            elif t.get("step") or "report" in (t.get("title") or "").lower() or "assemble" in (t.get("title") or "").lower():
+                act["type"] = "controller_step"
+                act["step"] = t.get("step") or "assemble_report"
+            else:
+                act["type"] = "inference"
+                if not act.get("instruction"):
+                    act["instruction"] = _s(t.get("description")) or f"Analyze task {_s(t.get('title'))}"
+                if not act.get("max_tokens"):
+                    act["max_tokens"] = 200
+
+        # If action is library_script but missing script_id, default to sys_health_basic
+        if act.get("type") == "library_script" and not act.get("script_id"):
+            act["script_id"] = t.get("script_id") or "sys_health_basic"
+
+        # If action is controller_step but missing step, default to assemble_report
+        if act.get("type") == "controller_step" and not act.get("step"):
+            act["step"] = "assemble_report"
+
+        # If action is inference, ensure instruction and max_tokens
+        if act.get("type") == "inference":
+            if not act.get("instruction"):
+                act["instruction"] = _s(t.get("description")) or _s(t.get("title")) or "Perform analysis."
+            if not isinstance(act.get("max_tokens"), int) or act.get("max_tokens", 0) <= 0:
+                act["max_tokens"] = 200
+
+        # Sanitize agent_role: if the model copied "execution|analysis|...", choose the first valid token
+        raw_role = _s(t.get("agent_role"), 40) or "execution"
+        if "|" in raw_role or raw_role not in AGENT_ROLES:
+            cand_tokens = [tok.strip() for tok in raw_role.split("|") if tok.strip() in AGENT_ROLES]
+            role = cand_tokens[0] if cand_tokens else ("analysis" if "analysis" in raw_role else "execution")
+        else:
+            role = raw_role
+
         acc = t.get("acceptance") if isinstance(t.get("acceptance"), dict) else {}
         out["tasks"].append({
             "key": _s(t.get("key"), 40), "title": _s(t.get("title"), 200),
             "description": _s(t.get("description")), "stage": _s(t.get("stage"), 40),
-            "agent_role": _s(t.get("agent_role"), 40) or "execution",
+            "agent_role": role,
             "action": act, "acceptance": acc,
             "depends_on": _list_s(t.get("depends_on"), 20, 40),
             "required_capabilities": _list_s(t.get("required_capabilities"), 10, 60),
