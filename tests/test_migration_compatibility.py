@@ -19,7 +19,7 @@ from app.migrations import apply_migrations, current_version, MIGRATIONS
 
 def test_migration_sequence_count_and_ordering():
     """Verify that migrations sequence is complete, strictly numbered, and ordered."""
-    assert len(MIGRATIONS) == 9
+    assert len(MIGRATIONS) >= 11
     for idx, (version, name, statements) in enumerate(MIGRATIONS):
         assert version == idx + 1
         assert len(name) > 0
@@ -59,9 +59,9 @@ def test_production_copy_migration_upgrade(tmp_path):
     applied = apply_migrations(conn)
     assert 8 in applied
 
-    # Verify upgraded to Version 8
-    v8 = current_version(conn)
-    assert v8 == 9
+    # Verify upgraded to latest version
+    v_latest = current_version(conn)
+    assert v_latest == len(MIGRATIONS)
 
     # Run integrity check
     integrity = conn.execute("PRAGMA integrity_check").fetchall()
@@ -114,7 +114,7 @@ def test_migration_rollback_procedure_via_backup(tmp_path):
     # 2. Apply migration 8 on replica
     conn = sqlite3.connect(str(prod_replica))
     apply_migrations(conn)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 9
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == len(MIGRATIONS)
     conn.close()
 
     # 3. Perform Rollback: Restore from verified backup

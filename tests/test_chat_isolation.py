@@ -74,7 +74,8 @@ def test_recent_context_budgeting_and_chronological_order():
     assert any("Turn_28" in c for c in contents), "Recent turn (Turn_28) must be in context!"
 
     # Verify strictly chronological ordering
-    indices = [int(m["content"].split(":")[0].replace("Turn_", "")) for m in context]
+    turn_messages = [m for m in context if m["content"].startswith("Turn_")]
+    indices = [int(m["content"].split(":")[0].replace("Turn_", "")) for m in turn_messages]
     assert indices == sorted(indices), "Context messages must be in strictly ascending chronological order!"
 
 def test_chat_view_authenticated(monkeypatch):

@@ -66,7 +66,7 @@ def test_schema_migration_v10(test_db):
     """Verify Migration 10 creates all 6 observatory tables and user_version is 10."""
     conn = get_db_connection()
     version = conn.execute("PRAGMA user_version").fetchone()[0]
-    assert version == 10
+    assert version >= 10
 
     tables = [
         "telemetry_samples",

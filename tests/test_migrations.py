@@ -34,7 +34,7 @@ def test_fresh_database_reaches_latest_version(tmp_path):
     conn = _connect(tmp_path / "fresh.db")
     create_baseline_schema(conn)
     applied = mig.apply_migrations(conn)
-    assert applied == [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    assert applied == list(range(1, mig.latest_version() + 1))
     assert mig.current_version(conn) == mig.latest_version()
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     for t in ("projects", "project_paths", "path_stages", "knowledge_metadata",
@@ -44,7 +44,10 @@ def test_fresh_database_reaches_latest_version(tmp_path):
               "project_proposals", "project_retrospectives", "deliverable_evaluations",
               "infrastructure_nodes", "infrastructure_capabilities", "infrastructure_reconciliations",
               "infrastructure_verifications", "worker_auth_tokens", "worker_task_leases", "worker_executions",
-              "worker_enrollment_tokens"):
+              "worker_enrollment_tokens", "telemetry_samples", "inference_telemetry",
+              "research_runs", "research_queries", "research_search_results", "research_sources",
+              "research_source_versions", "research_extractions", "research_claims",
+              "research_evidence", "research_citations", "research_provider_status", "research_budgets"):
         assert t in tables
 
 
@@ -73,10 +76,10 @@ def test_fts5_still_works_after_migration(tmp_path):
 def test_migrations_are_idempotent(tmp_path):
     conn = _connect(tmp_path / "idem.db")
     create_baseline_schema(conn)
-    assert mig.apply_migrations(conn) == [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    assert mig.apply_migrations(conn) == list(range(1, mig.latest_version() + 1))
     assert mig.apply_migrations(conn) == []
     create_baseline_schema(conn)  # startup re-runs baseline CREATE IF NOT EXISTS safely
-    assert mig.current_version(conn) == 9
+    assert mig.current_version(conn) == mig.latest_version()
 
 
 def test_upgrade_from_v1_to_v2_to_v3_to_v4_to_v5(tmp_path):
@@ -94,8 +97,8 @@ def test_upgrade_from_v1_to_v2_to_v3_to_v4_to_v5(tmp_path):
 
     # Now upgrade with full migrations suite
     applied2 = mig.apply_migrations(conn)
-    assert applied2 == [2, 3, 4, 5, 6, 7, 8, 9]
-    assert mig.current_version(conn) == 9
+    assert applied2 == list(range(2, mig.latest_version() + 1))
+    assert mig.current_version(conn) == mig.latest_version()
 
     # Verify M1 data preserved and new decision types allowed
     assert conn.execute("SELECT name FROM projects WHERE id='prj-1'").fetchone()[0] == "P1"

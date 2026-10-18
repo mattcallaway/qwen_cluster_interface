@@ -1337,6 +1337,231 @@ _M10: List[str] = [
     "CREATE INDEX idx_obs_alerts_fired ON observatory_alerts(fired_at)",
 ]
 
+# ---------------------------------------------------------------------------
+# Migration 11 — Autonomous Web Research & Browsing Engine
+# ---------------------------------------------------------------------------
+_M11: List[str] = [
+    # 1. Research runs (per-project autonomous research execution records)
+    """
+    CREATE TABLE research_runs (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        orchestration_run_id TEXT REFERENCES orchestration_runs(id) ON DELETE SET NULL,
+        status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'planning', 'active', 'paused', 'completed', 'failed', 'cancelled')),
+        objective TEXT NOT NULL DEFAULT '',
+        strategy_json TEXT NOT NULL DEFAULT '{}',
+        queries_count INTEGER NOT NULL DEFAULT 0,
+        sources_count INTEGER NOT NULL DEFAULT 0,
+        claims_count INTEGER NOT NULL DEFAULT 0,
+        citations_count INTEGER NOT NULL DEFAULT 0,
+        budget_json TEXT NOT NULL DEFAULT '{}',
+        error_message TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        completed_at TEXT
+    )
+    """,
+    "CREATE INDEX idx_research_runs_proj ON research_runs(project_id, status)",
+    "CREATE INDEX idx_research_runs_orch ON research_runs(orchestration_run_id)",
+
+    # 2. Research search queries (audit trail of queries executed)
+    """
+    CREATE TABLE research_queries (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        research_run_id TEXT REFERENCES research_runs(id) ON DELETE CASCADE,
+        task_id TEXT,
+        query_text TEXT NOT NULL,
+        original_query TEXT NOT NULL,
+        provider TEXT NOT NULL DEFAULT 'duckduckgo',
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed')),
+        results_count INTEGER NOT NULL DEFAULT 0,
+        duration_ms REAL NOT NULL DEFAULT 0.0,
+        error_message TEXT,
+        created_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_research_queries_run ON research_queries(research_run_id, created_at)",
+    "CREATE INDEX idx_research_queries_proj ON research_queries(project_id)",
+
+    # 3. Research search results (items returned by search providers)
+    """
+    CREATE TABLE research_search_results (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        query_id TEXT NOT NULL REFERENCES research_queries(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        url TEXT NOT NULL,
+        canonical_url TEXT NOT NULL,
+        snippet TEXT NOT NULL DEFAULT '',
+        provider TEXT NOT NULL DEFAULT 'duckduckgo',
+        rank INTEGER NOT NULL DEFAULT 1,
+        published_at TEXT,
+        retrieved_at TEXT NOT NULL,
+        selected_for_retrieval INTEGER NOT NULL DEFAULT 0 CHECK (selected_for_retrieval IN (0, 1))
+    )
+    """,
+    "CREATE INDEX idx_research_results_query ON research_search_results(query_id, rank)",
+    "CREATE INDEX idx_research_results_proj ON research_search_results(project_id)",
+    "CREATE INDEX idx_research_results_canon ON research_search_results(canonical_url)",
+
+    # 4. Research sources (persistent project source library)
+    """
+    CREATE TABLE research_sources (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        canonical_url TEXT NOT NULL,
+        original_url TEXT NOT NULL,
+        title TEXT NOT NULL DEFAULT '',
+        author TEXT,
+        publisher TEXT,
+        publication_date TEXT,
+        modified_date TEXT,
+        retrieved_at TEXT NOT NULL,
+        content_type TEXT NOT NULL DEFAULT 'text/html',
+        content_hash TEXT NOT NULL,
+        content_length_bytes INTEGER NOT NULL DEFAULT 0,
+        storage_path TEXT,
+        retrieval_method TEXT NOT NULL DEFAULT 'http' CHECK (retrieval_method IN ('http', 'browser')),
+        status TEXT NOT NULL DEFAULT 'fetched' CHECK (status IN ('fetched', 'failed', 'extracted')),
+        quality_score REAL NOT NULL DEFAULT 1.0,
+        reliability_assessment_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (project_id, canonical_url)
+    )
+    """,
+    "CREATE INDEX idx_research_sources_proj ON research_sources(project_id, status)",
+    "CREATE INDEX idx_research_sources_hash ON research_sources(content_hash)",
+    "CREATE INDEX idx_research_sources_canon ON research_sources(canonical_url)",
+
+    # 5. Research source versions (tracking content changes over time)
+    """
+    CREATE TABLE research_source_versions (
+        id TEXT PRIMARY KEY,
+        source_id TEXT NOT NULL REFERENCES research_sources(id) ON DELETE CASCADE,
+        version_number INTEGER NOT NULL DEFAULT 1,
+        content_hash TEXT NOT NULL,
+        content_length_bytes INTEGER NOT NULL DEFAULT 0,
+        storage_path TEXT,
+        retrieved_at TEXT NOT NULL,
+        UNIQUE (source_id, version_number)
+    )
+    """,
+    "CREATE INDEX idx_research_source_versions ON research_source_versions(source_id, version_number)",
+
+    # 6. Research document extractions (clean extracted text, headings, tables, links)
+    """
+    CREATE TABLE research_extractions (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        source_id TEXT NOT NULL REFERENCES research_sources(id) ON DELETE CASCADE,
+        clean_text TEXT NOT NULL DEFAULT '',
+        headings_json TEXT NOT NULL DEFAULT '[]',
+        tables_json TEXT NOT NULL DEFAULT '[]',
+        outbound_urls_json TEXT NOT NULL DEFAULT '[]',
+        word_count INTEGER NOT NULL DEFAULT 0,
+        extracted_at TEXT NOT NULL,
+        UNIQUE (source_id)
+    )
+    """,
+    "CREATE INDEX idx_research_extractions_proj ON research_extractions(project_id)",
+    "CREATE INDEX idx_research_extractions_src ON research_extractions(source_id)",
+
+    # 7. Research claims (structured claim-level evidence tracking)
+    """
+    CREATE TABLE research_claims (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        research_run_id TEXT REFERENCES research_runs(id) ON DELETE CASCADE,
+        claim_text TEXT NOT NULL,
+        category TEXT NOT NULL DEFAULT 'fact' CHECK (category IN ('fact', 'inference', 'estimate', 'opinion', 'unknown')),
+        verification_status TEXT NOT NULL DEFAULT 'unverified' CHECK (verification_status IN ('unverified', 'supported', 'corroborated', 'contradicted', 'insufficient_evidence', 'outdated')),
+        confidence_score REAL NOT NULL DEFAULT 0.0,
+        contradiction_details TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_research_claims_proj ON research_claims(project_id, verification_status)",
+    "CREATE INDEX idx_research_claims_run ON research_claims(research_run_id)",
+
+    # 8. Research evidence (linking claims directly to source passages)
+    """
+    CREATE TABLE research_evidence (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        claim_id TEXT NOT NULL REFERENCES research_claims(id) ON DELETE CASCADE,
+        source_id TEXT NOT NULL REFERENCES research_sources(id) ON DELETE CASCADE,
+        supporting_excerpt TEXT NOT NULL,
+        exact_quote TEXT,
+        context_before TEXT,
+        context_after TEXT,
+        evidence_strength TEXT NOT NULL DEFAULT 'moderate' CHECK (evidence_strength IN ('weak', 'moderate', 'strong')),
+        relevance_score REAL NOT NULL DEFAULT 1.0,
+        created_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_research_evidence_claim ON research_evidence(claim_id)",
+    "CREATE INDEX idx_research_evidence_source ON research_evidence(source_id)",
+    "CREATE INDEX idx_research_evidence_proj ON research_evidence(project_id)",
+
+    # 9. Research citations (structured citations resolving to real source records)
+    """
+    CREATE TABLE research_citations (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        research_run_id TEXT REFERENCES research_runs(id) ON DELETE CASCADE,
+        citation_num INTEGER NOT NULL,
+        source_id TEXT NOT NULL REFERENCES research_sources(id) ON DELETE CASCADE,
+        claim_id TEXT REFERENCES research_claims(id) ON DELETE SET NULL,
+        deliverable_id TEXT REFERENCES deliverables(id) ON DELETE SET NULL,
+        anchor_text TEXT NOT NULL DEFAULT '',
+        formatted_citation TEXT NOT NULL DEFAULT '',
+        is_verified INTEGER NOT NULL DEFAULT 1 CHECK (is_verified IN (0, 1)),
+        validation_notes TEXT,
+        created_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_research_citations_run ON research_citations(research_run_id, citation_num)",
+    "CREATE INDEX idx_research_citations_src ON research_citations(source_id)",
+    "CREATE INDEX idx_research_citations_proj ON research_citations(project_id)",
+
+    # 10. Research provider status (health, tracking, rate-limiting)
+    """
+    CREATE TABLE research_provider_status (
+        provider_name TEXT PRIMARY KEY,
+        is_available INTEGER NOT NULL DEFAULT 1 CHECK (is_available IN (0, 1)),
+        consecutive_failures INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        last_success_at TEXT,
+        total_queries INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL
+    )
+    """,
+
+    # 11. Research budgets (enforceable resource limits)
+    """
+    CREATE TABLE research_budgets (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        research_run_id TEXT REFERENCES research_runs(id) ON DELETE CASCADE,
+        max_queries INTEGER NOT NULL DEFAULT 10,
+        max_docs INTEGER NOT NULL DEFAULT 20,
+        max_browser_seconds INTEGER NOT NULL DEFAULT 120,
+        max_tokens INTEGER NOT NULL DEFAULT 10000,
+        queries_used INTEGER NOT NULL DEFAULT 0,
+        docs_used INTEGER NOT NULL DEFAULT 0,
+        browser_seconds_used REAL NOT NULL DEFAULT 0.0,
+        tokens_used INTEGER NOT NULL DEFAULT 0,
+        is_exceeded INTEGER NOT NULL DEFAULT 0 CHECK (is_exceeded IN (0, 1)),
+        updated_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_research_budgets_proj ON research_budgets(project_id)",
+    "CREATE INDEX idx_research_budgets_run ON research_budgets(research_run_id)",
+]
+
 MIGRATIONS: List[Migration] = [
     (1, "project intelligence foundation", _M1),
     (2, "execution and evidence", _M2),
@@ -1348,6 +1573,7 @@ MIGRATIONS: List[Migration] = [
     (8, "worker enrollment security and chat project context", _M8),
     (9, "autonomous project orchestrator", _M9),
     (10, "system observatory telemetry, rollups, inference accounting, and alerting", _M10),
+    (11, "autonomous web research and browsing engine", _M11),
 ]
 
 

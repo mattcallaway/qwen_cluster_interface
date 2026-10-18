@@ -18,8 +18,25 @@ MAX_PROMPT_CHARS = 2500
 AGENT_ROLES = ("project_manager", "research", "analysis", "development", "execution", "review",
                "integration", "recovery")
 ACTION_TYPES = ("library_script", "inference", "controller_step")
-CONTROLLER_STEPS = ("assemble_report",)
-ACCEPTANCE_KINDS = ("script_validator", "nonempty_text", "json_fields", "report_sections")
+CONTROLLER_STEPS = (
+    "assemble_report",
+    "research_search",
+    "research_fetch",
+    "research_browser_read",
+    "research_extract",
+    "research_verify",
+    "research_synthesize",
+    "research_citation_audit",
+    "research_full_cycle",
+)
+ACCEPTANCE_KINDS = (
+    "script_validator",
+    "nonempty_text",
+    "json_fields",
+    "report_sections",
+    "research_evidence",
+    "citation_audit",
+)
 KEY_RE = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
 MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:\-/]{0,63}$")
 
@@ -554,8 +571,8 @@ def _validate_acceptance(t: Dict[str, Any], errors: List[str]) -> None:
         errors.append(f"Task '{k}' has unknown acceptance kind '{kind}'.")
     if kind == "script_validator" and t["action"].get("type") != "library_script":
         errors.append(f"Task '{k}': script_validator acceptance requires a library_script action.")
-    if kind == "report_sections" and t["action"].get("type") != "controller_step":
-        errors.append(f"Task '{k}': report_sections acceptance requires a controller_step action.")
+    if kind in ("report_sections", "research_evidence", "citation_audit") and t["action"].get("type") != "controller_step":
+        errors.append(f"Task '{k}': {kind} acceptance requires a controller_step action.")
     if kind == "nonempty_text" and t["action"].get("type") != "inference":
         errors.append(f"Task '{k}': nonempty_text acceptance requires an inference action.")
 

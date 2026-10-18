@@ -21,6 +21,9 @@ TEMPLATE_GOALS = re.compile(r"(system|cluster|node|distributed)\s+health|health\
 PREFERRED_PLANNER_MODELS = ["qwen2.5:1.5b", "llama3.2:1b"]
 
 
+RESEARCH_GOALS = re.compile(r"\b(research|web|internet|online|sources?|cite|citations?|investigate|study|literature|compare)\b", re.I)
+
+
 # --- intake analysis -------------------------------------------------------------------------------------
 
 def analyze_intake(intake: Dict[str, Any], nodes: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
@@ -42,12 +45,12 @@ def analyze_intake(intake: Dict[str, Any], nodes: Optional[List[Dict[str, Any]]]
         assumptions.append("No constraints given; only platform security limits apply.")
     discoverable.append("Available workers/models are read from the live node registry: "
                         + ", ".join(f"{n['id']}({','.join(n['capabilities']) or 'none'})" for n in nodes if n["is_worker"]))
-    research_words = re.search(r"\b(research|web|internet|online|sources?|cite|citations?)\b", obj, re.I)
+    research_words = RESEARCH_GOALS.search(obj)
     if research_words:
-        assumptions.append("Internet/research tools are NOT available to the orchestrator; plans can only use "
-                           "local diagnostics and local model summarisation. Research tasks need a tool to be added.")
+        assumptions.append("External research required: orchestrator will execute search, secure retrieval, claim-level evidence verification, and citation audits on the controller.")
     return {"critical_missing": critical, "assumptions": assumptions, "discoverable": discoverable,
-            "template_match": bool(TEMPLATE_GOALS.search(obj))}
+            "template_match": bool(TEMPLATE_GOALS.search(obj)),
+            "research_match": bool(research_words)}
 
 
 # --- template planner (deterministic; labelled source=template) ----------------------------------------------
@@ -133,6 +136,129 @@ def template_health_plan(intake: Dict[str, Any], nodes: List[Dict[str, Any]]) ->
     }
 
 
+def template_research_plan(intake: Dict[str, Any], nodes: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Deterministic autonomous research plan for projects requiring external web research."""
+    obj = (intake.get("objective") or "Autonomous Web Research").strip()
+    tasks = [
+        {
+            "key": "search_sources",
+            "title": "Search public web for relevant sources",
+            "stage": "search",
+            "description": f"Execute targeted search queries across public internet sources for: {obj[:120]}.",
+            "agent_role": "research",
+            "risk": "low",
+            "approval": "auto",
+            "priority": 2,
+            "max_attempts": 2,
+            "timeout_seconds": 120,
+            "required_capabilities": ["controller"],
+            "action": {"type": "controller_step", "step": "research_search", "inputs": []},
+            "acceptance": {"kind": "json_fields"},
+            "depends_on": [],
+            "expected_outputs": ["search_results.json"],
+        },
+        {
+            "key": "retrieve_content",
+            "title": "Securely retrieve and extract source documents",
+            "stage": "retrieve",
+            "description": "Fetch public documents, stream bytes under limits, extract clean text and tables, with headless browser fallback.",
+            "agent_role": "execution",
+            "risk": "low",
+            "approval": "auto",
+            "priority": 2,
+            "max_attempts": 2,
+            "timeout_seconds": 180,
+            "required_capabilities": ["controller"],
+            "action": {"type": "controller_step", "step": "research_fetch", "inputs": ["search_sources"]},
+            "acceptance": {"kind": "json_fields"},
+            "depends_on": ["search_sources"],
+            "expected_outputs": ["retrieved_sources.json"],
+        },
+        {
+            "key": "verify_claims",
+            "title": "Extract and verify evidence claims",
+            "stage": "verify",
+            "description": "Track factual claims in the Evidence Ledger, corroborate with independent sources, and identify contradictions.",
+            "agent_role": "analysis",
+            "risk": "low",
+            "approval": "auto",
+            "priority": 3,
+            "max_attempts": 2,
+            "timeout_seconds": 120,
+            "required_capabilities": ["controller"],
+            "action": {"type": "controller_step", "step": "research_verify", "inputs": ["retrieve_content"]},
+            "acceptance": {"kind": "research_evidence"},
+            "depends_on": ["retrieve_content"],
+            "expected_outputs": ["evidence_ledger.json"],
+        },
+        {
+            "key": "synthesize_report",
+            "title": "Synthesize cited research report",
+            "stage": "report",
+            "description": "Synthesize findings into an evidence-linked markdown report with deterministic citations.",
+            "agent_role": "integration",
+            "risk": "low",
+            "approval": "auto",
+            "priority": 3,
+            "max_attempts": 1,
+            "timeout_seconds": 120,
+            "required_capabilities": ["controller"],
+            "action": {"type": "controller_step", "step": "research_synthesize", "inputs": ["verify_claims"]},
+            "acceptance": {"kind": "citation_audit"},
+            "depends_on": ["verify_claims"],
+            "expected_outputs": ["research_report.md", "citation_audit.json"],
+        },
+    ]
+
+    stages = [
+        {"key": "search", "name": "Web Search", "objective": "Discover authoritative public sources."},
+        {"key": "retrieve", "name": "Document Retrieval", "objective": "Fetch pages safely and extract clean text and tables."},
+        {"key": "verify", "name": "Fact Verification", "objective": "Corroborate claims against retrieved evidence in the ledger."},
+        {"key": "report", "name": "Report & Citation Audit", "objective": "Synthesize final deliverable with verifiable citations."},
+    ]
+
+    return {
+        "schema": task_graph.PLAN_SCHEMA,
+        "overview": {
+            "objective": obj,
+            "scope": "Public internet research, evidence verification, and cited deliverable assembly.",
+            "assumptions": [
+                "All external retrieval is conducted through the secure controller runner.",
+                "Worker sandbox isolation is preserved with zero public network exposure.",
+                "Every citation resolves to a real retrieved source and supporting excerpt."
+            ],
+            "constraints": [
+                "Strict SSRF and private IP blocking on all outbound requests.",
+                "Per-project resource and retrieval budgets enforced.",
+                "Retrieved content is treated strictly as untrusted evidence."
+            ],
+            "expected_outcome": "A comprehensive, evidence-linked research report with verified sources and citations."
+        },
+        "paths": [{
+            "key": "main",
+            "name": "Search, Retrieve, Verify, Synthesize",
+            "rationale": "Direct multi-phase pipeline with deterministic citation validation.",
+            "stages": stages
+        }],
+        "tasks": tasks,
+        "deliverables": [{
+            "key": "research_report",
+            "name": "Autonomous Research Report",
+            "type": "report",
+            "description": "Synthesized research report with deterministic source citations and evidence ledger.",
+            "acceptance_criteria": "All claims are supported by verified evidence and all citations resolve to retrieved sources.",
+            "produced_by": "synthesize_report",
+            "stage": "report",
+            "terminal": True
+        }],
+        "risks": [
+            {"description": "A target domain blocks requests or returns anti-bot challenges.", "mitigation": "Graceful fallback to alternative discovered sources."},
+            {"description": "A claim cannot be corroborated across multiple independent sources.", "mitigation": "Flag claim as INSUFFICIENT_EVIDENCE in the evidence ledger."}
+        ],
+        "approval_gates": [{"action": "Execute plan", "reason": "Initial research execution requires approval."}]
+    }
+
+
 # --- model planner ---------------------------------------------------------------------------------------
 
 def build_planning_prompt(intake: Dict[str, Any], nodes: List[Dict[str, Any]], analysis: Dict[str, Any]) -> str:
@@ -212,7 +338,7 @@ def build_planning_prompt(intake: Dict[str, Any], nodes: List[Dict[str, Any]], a
         "- Every task MUST have an 'action' object with 'type' set to 'inference', 'library_script', or 'controller_step'.\n"
         "- For 'inference' tasks: use for reasoning, research, analysis, planning, code, and text generation. Leave 'allowed_nodes': [] so any active inference worker can run it. Do not set allowed_nodes to qwen-vps for inference tasks. If a task needs previous outputs, list them in 'inputs': ['t1'] AND declare ['t1'] in 'depends_on'. NEVER reference the task's own key in 'inputs'.\n"
         "- For 'library_script' tasks: ONLY use for pre-registered diagnostics scripts. Currently registered scripts: ['sys_health_basic']. Pin allowed_nodes to ['qwen-vps']. NEVER hallucinate or invent other script names (such as generate_natural_response, buy_tickets, deploy_app). If a task does not run 'sys_health_basic', you MUST use 'inference'.\n"
-        "- For 'controller_step' tasks: use step 'assemble_report' to consolidate results into a final deliverable report.\n"
+        "- For 'controller_step' tasks: allowed steps are 'assemble_report', 'research_search', 'research_fetch', 'research_verify', 'research_synthesize', 'research_citation_audit', and 'research_full_cycle'. Leave 'allowed_nodes': [].\n"
         "- 'agent_role' must be a single string ('execution', 'analysis', 'research', 'integration', or 'review').\n"
         "- Deliverable 'type' must be one of: 'document', 'dataset', 'report', 'software_artifact', 'configuration', 'research_result', 'published_material', 'completed_workflow', 'other'.\n"
         "- At least one deliverable must have 'terminal': true.\n"
@@ -228,7 +354,7 @@ def build_repair_prompt(original: str, bad_text: str, errors: List[str]) -> str:
         if "unknown script" in err or "references unknown script" in err:
             fix_hints.append("The only registered library script is 'sys_health_basic'. NEVER invent script names. If the task is not a system health snapshot, you MUST change its action type to 'inference' with an 'instruction'.")
         if "unknown controller step" in err:
-            fix_hints.append("The only allowed controller step is 'assemble_report'.")
+            fix_hints.append("Allowed controller steps: 'assemble_report', 'research_search', 'research_fetch', 'research_verify', 'research_synthesize', 'research_citation_audit', 'research_full_cycle'.")
         if "uses output of itself" in err or "depends on itself" in err:
             fix_hints.append("A task cannot depend on itself or list its own key in 'inputs'. Remove self-references.")
         if "without declaring it as a dependency" in err:
@@ -427,6 +553,10 @@ def generate_plan(run_id: str, actor: str, mode: str = "auto", planner_model: Op
     if use_template:
         rev = store_revision(run_id, template_health_plan(intake, nodes), "template", actor,
                              {"note": "deterministic template; no model involved"})
+        return _after_candidate(run_id, rev, actor, replan)
+    if mode == "auto" and analysis.get("research_match"):
+        rev = store_revision(run_id, template_research_plan(intake, nodes), "template", actor,
+                             {"note": "autonomous research plan template; controller-orchestrated"})
         return _after_candidate(run_id, rev, actor, replan)
     node, model = _pick_planner(nodes, planner_model or intake.get("planner_model"))
     if not node:

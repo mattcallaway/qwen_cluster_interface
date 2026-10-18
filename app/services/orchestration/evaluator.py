@@ -131,3 +131,28 @@ def evaluate_report(md: str, required_sections: Optional[List[str]] = None,
                              "report content must be appropriately labelled"))
 
     return {"accepted": all(c["passed"] for c in checks), "checks": checks}
+
+
+def evaluate_research_step(step_name: str, result_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Deterministic acceptance evaluation for controller research steps."""
+    checks = []
+    status = result_data.get("status")
+    checks.append(_check("execution_success", status in ("success", "completed"), f"status={status}"))
+
+    if step_name == "research_search":
+        count = result_data.get("results_count", 0)
+        checks.append(_check("search_results_found", count > 0, f"results_count={count}"))
+    elif step_name in ("research_fetch", "research_browser_read", "research_extract"):
+        count = result_data.get("sources_count", 0)
+        checks.append(_check("sources_retrieved", count > 0, f"sources_count={count}"))
+    elif step_name == "research_verify":
+        count = result_data.get("claims_count", 0)
+        checks.append(_check("claims_verified", count > 0, f"claims_count={count}"))
+    elif step_name in ("research_synthesize", "research_citation_audit", "research_full_cycle"):
+        audit = result_data.get("citation_audit") or result_data.get("audit") or {}
+        has_report = bool(result_data.get("report_markdown"))
+        checks.append(_check("report_generated", has_report, "report markdown generated" if has_report else "no report markdown"))
+        checks.append(_check("citations_valid", audit.get("valid", False), f"audit_valid={audit.get('valid')}"))
+
+    return {"accepted": all(c["passed"] for c in checks), "checks": checks}
+

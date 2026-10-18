@@ -640,6 +640,124 @@ def _dispatch_one(run, ot, action, node, model) -> None:
                  task_id=ot["id"], detail={"underlying_task": task_id, "attempt": attempt, "node": node["id"], "model": model})
 
 
+def _run_research_controller_step(run, ot, action, plan, inputs) -> Dict[str, Any]:
+    import json
+    from app.services.research.manager import ResearchManager
+    step = action.get("step")
+    project_id = run["project_id"]
+    objective = plan.get("overview", {}).get("objective") or "Autonomous Web Research"
+    mgr = ResearchManager()
+
+    if step == "research_search":
+        strategy = mgr.planner.generate_strategy(objective)
+        res = mgr.execute_search_step(project_id, ot["id"], strategy.initial_queries)
+        ev = evaluator.evaluate_research_step(step, res)
+        ids = []
+        if ev["accepted"]:
+            aid = artifact_manager.write_controller_artifact(
+                run, ot["id"], "search_results.json", json.dumps(res, indent=2).encode("utf-8")
+            )
+            artifact_manager.set_validation(aid, "valid", f"{res.get('results_count')} search results verified")
+            ids.append(aid)
+        ev["result"] = {"kind": "controller_generated", "artifacts": ids, "node": "controller-local", "data": res}
+        ev["node"] = "controller-local"
+        return ev
+
+    elif step in ("research_fetch", "research_browser_read", "research_extract"):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT url, title, snippet, search_provider as provider, search_query FROM research_search_results WHERE project_id = ? ORDER BY rank LIMIT 10", (project_id,))
+        results = [dict(r) for r in cursor.fetchall()]
+        conn.close()
+        res = mgr.execute_fetch_and_extract_step(project_id, ot["id"], results)
+        ev = evaluator.evaluate_research_step(step, res)
+        ids = []
+        if ev["accepted"]:
+            aid = artifact_manager.write_controller_artifact(
+                run, ot["id"], "retrieved_sources.json", json.dumps(res, indent=2).encode("utf-8")
+            )
+            artifact_manager.set_validation(aid, "valid", f"{res.get('sources_count')} sources retrieved and extracted")
+            ids.append(aid)
+        ev["result"] = {"kind": "controller_generated", "artifacts": ids, "node": "controller-local", "data": res}
+        ev["node"] = "controller-local"
+        return ev
+
+    elif step == "research_verify":
+        sources = mgr.source_library.list_sources(project_id)
+        candidate_claims = []
+        for src in sources:
+            text = src.get("extracted_text", "")
+            paras = [p.strip() for p in text.split("\n\n") if len(p.strip()) > 80][:3]
+            for p in paras:
+                first_sent = p.split(".")[0].strip() + "."
+                candidate_claims.append({
+                    "claim_text": first_sent,
+                    "claim_type": "fact",
+                    "evidence": [{
+                        "source_id": src["source_id"],
+                        "passage": p[:300],
+                        "confidence": 0.9,
+                    }]
+                })
+        res = mgr.execute_verify_step(project_id, ot["id"], candidate_claims[:10])
+        ev = evaluator.evaluate_research_step(step, res)
+        ids = []
+        if ev["accepted"]:
+            aid = artifact_manager.write_controller_artifact(
+                run, ot["id"], "evidence_ledger.json", json.dumps(res, indent=2).encode("utf-8")
+            )
+            artifact_manager.set_validation(aid, "valid", f"{res.get('claims_count')} claims corroborated")
+            ids.append(aid)
+        ev["result"] = {"kind": "controller_generated", "artifacts": ids, "node": "controller-local", "data": res}
+        ev["node"] = "controller-local"
+        return ev
+
+    elif step in ("research_synthesize", "research_citation_audit"):
+        topic = plan.get("overview", {}).get("objective") or "Research Deliverable"
+        res = mgr.execute_synthesis_and_citation_step(project_id, ot["id"], objective, topic)
+        ev = evaluator.evaluate_research_step(step, res)
+        ids = []
+        if ev["accepted"]:
+            rep_md = res.get("report_markdown", "")
+            aid1 = artifact_manager.write_controller_artifact(
+                run, ot["id"], "research_report.md", rep_md.encode("utf-8")
+            )
+            artifact_manager.set_validation(aid1, "valid", "Research report with deterministic citations validated")
+            ids.append(aid1)
+
+            aid2 = artifact_manager.write_controller_artifact(
+                run, ot["id"], "citation_audit.json", json.dumps(res.get("audit", {}), indent=2).encode("utf-8")
+            )
+            artifact_manager.set_validation(aid2, "valid", "Citation audit passed")
+            ids.append(aid2)
+        ev["result"] = {"kind": "controller_generated", "artifacts": ids, "node": "controller-local", "data": res}
+        ev["node"] = "controller-local"
+        return ev
+
+    elif step == "research_full_cycle":
+        res = mgr.run_full_cycle(project_id, objective, ot["id"])
+        ev = evaluator.evaluate_research_step(step, res)
+        ids = []
+        if ev["accepted"]:
+            rep_md = res.get("report_markdown", "")
+            aid1 = artifact_manager.write_controller_artifact(
+                run, ot["id"], "research_report.md", rep_md.encode("utf-8")
+            )
+            artifact_manager.set_validation(aid1, "valid", "Research report verified")
+            ids.append(aid1)
+
+            aid2 = artifact_manager.write_controller_artifact(
+                run, ot["id"], "research_summary.json", json.dumps(res, indent=2).encode("utf-8")
+            )
+            artifact_manager.set_validation(aid2, "valid", "Full cycle summary validated")
+            ids.append(aid2)
+        ev["result"] = {"kind": "controller_generated", "artifacts": ids, "node": "controller-local", "data": res}
+        ev["node"] = "controller-local"
+        return ev
+
+    return {"accepted": False, "checks": [{"name": "step_unknown", "passed": False, "detail": f"unknown research step {step}"}], "result": {}}
+
+
 def _run_controller_step(run, ot, action) -> None:
     _open_attempt(ot, "controller-local", None, None)
     ot = _fresh(ot["id"])
@@ -652,6 +770,17 @@ def _run_controller_step(run, ot, action) -> None:
     plan = jload(rev["plan_json"]) if rev else {}
     declared = action.get("inputs") or [r["plan_key"] for r in by_key.values() if r["plan_key"] != ot["plan_key"]]
     inputs = _accepted_inputs(run["id"], declared)
+
+    step = action.get("step", "")
+    if step.startswith("research_"):
+        try:
+            ev = _run_research_controller_step(run, ot, action, plan, inputs)
+        except Exception as e:
+            logger.exception("Error executing research step %s", step)
+            ev = {"accepted": False, "checks": [{"name": "research_step", "passed": False, "detail": str(e)[:200]}], "result": {}}
+        _decide_result(run, ot, ev, None)
+        return
+
     title = next((d["name"] for d in plan.get("deliverables", []) if d["produced_by"] == ot["plan_key"]), "Project Report")
     prov = [{"key": k, "node": v.get("node"), "attempts": by_key.get(k, {}).get("attempts"), "kind": v.get("kind")} for k, v in sorted(inputs.items())]
     try:
