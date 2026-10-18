@@ -415,6 +415,8 @@ def record_worker_heartbeat(
             """,
             (now, lease_cutoff_iso, now, node_id),
         )
+        conn.commit()
+
         # 3. Record sample in telemetry_samples
         try:
             from app.services.observatory import storage as obs_storage

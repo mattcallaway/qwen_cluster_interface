@@ -9,12 +9,13 @@ from app.config import settings
 
 logger = logging.getLogger("qwen_collective.db")
 
-def get_db_connection() -> sqlite3.Connection:
+def get_db_connection(timeout: float = 30.0) -> sqlite3.Connection:
     """Return a configured SQLite connection with row factories and foreign keys enabled."""
-    conn = sqlite3.connect(settings.db_path)
+    conn = sqlite3.connect(settings.db_path, timeout=timeout)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode = WAL;")
     conn.execute("PRAGMA foreign_keys = ON;")
+    conn.execute("PRAGMA busy_timeout = 30000;")
     return conn
 
 
