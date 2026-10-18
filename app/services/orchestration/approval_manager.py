@@ -94,7 +94,9 @@ def approve_plan(run_id: str, actor: str, rationale: str = "", revision_id: Opti
         raise OrchestrationError(f"Revision is {rev['status']}, not proposed.")
     # Re-validate against the *current* fleet; never trust a stored validation blindly.
     from app.services.orchestration import model_router
-    v = task_graph.validate_plan(rev["plan"], model_router.node_inventory())
+    nodes = model_router.node_inventory()
+    rev["plan"] = task_graph.normalize_plan(rev["plan"], nodes)
+    v = task_graph.validate_plan(rev["plan"], nodes)
     if not v["valid"]:
         raise OrchestrationError("Plan is not valid: " + "; ".join(v["errors"][:5]))
     if v["capability_issues"]:

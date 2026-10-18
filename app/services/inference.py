@@ -245,11 +245,12 @@ async def send_chat_completion(messages: List[Dict[str, str]]) -> Dict[str, Any]
         headers["Authorization"] = f"Bearer {backend['api_key']}"
         
     try:
-        async with httpx.AsyncClient(timeout=60.0, follow_redirects=False) as client:
+        async with httpx.AsyncClient(timeout=180.0, follow_redirects=False) as client:
             if backend["backend_type"] == "ollama":
                 payload = {
                     "model": backend.get("model_name", "qwen2.5:3b"),
                     "messages": messages,
+                    "options": {"num_ctx": 8192},
                     "stream": False
                 }
                 resp = await client.post(f"{url}/api/chat", json=payload, headers=headers)

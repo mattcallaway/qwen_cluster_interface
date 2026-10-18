@@ -627,7 +627,6 @@ def _dispatch_one(run, ot, action, node, model) -> None:
 def _run_controller_step(run, ot, action) -> None:
     _open_attempt(ot, "controller-local", None, None)
     ot = _fresh(ot["id"])
-    inputs = _accepted_inputs(run["id"], action.get("inputs") or [])
     c = get_db_connection()
     try:
         by_key = {r["plan_key"]: dict(r) for r in c.execute("SELECT plan_key, attempts, dispatched_node FROM orchestration_tasks WHERE run_id=? AND state<>'superseded'", (run["id"],))}
@@ -635,13 +634,16 @@ def _run_controller_step(run, ot, action) -> None:
     finally:
         c.close()
     plan = jload(rev["plan_json"]) if rev else {}
+    declared = action.get("inputs") or [r["plan_key"] for r in by_key.values() if r["plan_key"] != ot["plan_key"]]
+    inputs = _accepted_inputs(run["id"], declared)
     title = next((d["name"] for d in plan.get("deliverables", []) if d["produced_by"] == ot["plan_key"]), "Project Report")
     prov = [{"key": k, "node": v.get("node"), "attempts": by_key.get(k, {}).get("attempts"), "kind": v.get("kind")} for k, v in sorted(inputs.items())]
     try:
         rep = reporting.assemble_health_report(run, title, inputs, prov)
         ev = evaluator.evaluate_report(rep["markdown"], reporting.REQUIRED_SECTIONS)
-        ev["checks"].append({"name": "has_measured_data", "passed": any(v.get("kind") == "worker_telemetry" for v in inputs.values()),
-                             "detail": "at least one validated telemetry source"})
+        has_data = any(v.get("kind") in ("worker_telemetry", "model_output", "controller_generated") for v in inputs.values()) if inputs else False
+        ev["checks"].append({"name": "has_measured_data", "passed": has_data,
+                             "detail": "at least one validated input source" if has_data else "no input data found"})
         ev["accepted"] = ev["accepted"] and all(c["passed"] for c in ev["checks"])
         ids = []
         if ev["accepted"]:

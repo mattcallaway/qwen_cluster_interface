@@ -17,6 +17,7 @@ Guiding Principles:
   8) Cross-project reusable lessons and collective memory
 """
 import json
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.database import get_db_connection
@@ -146,16 +147,73 @@ def build_project_context_packet(
     })
 
     # Priority 4: Verified Deliverables and Decisions
+    # Load artifact metadata for this project to retrieve deliverable outputs and referenced files
+    proj_artifacts = []
+    with get_db_connection() as conn:
+        try:
+            art_rows = conn.execute(
+                "SELECT id, filename, mime_type, size_bytes, storage_path, provenance, validation_state FROM artifact_metadata WHERE project_id = ?",
+                (project_id,)
+            ).fetchall()
+            proj_artifacts = [dict(r) for r in art_rows]
+        except Exception:
+            proj_artifacts = []
+
+    def _read_artifact_text(storage_path: Optional[str], max_chars: int = 2500) -> Optional[str]:
+        if not storage_path:
+            return None
+        try:
+            p = Path(storage_path)
+            if p.is_file() and p.stat().st_size <= 50000:
+                text = p.read_text(encoding="utf-8", errors="replace").strip()
+                if len(text) > max_chars:
+                    return text[:max_chars] + "\n... [truncated for token budget]"
+                return text
+        except Exception:
+            return None
+        return None
+
     dec_lines = ["### Key Decisions & Deliverables"]
     if decisions:
         dec_lines.append("**Recorded Decisions:**")
         for d in decisions[:5]:
             dec_lines.append(f"- [{d['decision_type']}] {d['rationale']} (by {d['decided_by']} at {d['decided_at'][:10]})")
+
+    embedded_artifact_names = set()
     if all_deliverables:
-        dec_lines.append("**Deliverables Status:**")
+        dec_lines.append("**Deliverables & Outputs:**")
         for deliv in all_deliverables[:6]:
-            dec_lines.append(f"- **{deliv['name']}** ({deliv['deliverable_type']}): Status = {deliv['status'].upper()}"
-                             + (f" | Artifacts: {deliv['artifact_references']}" if deliv['artifact_references'] else ""))
+            dec_lines.append(f"- **{deliv['name']}** ({deliv['deliverable_type']}): Status = {deliv['status'].upper()}")
+            if deliv.get("description"):
+                dec_lines.append(f"  - Description: {deliv['description']}")
+            if deliv.get("acceptance_criteria"):
+                dec_lines.append(f"  - Acceptance Criteria: {deliv['acceptance_criteria']}")
+            if deliv.get("acceptance_decision"):
+                dec_lines.append(f"  - Decision: {deliv['acceptance_decision']}")
+            if deliv.get("verification_results"):
+                dec_lines.append(f"  - Verification: {deliv['verification_results']}")
+            if deliv.get("artifact_references"):
+                dec_lines.append(f"  - Artifact References: {deliv['artifact_references']}")
+
+            # Find and embed text from referenced artifacts
+            art_refs = (deliv.get("artifact_references") or "").lower()
+            for art in proj_artifacts:
+                if art["filename"].lower() in art_refs or art["id"].lower() in art_refs:
+                    text_content = _read_artifact_text(art.get("storage_path"))
+                    if text_content:
+                        dec_lines.append(f"  - **Output Content of `{art['filename']}`**:\n```\n{text_content}\n```")
+                        embedded_artifact_names.add(art["filename"].lower())
+
+    # If user instruction or search query specifically queries a project artifact, embed it
+    query_lower = (search_query or "").lower() + " " + (user_instruction or "").lower()
+    for art in proj_artifacts:
+        fn_lower = art["filename"].lower()
+        if fn_lower in query_lower and fn_lower not in embedded_artifact_names:
+            text_content = _read_artifact_text(art.get("storage_path"))
+            if text_content:
+                dec_lines.append(f"\n**Referenced Project Artifact (`{art['filename']}`):**\n```\n{text_content}\n```")
+                embedded_artifact_names.add(fn_lower)
+
     dec_content = "\n".join(dec_lines) + "\n" if (decisions or all_deliverables) else ""
     sections.append({
         "name": "Decisions & Deliverables",

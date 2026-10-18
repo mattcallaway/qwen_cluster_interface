@@ -17,7 +17,7 @@ from app.services.orchestration.common import iso_in, jload, jdump, new_id, now_
 logger = logging.getLogger("qc.orchestrator.router")
 
 WORKER_ROLES = {"vps_worker", "inference_node", "compute_worker", "general_worker"}
-MIN_FREE_RAM_FOR_INFERENCE_MB = 900
+MIN_FREE_RAM_FOR_INFERENCE_MB = 350  # 350 MiB accommodates resident quantized models on 4GB hosts with swap
 MAX_PROMPT_CHARS = 8000  # matches the worker-side hard cap
 
 

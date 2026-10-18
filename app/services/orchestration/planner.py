@@ -180,7 +180,7 @@ def build_planning_prompt(intake: Dict[str, Any], nodes: List[Dict[str, Any]], a
         '      "stage": "s1",\n'
         '      "agent_role": "analysis",\n'
         '      "depends_on": ["t1"],\n'
-        '      "allowed_nodes": ["qwen-laptop"],\n'
+        '      "allowed_nodes": [],\n'
         '      "action": {"type": "inference", "instruction": "Summarize results", "inputs": ["t1"], "max_tokens": 200}\n'
         "    },\n"
         "    {\n"
@@ -210,6 +210,7 @@ def build_planning_prompt(intake: Dict[str, Any], nodes: List[Dict[str, Any]], a
         "}\n\n"
         "Rules:\n"
         "- Every task MUST have an 'action' object with 'type' set to 'library_script', 'inference', or 'controller_step'.\n"
+        "- For 'inference' tasks, leave 'allowed_nodes': [] so any active inference worker can run it. Do not set allowed_nodes to qwen-vps for inference tasks because qwen-vps only runs python scripts.\n"
         "- 'agent_role' must be a single string ('execution', 'analysis', 'research', 'integration', or 'review').\n"
         "- The last task must be a controller_step with step 'assemble_report' producing the terminal deliverable.\n"
         "- Return ONLY the valid JSON object. No markdown backticks or commentary."
@@ -314,7 +315,7 @@ def store_revision(run_id: str, plan: Dict[str, Any], source: str, actor: str, m
                    conn=None) -> Dict[str, Any]:
     """Normalise + validate + persist a proposed revision (previous proposed ones are superseded)."""
     nodes = model_router.node_inventory()
-    plan = task_graph.normalize_plan(plan)
+    plan = task_graph.normalize_plan(plan, nodes)
     validation = task_graph.validate_plan(plan, nodes)
 
     def _do(c):
@@ -490,8 +491,9 @@ def edit_plan(run_id: str, plan: Dict[str, Any], actor: str) -> Dict[str, Any]:
     run = get_run(run_id)
     if run["state"] not in ("AWAITING_PLAN_APPROVAL", "READY", "BLOCKED", "PAUSED", "REPLANNING"):
         raise OrchestrationError(f"Plans cannot be edited while the run is {run['state']}.")
-    norm = task_graph.normalize_plan(plan)
-    v = task_graph.validate_plan(norm, model_router.node_inventory())
+    nodes = model_router.node_inventory()
+    norm = task_graph.normalize_plan(plan, nodes)
+    v = task_graph.validate_plan(norm, nodes)
     if not v["valid"]:
         raise OrchestrationError("Edited plan is invalid: " + "; ".join(v["errors"][:6]))
     rev = store_revision(run_id, norm, "manual_edit", actor)

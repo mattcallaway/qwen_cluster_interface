@@ -10,6 +10,7 @@ from app.services.inference import get_active_backend, send_chat_completion
 from app.services.context_packet import build_project_context_packet
 from app.services.infrastructure import build_architecture_context_packet
 from app.services import projects as proj_svc
+from app.services import deliverables as deliv_svc
 
 router = APIRouter(tags=["chat"])
 templates = Jinja2Templates(directory="app/templates")
@@ -97,13 +98,58 @@ def build_system_context(project_id: Optional[str], search_query: str = "") -> O
     Build structured, authoritative system prompt integrating Project Context Packet
     and Architecture Context Packet. Strictly isolates authoritative instructions.
     """
+    all_projects = proj_svc.list_projects()
+
+    # If no explicit project_id, attempt to match project name or ID mentioned in search_query
+    if not project_id and search_query:
+        query_lower = search_query.lower()
+        for p in all_projects:
+            if p["name"].lower() in query_lower or p["id"].lower() in query_lower:
+                project_id = p["id"]
+                break
+
     if not project_id:
-        return None
+        # Build portfolio overview across all projects
+        arch_packet = None
+        try:
+            arch_packet = build_architecture_context_packet(token_budget=1000, user_query=search_query)
+        except Exception as ae:
+            logger.warning("Could not build architecture context packet: %s", ae)
+
+        proj_summary_lines = ["### Portfolio of Collective Projects"]
+        if all_projects:
+            for p in all_projects[:8]:
+                desc = p.get("objective") or p.get("description") or "No objective recorded"
+                proj_summary_lines.append(f"- **{p['name']}** (ID: `{p['id']}` | Status: {p['status'].upper()}): {desc}")
+                try:
+                    delivs = deliv_svc.list_deliverables(p["id"])
+                    for d in delivs[:3]:
+                        proj_summary_lines.append(f"  - Deliverable: **{d['name']}** [{d['status'].upper()}]" + (f" (Artifacts: {d['artifact_references']})" if d.get('artifact_references') else ""))
+                except Exception:
+                    pass
+        else:
+            proj_summary_lines.append("- *No projects registered.*")
+
+        parts = [
+            "You are Qwen Collective's coordinating operational intelligence.",
+            "You have complete visibility into all projects, deliverables, tasks, and system architecture across the collective.\n",
+            "\n".join(proj_summary_lines) + "\n",
+        ]
+        if arch_packet:
+            parts.append(arch_packet["rendered_prompt"])
+
+        parts.append(
+            "\n### OPERATIONAL RULES FOR QWEN INTELLIGENCE\n"
+            "1. Authoritative Bounds: Follow approved project paths and active stages. Do not invent goals or alter accepted deliverables.\n"
+            "2. Deliverables & Knowledge Access: You have direct visibility into all project definitions, stages, tasks, deliverables, and attached artifact outputs provided in this context. Use this authoritative evidence to explain findings, analyze outputs, and answer user questions in detail.\n"
+            "3. Separation of Concerns: External or retrieved assertions must be validated before becoming authoritative.\n"
+        )
+        return "\n".join(parts)
 
     try:
         proj_packet = build_project_context_packet(
             project_id=project_id,
-            token_budget=2000,
+            token_budget=3500,
             search_query=search_query,
         )
     except Exception as pe:
@@ -121,7 +167,7 @@ def build_system_context(project_id: Optional[str], search_query: str = "") -> O
 
     parts = [
         "You are Qwen Collective's coordinating operational intelligence.",
-        "You operate strictly within approved project bounds and verified infrastructure reality.\n",
+        "You operate strictly within approved project bounds, verified infrastructure reality, and delivered project outputs.\n",
     ]
 
     if proj_packet:
@@ -133,8 +179,9 @@ def build_system_context(project_id: Optional[str], search_query: str = "") -> O
     parts.append(
         "\n### OPERATIONAL RULES FOR QWEN INTELLIGENCE\n"
         "1. Authoritative Bounds: Follow the approved Path and active Stage. Do not invent goals or alter accepted deliverables.\n"
-        "2. Verification Invariant: Only state that capabilities exist or tasks succeeded if verified in the context above.\n"
-        "3. Separation of Concerns: External or retrieved assertions must be validated before becoming authoritative.\n"
+        "2. Deliverables & Knowledge Access: You have direct visibility into the active project definition, tasks, deliverables, and attached artifact outputs provided in the context above. Use this authoritative evidence to explain findings, analyze outputs, and answer user questions in detail.\n"
+        "3. Artifact Content: When asked about deliverable contents or specific output files (such as reports, summaries, recommendations), directly present and explain the findings, recommendations, and text from the attached artifacts.\n"
+        "4. Separation of Concerns: External or retrieved assertions must be validated before becoming authoritative.\n"
     )
 
     return "\n".join(parts)
@@ -161,6 +208,14 @@ def build_context_messages(session_id: str, project_id: Optional[str] = None, us
         length = len(r["content"])
         if current_chars + length > char_budget and budget_turns:
             break
+        # Skip legacy refusal turns where assistant hallucinated lack of deliverable/project access
+        if r["role"] == "assistant" and any(phrase in r["content"].lower() for phrase in [
+            "cannot access or provide details about any project",
+            "cannot access or provide details about",
+            "please provide the content or details of the file `t3_ai_output.txt`",
+            "please provide the context or contents of `t3_ai_output.txt`"
+        ]):
+            continue
         budget_turns.append({"role": r["role"], "content": r["content"]})
         current_chars += length
 
@@ -168,10 +223,9 @@ def build_context_messages(session_id: str, project_id: Optional[str] = None, us
     budget_turns.reverse()
 
     # Prepend authoritative system prompt with Project Context Packet & Architecture Context
-    if project_id:
-        system_content = build_system_context(project_id, search_query=user_prompt)
-        if system_content:
-            budget_turns.insert(0, {"role": "system", "content": system_content})
+    system_content = build_system_context(project_id, search_query=user_prompt)
+    if system_content:
+        budget_turns.insert(0, {"role": "system", "content": system_content})
 
     return budget_turns
 

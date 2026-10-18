@@ -3,7 +3,7 @@
 net session >nul 2>&1
 if %errorLevel% neq 0 (
     echo Administrative permissions required. Requesting elevation...
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process cmd -ArgumentList '/c \"\"%~f0\"\"' -Verb RunAs"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
     exit /b
 )
 

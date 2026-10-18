@@ -111,7 +111,7 @@ def _list_s(v: Any, limit: int = 20, each: int = 300) -> List[str]:
     return [_s(x, each) for x in v[:limit] if _s(x, each)]
 
 
-def normalize_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
+def normalize_plan(plan: Dict[str, Any], nodes: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """Coerce a loosely-shaped plan dict into the canonical structure (does not judge validity)."""
     if not isinstance(plan, dict):
         return {}
@@ -182,6 +182,21 @@ def normalize_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
             role = raw_role
 
         acc = t.get("acceptance") if isinstance(t.get("acceptance"), dict) else {}
+        allowed = _list_s(t.get("allowed_nodes"), 8, 64)
+        if act.get("type") == "inference":
+            if nodes is not None:
+                inf_nodes = {n["id"] for n in nodes if "inference" in n.get("capabilities", [])}
+                allowed = [n for n in allowed if n in inf_nodes]
+                if len(allowed) <= 1:
+                    allowed = []
+            else:
+                allowed = []
+        elif act.get("type") == "controller_step":
+            allowed = []
+        elif act.get("type") == "library_script" and nodes is not None and allowed:
+            py_nodes = {n["id"] for n in nodes if "python_execution" in n.get("capabilities", [])}
+            allowed = [n for n in allowed if n in py_nodes]
+
         out["tasks"].append({
             "key": _s(t.get("key"), 40), "title": _s(t.get("title"), 200),
             "description": _s(t.get("description")), "stage": _s(t.get("stage"), 40),
@@ -190,7 +205,7 @@ def normalize_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
             "depends_on": _list_s(t.get("depends_on"), 20, 40),
             "required_capabilities": _list_s(t.get("required_capabilities"), 10, 60),
             "preferred_models": _list_s(t.get("preferred_models"), 5, 64),
-            "allowed_nodes": _list_s(t.get("allowed_nodes"), 8, 64),
+            "allowed_nodes": allowed,
             "priority": t.get("priority") if isinstance(t.get("priority"), int) else 3,
             "max_attempts": t.get("max_attempts") if isinstance(t.get("max_attempts"), int) else 2,
             "timeout_seconds": t.get("timeout_seconds") if isinstance(t.get("timeout_seconds"), int) else 300,
