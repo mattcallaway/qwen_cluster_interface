@@ -848,7 +848,23 @@ def _evaluate_deliverables(run: Dict[str, Any]) -> None:
             continue
         if dd["status"] == "accepted":
             continue
-        valid = [a for a in arts if a["orch_task_id"] == producer["id"] and a["validation_state"] == "valid"]
+        pres = jload(producer.get("accepted_result_json")) if producer.get("accepted_result_json") else {}
+        explicit_aids = set()
+        if isinstance(pres.get("artifacts"), list):
+            explicit_aids.update(pres["artifacts"])
+        if pres.get("artifact_id"):
+            explicit_aids.add(pres["artifact_id"])
+
+        matching_task_ids = {producer["id"]}
+        for t in _orch_tasks(run["id"]):
+            if t.get("plan_key") == producer.get("plan_key"):
+                matching_task_ids.add(t["id"])
+
+        valid = [
+            a for a in arts
+            if (a.get("id") in explicit_aids or a.get("orch_task_id") in matching_task_ids)
+            and a.get("validation_state") == "valid"
+        ]
         if not valid:
             all_accepted = False
             if dd["status"] != "rejected":

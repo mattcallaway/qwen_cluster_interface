@@ -38,7 +38,24 @@ def _insert(run_id: Optional[str], project_id: str, task_id: Optional[str], orch
              hashlib.sha256(data).hexdigest(), str(path.resolve()), provenance, now_iso()))
         if cur.rowcount != 1:
             row = c.execute("SELECT id FROM artifact_metadata WHERE storage_path = ?", (str(path.resolve()),)).fetchone()
-            return row["id"] if row else None
+            if row:
+                aid = row["id"]
+                c.execute(
+                    """UPDATE artifact_metadata
+                       SET run_id = COALESCE(?, run_id),
+                           project_id = ?,
+                           task_id = COALESCE(?, task_id),
+                           orch_task_id = COALESCE(?, orch_task_id),
+                           worker_id = COALESCE(?, worker_id),
+                           size_bytes = ?,
+                           sha256 = ?,
+                           provenance = ?,
+                           created_at = ?
+                       WHERE id = ?""",
+                    (run_id, project_id, task_id, orch_task_id, worker_id, len(data),
+                     hashlib.sha256(data).hexdigest(), provenance, now_iso(), aid))
+                return aid
+            return None
     if run_id:
         from app.services.orchestration.telemetry import record_usage
         record_usage(run_id, storage_bytes=len(data))
