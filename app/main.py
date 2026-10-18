@@ -19,6 +19,7 @@ from app.routes import (
     infrastructure,
     worker,
     orchestration,
+    observatory,
     settings as settings_route
 )
 
@@ -45,8 +46,15 @@ async def lifespan(app: FastAPI):
         logger.info("Project Orchestrator engine loop started.")
     else:
         logger.info("Project Orchestrator engine loop disabled (set QC_ORCHESTRATOR_ENABLED=1 to enable).")
+
+    # Start System Observatory background engine (local sampling, rollups, alerts)
+    from app.services.observatory import engine as obs_engine
+    obs_engine.start_background()
+    logger.info("System Observatory background telemetry engine started.")
+
     yield
     # Shutdown sequence
+    obs_engine.stop_background()
     if settings.orchestrator_enabled:
         from app.services.orchestration import engine as orch_engine
         orch_engine.stop_background()
@@ -73,6 +81,7 @@ app.include_router(projects.router)
 app.include_router(orchestration.router)
 app.include_router(infrastructure.router)
 app.include_router(worker.router)
+app.include_router(observatory.router)
 app.include_router(settings_route.router)
 
 if __name__ == "__main__":

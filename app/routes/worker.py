@@ -16,6 +16,9 @@ from pydantic import BaseModel, Field
 
 from app.auth import get_current_user
 from app.services import worker as worker_svc
+from app.services.observatory import alerting as obs_alerting
+from app.services.observatory import collector as obs_collector
+from app.services.observatory.models import TelemetrySamplePayload
 
 logger = logging.getLogger("qwen_collective.worker_api")
 
@@ -68,6 +71,19 @@ class WorkerHeartbeatRequest(BaseModel):
     disk_free_gb: Optional[float] = None
     running_jobs_count: int = 0
     available_models: Optional[List[str]] = None
+    # Extended System Observatory metrics
+    ram_total_mb: Optional[int] = None
+    swap_total_mb: Optional[int] = None
+    swap_used_mb: Optional[int] = None
+    swap_percent: Optional[float] = None
+    cpu_temp_c: Optional[float] = None
+    battery_percent: Optional[float] = None
+    is_ac_online: Optional[int] = -1
+    worker_res_mb: Optional[float] = None
+    ollama_res_mb: Optional[float] = None
+    latency_to_controller_ms: Optional[float] = None
+    gpu: Optional[Dict[str, Any]] = None
+    per_core: Optional[List[float]] = None
 
 
 class TaskLeaseRequest(BaseModel):
@@ -313,7 +329,7 @@ def worker_heartbeat(
             detail="Token does not grant access to the specified node_id.",
         )
 
-    return worker_svc.record_worker_heartbeat(
+    res = worker_svc.record_worker_heartbeat(
         node_id=req.node_id,
         cpu_percent=req.cpu_percent,
         ram_available_mb=req.ram_available_mb,
@@ -321,6 +337,61 @@ def worker_heartbeat(
         running_jobs_count=req.running_jobs_count,
         available_models=req.available_models,
     )
+
+    # Evaluate alerts and record extended sample if provided
+    try:
+        sample_dict = {
+            "cpu_percent": req.cpu_percent,
+            "ram_total_mb": req.ram_total_mb,
+            "ram_available_mb": req.ram_available_mb,
+            "swap_total_mb": req.swap_total_mb,
+            "swap_used_mb": req.swap_used_mb,
+            "swap_percent": req.swap_percent,
+            "disk_free_gb": req.disk_free_gb,
+            "cpu_temp_c": req.cpu_temp_c,
+            "battery_percent": req.battery_percent,
+            "is_ac_online": req.is_ac_online,
+            "worker_res_mb": req.worker_res_mb,
+            "ollama_res_mb": req.ollama_res_mb,
+            "latency_to_controller_ms": req.latency_to_controller_ms,
+            "gpu": req.gpu,
+            "per_core": req.per_core or [],
+        }
+        obs_alerting.evaluate_telemetry_for_alerts(req.node_id, sample_dict)
+    except Exception as e:
+        logger.debug("Failed to evaluate heartbeat alerts for %s: %s", req.node_id, e)
+
+    return res
+
+
+@router.post("/telemetry")
+def submit_worker_telemetry(
+    req: TelemetrySamplePayload,
+    worker: Dict[str, Any] = Depends(get_authenticated_worker),
+):
+    """
+    Submit structured hardware telemetry from an authenticated worker.
+    Strictly binds submitted sample to worker's authenticated node_id to prevent spoofing.
+    """
+    if worker["node_id"] != req.node_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Token node '{worker['node_id']}' cannot report telemetry for '{req.node_id}'.",
+        )
+
+    sample_dict = req.model_dump()
+    try:
+        sample_id = obs_collector.record_worker_telemetry_submission(worker["node_id"], sample_dict)
+        obs_alerting.evaluate_telemetry_for_alerts(worker["node_id"], sample_dict)
+        return {
+            "status": "recorded",
+            "sample_id": sample_id,
+            "node_id": worker["node_id"],
+            "timestamp": sample_dict.get("timestamp"),
+        }
+    except Exception as ex:
+        logger.error("Failed to ingest worker telemetry for %s: %s", worker["node_id"], ex)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ex))
 
 
 @router.post("/tasks/lease")

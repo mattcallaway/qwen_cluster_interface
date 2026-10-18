@@ -1159,6 +1159,184 @@ _M9: List[str] = [
     "CREATE INDEX idx_orch_checkpoints_run ON orchestration_checkpoints(run_id, id)",
 ]
 
+# --- Milestone 10 (System Observatory: Telemetry, Rollups, Inference Accounting & Alerting) ---
+_M10: List[str] = [
+    # 1. Telemetry Samples (Raw time-series samples from workers and controller)
+    """
+    CREATE TABLE telemetry_samples (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        node_id TEXT NOT NULL REFERENCES infrastructure_nodes(id) ON DELETE CASCADE,
+        timestamp TEXT NOT NULL,
+        cpu_percent REAL,
+        per_core_json TEXT NOT NULL DEFAULT '[]',
+        cpu_freq_mhz REAL,
+        load_1m REAL,
+        load_5m REAL,
+        load_15m REAL,
+        ram_total_mb INTEGER,
+        ram_used_mb INTEGER,
+        ram_available_mb INTEGER,
+        ram_percent REAL,
+        swap_total_mb INTEGER,
+        swap_used_mb INTEGER,
+        swap_percent REAL,
+        disk_total_gb REAL,
+        disk_used_gb REAL,
+        disk_free_gb REAL,
+        disk_read_mbs REAL,
+        disk_write_mbs REAL,
+        disk_iops REAL,
+        net_rx_kbs REAL,
+        net_tx_kbs REAL,
+        cpu_temp_c REAL,
+        battery_percent REAL,
+        is_ac_online INTEGER NOT NULL DEFAULT -1,
+        worker_res_mb REAL,
+        ollama_res_mb REAL,
+        worker_cpu_percent REAL,
+        ollama_cpu_percent REAL,
+        gpu_info_json TEXT NOT NULL DEFAULT '{}',
+        latency_to_controller_ms REAL,
+        os_uptime_s INTEGER,
+        worker_service_status TEXT NOT NULL DEFAULT 'running',
+        ollama_service_status TEXT NOT NULL DEFAULT 'unknown'
+    )
+    """,
+    "CREATE INDEX idx_telemetry_samples_node_ts ON telemetry_samples(node_id, timestamp)",
+    "CREATE INDEX idx_telemetry_samples_ts ON telemetry_samples(timestamp)",
+
+    # 2. Telemetry Minute Rollups (30-day retention)
+    """
+    CREATE TABLE telemetry_rollups_minute (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        node_id TEXT NOT NULL REFERENCES infrastructure_nodes(id) ON DELETE CASCADE,
+        bucket_time TEXT NOT NULL,
+        sample_count INTEGER NOT NULL,
+        cpu_avg REAL,
+        cpu_min REAL,
+        cpu_max REAL,
+        ram_used_avg REAL,
+        ram_used_min REAL,
+        ram_used_max REAL,
+        swap_used_avg REAL,
+        swap_used_min REAL,
+        swap_used_max REAL,
+        temp_avg REAL,
+        temp_max REAL,
+        net_rx_avg REAL,
+        net_tx_avg REAL,
+        disk_read_avg REAL,
+        disk_write_avg REAL,
+        latency_avg REAL,
+        UNIQUE (node_id, bucket_time)
+    )
+    """,
+    "CREATE INDEX idx_telemetry_min_bucket ON telemetry_rollups_minute(bucket_time)",
+    "CREATE INDEX idx_telemetry_min_node ON telemetry_rollups_minute(node_id, bucket_time)",
+
+    # 3. Telemetry Hourly Rollups (1-year retention)
+    """
+    CREATE TABLE telemetry_rollups_hour (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        node_id TEXT NOT NULL REFERENCES infrastructure_nodes(id) ON DELETE CASCADE,
+        bucket_time TEXT NOT NULL,
+        sample_count INTEGER NOT NULL,
+        cpu_avg REAL,
+        cpu_min REAL,
+        cpu_max REAL,
+        ram_used_avg REAL,
+        ram_used_min REAL,
+        ram_used_max REAL,
+        swap_used_avg REAL,
+        swap_used_min REAL,
+        swap_used_max REAL,
+        temp_avg REAL,
+        temp_max REAL,
+        net_rx_avg REAL,
+        net_tx_avg REAL,
+        disk_read_avg REAL,
+        disk_write_avg REAL,
+        latency_avg REAL,
+        UNIQUE (node_id, bucket_time)
+    )
+    """,
+    "CREATE INDEX idx_telemetry_hour_bucket ON telemetry_rollups_hour(bucket_time)",
+    "CREATE INDEX idx_telemetry_hour_node ON telemetry_rollups_hour(node_id, bucket_time)",
+
+    # 4. Comprehensive Inference Telemetry (authoritative engine token accounting)
+    """
+    CREATE TABLE inference_telemetry (
+        id TEXT PRIMARY KEY,
+        request_id TEXT NOT NULL,
+        run_id TEXT REFERENCES orchestration_runs(id) ON DELETE SET NULL,
+        project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+        task_id TEXT REFERENCES tasks(id) ON DELETE SET NULL,
+        node_id TEXT NOT NULL REFERENCES infrastructure_nodes(id) ON DELETE CASCADE,
+        model TEXT NOT NULL,
+        provider TEXT NOT NULL DEFAULT 'ollama',
+        status TEXT NOT NULL DEFAULT 'success' CHECK (status IN ('success', 'error', 'timeout')),
+        prompt_tokens INTEGER NOT NULL DEFAULT 0,
+        gen_tokens INTEGER NOT NULL DEFAULT 0,
+        total_tokens INTEGER NOT NULL DEFAULT 0,
+        prompt_eval_duration_ms REAL NOT NULL DEFAULT 0.0,
+        eval_duration_ms REAL NOT NULL DEFAULT 0.0,
+        load_duration_ms REAL NOT NULL DEFAULT 0.0,
+        total_duration_ms REAL NOT NULL DEFAULT 0.0,
+        tokens_per_second REAL NOT NULL DEFAULT 0.0,
+        time_to_first_token_ms REAL,
+        error_category TEXT,
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        completed_at TEXT
+    )
+    """,
+    "CREATE INDEX idx_inf_tel_node ON inference_telemetry(node_id, created_at)",
+    "CREATE INDEX idx_inf_tel_model ON inference_telemetry(model, created_at)",
+    "CREATE INDEX idx_inf_tel_project ON inference_telemetry(project_id, created_at)",
+    "CREATE INDEX idx_inf_tel_task ON inference_telemetry(task_id)",
+
+    # 5. Alert Definitions / Rules
+    """
+    CREATE TABLE observatory_alert_rules (
+        id TEXT PRIMARY KEY,
+        name TEXT UNIQUE NOT NULL,
+        category TEXT NOT NULL CHECK (category IN (
+            'cpu', 'memory', 'swap', 'temperature', 'storage', 'worker', 'model', 'controller'
+        )),
+        metric_name TEXT NOT NULL,
+        threshold REAL NOT NULL,
+        operator TEXT NOT NULL CHECK (operator IN ('>', '>=', '<', '<=', '==', '!=')),
+        duration_seconds INTEGER NOT NULL DEFAULT 30,
+        severity TEXT NOT NULL DEFAULT 'warning' CHECK (severity IN ('info', 'warning', 'critical')),
+        is_enabled INTEGER NOT NULL DEFAULT 1 CHECK (is_enabled IN (0, 1)),
+        created_at TEXT NOT NULL
+    )
+    """,
+
+    # 6. Active and Historical Alert Instances
+    """
+    CREATE TABLE observatory_alerts (
+        id TEXT PRIMARY KEY,
+        rule_name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        node_id TEXT REFERENCES infrastructure_nodes(id) ON DELETE CASCADE,
+        severity TEXT NOT NULL CHECK (severity IN ('info', 'warning', 'critical')),
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        metrics_json TEXT NOT NULL DEFAULT '{}',
+        state TEXT NOT NULL DEFAULT 'firing' CHECK (state IN ('firing', 'acknowledged', 'resolved')),
+        fired_at TEXT NOT NULL,
+        acknowledged_at TEXT,
+        acknowledged_by TEXT,
+        resolved_at TEXT,
+        cooldown_until TEXT
+    )
+    """,
+    "CREATE INDEX idx_obs_alerts_state ON observatory_alerts(state, severity)",
+    "CREATE INDEX idx_obs_alerts_node ON observatory_alerts(node_id, state)",
+    "CREATE INDEX idx_obs_alerts_fired ON observatory_alerts(fired_at)",
+]
+
 MIGRATIONS: List[Migration] = [
     (1, "project intelligence foundation", _M1),
     (2, "execution and evidence", _M2),
@@ -1169,6 +1347,7 @@ MIGRATIONS: List[Migration] = [
     (7, "worker communication, task leasing, and execution history", _M7),
     (8, "worker enrollment security and chat project context", _M8),
     (9, "autonomous project orchestrator", _M9),
+    (10, "system observatory telemetry, rollups, inference accounting, and alerting", _M10),
 ]
 
 

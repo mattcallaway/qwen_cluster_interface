@@ -15,7 +15,7 @@ from typing import Any, Dict, Optional
 import requests
 
 from vps_agent.buffer import OfflineBuffer
-from vps_agent.capabilities import discover_local_hardware
+from vps_agent.capabilities import collect_live_telemetry, discover_local_hardware
 from vps_agent.config import AgentConfig, load_config, save_worker_token
 from vps_agent.executor import execute_task
 
@@ -141,18 +141,29 @@ class VPSWorkerAgent:
             return False
 
     def send_heartbeat(self) -> bool:
-        """Send health heartbeat to the controller."""
+        """Send health heartbeat and real hardware telemetry to the controller."""
         if not self.is_registered or not self.token:
             return False
 
         url = f"{self.config.controller_url}/api/v1/worker/heartbeat"
-        hardware_info = discover_local_hardware()
+        telemetry = collect_live_telemetry()
         payload = {
             "node_id": self.config.worker_id,
-            "ram_available_mb": hardware_info["ram_available_mb"],
-            "disk_free_gb": hardware_info["disk_free_gb"],
+            "cpu_percent": telemetry.get("cpu_percent"),
+            "ram_total_mb": telemetry.get("ram_total_mb"),
+            "ram_used_mb": telemetry.get("ram_used_mb"),
+            "ram_available_mb": telemetry.get("ram_available_mb"),
+            "swap_total_mb": telemetry.get("swap_total_mb"),
+            "swap_used_mb": telemetry.get("swap_used_mb"),
+            "swap_percent": telemetry.get("swap_percent"),
+            "disk_free_gb": telemetry.get("disk_free_gb"),
+            "cpu_temp_c": telemetry.get("cpu_temp_c"),
+            "battery_percent": telemetry.get("battery_percent"),
+            "is_ac_online": telemetry.get("is_ac_online", -1),
+            "worker_res_mb": telemetry.get("worker_res_mb"),
             "running_jobs_count": 0,
-            "available_models": hardware_info.get("available_models", []),
+            "available_models": telemetry.get("available_models", []),
+            "gpu": telemetry.get("gpu"),
         }
 
         try:
@@ -169,6 +180,43 @@ class VPSWorkerAgent:
             return False
         except Exception as e:
             logger.debug("Heartbeat ping failed: %s", e)
+            return False
+
+    def send_telemetry(self) -> bool:
+        """Push full structured hardware telemetry to the dedicated observatory endpoint."""
+        if not self.is_registered or not self.token:
+            return False
+
+        url = f"{self.config.controller_url}/api/v1/worker/telemetry"
+        telemetry = collect_live_telemetry()
+        payload = {
+            "node_id": self.config.worker_id,
+            "cpu_percent": telemetry.get("cpu_percent"),
+            "load_1m": telemetry.get("load_1m"),
+            "load_5m": telemetry.get("load_5m"),
+            "load_15m": telemetry.get("load_15m"),
+            "ram_total_mb": telemetry.get("ram_total_mb"),
+            "ram_used_mb": telemetry.get("ram_used_mb"),
+            "ram_available_mb": telemetry.get("ram_available_mb"),
+            "ram_percent": telemetry.get("ram_percent"),
+            "swap_total_mb": telemetry.get("swap_total_mb"),
+            "swap_used_mb": telemetry.get("swap_used_mb"),
+            "swap_percent": telemetry.get("swap_percent"),
+            "disk_total_gb": telemetry.get("disk_total_gb"),
+            "disk_used_gb": telemetry.get("disk_used_gb"),
+            "disk_free_gb": telemetry.get("disk_free_gb"),
+            "cpu_temp_c": telemetry.get("cpu_temp_c"),
+            "battery_percent": telemetry.get("battery_percent"),
+            "is_ac_online": telemetry.get("is_ac_online", -1),
+            "worker_res_mb": telemetry.get("worker_res_mb"),
+            "gpu": telemetry.get("gpu"),
+        }
+
+        try:
+            resp = self.session.post(url, json=payload, headers=self._headers(), timeout=10)
+            return resp.status_code == 200
+        except Exception as e:
+            logger.debug("Telemetry push failed: %s", e)
             return False
 
     def flush_offline_buffer(self) -> int:

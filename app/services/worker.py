@@ -415,9 +415,32 @@ def record_worker_heartbeat(
             """,
             (now, lease_cutoff_iso, now, node_id),
         )
-        conn.commit()
+        # 3. Record sample in telemetry_samples
+        try:
+            from app.services.observatory import storage as obs_storage
+            node_row = conn.execute("SELECT installed_ram_mb, storage_total_gb FROM infrastructure_nodes WHERE id = ?", (node_id,)).fetchone()
+            ram_total = node_row["installed_ram_mb"] if node_row and node_row["installed_ram_mb"] else (ram_available_mb or 1024)
+            ram_used = max(0, ram_total - ram_available_mb) if ram_available_mb is not None else None
+            ram_pct = round((ram_used / ram_total) * 100.0, 1) if (ram_used is not None and ram_total > 0) else None
+            disk_total = node_row["storage_total_gb"] if node_row and node_row["storage_total_gb"] else None
+            disk_used = round(disk_total - disk_free_gb, 2) if (disk_total and disk_free_gb is not None) else None
 
-        # 3. Retrieve currently active leases for this worker
+            obs_storage.record_telemetry_sample(node_id, {
+                "timestamp": now,
+                "cpu_percent": cpu_percent,
+                "ram_total_mb": ram_total,
+                "ram_used_mb": ram_used,
+                "ram_available_mb": ram_available_mb,
+                "ram_percent": ram_pct,
+                "disk_total_gb": disk_total,
+                "disk_used_gb": disk_used,
+                "disk_free_gb": disk_free_gb,
+                "worker_service_status": "running",
+            })
+        except Exception as e:
+            logger.debug("Failed to record heartbeat telemetry sample for %s: %s", node_id, e)
+
+        # 4. Retrieve currently active leases for this worker
         active_leases = conn.execute(
             """
             SELECT id, task_id, status, lease_expires_at, idempotency_key
@@ -1282,6 +1305,33 @@ def submit_task_result(
 
         conn.commit()
         logger.info("Recorded execution %s for task %s (status: %s, artifacts: %d)", execution_id, task_id, status, len(processed_artifacts))
+
+        # Record inference telemetry if task was an inference task
+        if result_payload and isinstance(result_payload, dict):
+            if result_payload.get("execution_class") == "Inference" or result_payload.get("gen_tokens") is not None:
+                try:
+                    from app.services.observatory import storage as obs_storage
+                    obs_storage.record_inference_telemetry({
+                        "request_id": f"inf-{actual_task_id or task_id}-{idempotency_key[:8]}",
+                        "task_id": actual_task_id,
+                        "project_id": task_row["project_id"] if task_row else None,
+                        "node_id": worker_id,
+                        "model": result_payload.get("model_requested") or result_payload.get("model_returned") or "qwen2.5:1.5b",
+                        "provider": result_payload.get("engine", "ollama"),
+                        "status": status,
+                        "prompt_tokens": result_payload.get("prompt_tokens") or 0,
+                        "gen_tokens": result_payload.get("gen_tokens") or 0,
+                        "prompt_eval_duration_ms": (result_payload.get("prompt_eval_duration_s") or 0.0) * 1000.0,
+                        "eval_duration_ms": (result_payload.get("eval_duration_s") or 0.0) * 1000.0,
+                        "load_duration_ms": (result_payload.get("load_duration_s") or 0.0) * 1000.0,
+                        "total_duration_ms": (result_payload.get("total_duration_s") or runtime_seconds) * 1000.0,
+                        "tokens_per_second": result_payload.get("tokens_per_second"),
+                        "error_category": error_category,
+                        "created_at": now,
+                        "completed_at": now,
+                    })
+                except Exception as inf_err:
+                    logger.warning("Failed to record inference telemetry for task %s: %s", task_id, inf_err)
 
         return {
             "status": "recorded",
