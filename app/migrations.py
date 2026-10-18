@@ -1562,6 +1562,197 @@ _M11: List[str] = [
     "CREATE INDEX idx_research_budgets_run ON research_budgets(research_run_id)",
 ]
 
+# ---------------------------------------------------------------------------
+# Migration 12 — Continuous research and persistent knowledge integration
+# ---------------------------------------------------------------------------
+_M12: List[str] = [
+    # 1. Canonical structured knowledge records (Project & Collective scopes)
+    """
+    CREATE TABLE knowledge_records (
+        id TEXT PRIMARY KEY,
+        scope TEXT NOT NULL CHECK (scope IN ('project', 'collective')),
+        project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+        source_project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+        subject TEXT NOT NULL,
+        knowledge_type TEXT NOT NULL CHECK (knowledge_type IN (
+            'fact', 'source_observation', 'inference', 'estimate', 'hypothesis',
+            'decision', 'procedure', 'lesson_learned', 'contradiction', 'open_question'
+        )),
+        statement TEXT NOT NULL,
+        summary TEXT NOT NULL DEFAULT '',
+        source_ids_json TEXT NOT NULL DEFAULT '[]',
+        evidence_ids_json TEXT NOT NULL DEFAULT '[]',
+        verification_status TEXT NOT NULL DEFAULT 'unverified' CHECK (verification_status IN (
+            'unverified', 'supported', 'corroborated', 'contradicted', 'insufficient_evidence', 'outdated'
+        )),
+        verification_method TEXT NOT NULL DEFAULT 'deterministic',
+        confidence_assessment TEXT NOT NULL DEFAULT 'moderate' CHECK (confidence_assessment IN (
+            'low', 'moderate', 'high', 'verified'
+        )),
+        created_at TEXT NOT NULL,
+        last_verified_at TEXT,
+        valid_from TEXT,
+        valid_until TEXT,
+        superseded_by TEXT REFERENCES knowledge_records(id) ON DELETE SET NULL,
+        contradicts TEXT REFERENCES knowledge_records(id) ON DELETE SET NULL,
+        related_entities_json TEXT NOT NULL DEFAULT '[]',
+        topics_json TEXT NOT NULL DEFAULT '[]',
+        keywords_json TEXT NOT NULL DEFAULT '[]',
+        embedding_reference TEXT,
+        promoted_by TEXT,
+        promoted_at TEXT,
+        promotion_policy TEXT,
+        access_policy TEXT NOT NULL DEFAULT 'standard',
+        updated_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_knowledge_records_scope ON knowledge_records(scope, project_id)",
+    "CREATE INDEX idx_knowledge_records_type ON knowledge_records(knowledge_type)",
+    "CREATE INDEX idx_knowledge_records_status ON knowledge_records(verification_status)",
+    "CREATE INDEX idx_knowledge_records_created ON knowledge_records(created_at)",
+
+    # 2. Knowledge records FTS5 virtual table for fast multi-field search
+    """
+    CREATE VIRTUAL TABLE knowledge_records_fts USING fts5(
+        record_id UNINDEXED,
+        subject,
+        statement,
+        summary,
+        topics,
+        keywords,
+        tokenize='porter unicode61'
+    )
+    """,
+    """
+    CREATE TRIGGER trg_knowledge_records_ai AFTER INSERT ON knowledge_records BEGIN
+        INSERT INTO knowledge_records_fts(record_id, subject, statement, summary, topics, keywords)
+        VALUES (new.id, new.subject, new.statement, new.summary, new.topics_json, new.keywords_json);
+    END
+    """,
+    """
+    CREATE TRIGGER trg_knowledge_records_ad AFTER DELETE ON knowledge_records BEGIN
+        DELETE FROM knowledge_records_fts WHERE record_id = old.id;
+    END
+    """,
+    """
+    CREATE TRIGGER trg_knowledge_records_au AFTER UPDATE ON knowledge_records BEGIN
+        DELETE FROM knowledge_records_fts WHERE record_id = old.id;
+        INSERT INTO knowledge_records_fts(record_id, subject, statement, summary, topics, keywords)
+        VALUES (new.id, new.subject, new.statement, new.summary, new.topics_json, new.keywords_json);
+    END
+    """,
+
+    # 3. Knowledge impact tracking (records where knowledge was used, flags affected assets if superseded/contradicted)
+    """
+    CREATE TABLE knowledge_impacts (
+        id TEXT PRIMARY KEY,
+        knowledge_id TEXT NOT NULL REFERENCES knowledge_records(id) ON DELETE CASCADE,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        run_id TEXT REFERENCES orchestration_runs(id) ON DELETE CASCADE,
+        stage_id TEXT REFERENCES path_stages(id) ON DELETE SET NULL,
+        task_id TEXT REFERENCES orchestration_tasks(id) ON DELETE SET NULL,
+        deliverable_id TEXT REFERENCES deliverables(id) ON DELETE SET NULL,
+        usage_type TEXT NOT NULL CHECK (usage_type IN (
+            'planning_assumption', 'task_context', 'verification_evidence',
+            'deliverable_claim', 'decision_basis', 'retrospective'
+        )),
+        impact_summary TEXT NOT NULL DEFAULT '',
+        is_affected INTEGER NOT NULL DEFAULT 0 CHECK (is_affected IN (0, 1)),
+        affected_reason TEXT,
+        created_at TEXT NOT NULL,
+        flagged_at TEXT
+    )
+    """,
+    "CREATE INDEX idx_knowledge_impacts_k ON knowledge_impacts(knowledge_id)",
+    "CREATE INDEX idx_knowledge_impacts_proj ON knowledge_impacts(project_id, is_affected)",
+    "CREATE INDEX idx_knowledge_impacts_run ON knowledge_impacts(run_id)",
+    "CREATE INDEX idx_knowledge_impacts_task ON knowledge_impacts(task_id)",
+
+    # 4. Mandatory stage research checkpoints
+    """
+    CREATE TABLE stage_research_checkpoints (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        stage_id TEXT REFERENCES path_stages(id) ON DELETE SET NULL,
+        stage_name TEXT NOT NULL DEFAULT '',
+        run_id TEXT REFERENCES orchestration_runs(id) ON DELETE CASCADE,
+        stage_phase TEXT NOT NULL CHECK (stage_phase IN (
+            'intake', 'planning', 'execution', 'evaluation', 'replanning', 'final_reporting'
+        )),
+        status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN (
+            'pending', 'running', 'completed', 'failed', 'degraded'
+        )),
+        information_needs TEXT NOT NULL DEFAULT '',
+        knowledge_queries_json TEXT NOT NULL DEFAULT '[]',
+        existing_sources_considered_json TEXT NOT NULL DEFAULT '[]',
+        freshness_assessment TEXT NOT NULL DEFAULT '',
+        research_needed INTEGER NOT NULL DEFAULT 0 CHECK (research_needed IN (0, 1)),
+        decision_reason TEXT NOT NULL DEFAULT '',
+        external_queries_json TEXT NOT NULL DEFAULT '[]',
+        sources_retrieved_count INTEGER NOT NULL DEFAULT 0,
+        claims_verified_count INTEGER NOT NULL DEFAULT 0,
+        knowledge_records_created_count INTEGER NOT NULL DEFAULT 0,
+        findings_summary TEXT NOT NULL DEFAULT '',
+        evidence_gaps TEXT NOT NULL DEFAULT '',
+        budget_used_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        completed_at TEXT
+    )
+    """,
+    "CREATE INDEX idx_stage_checkpoints_proj ON stage_research_checkpoints(project_id, stage_phase)",
+    "CREATE INDEX idx_stage_checkpoints_run ON stage_research_checkpoints(run_id)",
+
+    # 5. Knowledge promotion governance (project discovery -> collective knowledge promotion queue)
+    """
+    CREATE TABLE knowledge_promotions (
+        id TEXT PRIMARY KEY,
+        knowledge_id TEXT NOT NULL REFERENCES knowledge_records(id) ON DELETE CASCADE,
+        source_project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        status TEXT NOT NULL DEFAULT 'proposed' CHECK (status IN (
+            'proposed', 'approved', 'rejected', 'superseded'
+        )),
+        promotion_policy TEXT NOT NULL DEFAULT 'public_technical',
+        quality_assessment TEXT NOT NULL DEFAULT '',
+        privacy_check_passed INTEGER NOT NULL DEFAULT 1 CHECK (privacy_check_passed IN (0, 1)),
+        rationale TEXT NOT NULL DEFAULT '',
+        reviewed_by TEXT,
+        reviewed_at TEXT,
+        created_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_knowledge_promotions_status ON knowledge_promotions(status)",
+    "CREATE INDEX idx_knowledge_promotions_kid ON knowledge_promotions(knowledge_id)",
+
+    # 6. Knowledge freshness policies
+    """
+    CREATE TABLE knowledge_freshness_policies (
+        subject_pattern TEXT PRIMARY KEY,
+        max_age_days INTEGER NOT NULL DEFAULT 30,
+        policy_type TEXT NOT NULL DEFAULT 'standard' CHECK (policy_type IN (
+            'breaking_news', 'law_regulation', 'software_api', 'product_pricing',
+            'scientific_research', 'historical_fact', 'internal_decision', 'standard'
+        )),
+        refresh_strategy TEXT NOT NULL DEFAULT 'on_stage_checkpoint' CHECK (refresh_strategy IN (
+            'on_stage_checkpoint', 'periodic', 'on_reference', 'manual'
+        )),
+        description TEXT NOT NULL DEFAULT '',
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    INSERT OR IGNORE INTO knowledge_freshness_policies (subject_pattern, max_age_days, policy_type, refresh_strategy, description, updated_at)
+    VALUES
+        ('breaking_news', 1, 'breaking_news', 'on_stage_checkpoint', 'Frequently refreshing events and fast-breaking news', datetime('now')),
+        ('software_api', 14, 'software_api', 'on_stage_checkpoint', 'Current version documentation and library APIs', datetime('now')),
+        ('product_pricing', 7, 'product_pricing', 'on_stage_checkpoint', 'Product pricing and commercial quotes', datetime('now')),
+        ('law_regulation', 90, 'law_regulation', 'on_stage_checkpoint', 'Official statutory text, regulation, and policies', datetime('now')),
+        ('scientific_research', 180, 'scientific_research', 'on_stage_checkpoint', 'Academic research papers and scientific preprints', datetime('now')),
+        ('historical_fact', 3650, 'historical_fact', 'manual', 'Historical facts; refresh only when disputed', datetime('now')),
+        ('internal_decision', 365, 'internal_decision', 'manual', 'Architecture decisions; preserve until explicitly revised', datetime('now')),
+        ('standard', 30, 'standard', 'on_stage_checkpoint', 'Standard technical and domain knowledge', datetime('now'));
+    """,
+]
+
 MIGRATIONS: List[Migration] = [
     (1, "project intelligence foundation", _M1),
     (2, "execution and evidence", _M2),
@@ -1574,6 +1765,7 @@ MIGRATIONS: List[Migration] = [
     (9, "autonomous project orchestrator", _M9),
     (10, "system observatory telemetry, rollups, inference accounting, and alerting", _M10),
     (11, "autonomous web research and browsing engine", _M11),
+    (12, "continuous research and persistent knowledge integration", _M12),
 ]
 
 

@@ -170,6 +170,13 @@ def get_system_insights_api(request: Request):
     return {"insights": analytics.generate_system_insights()}
 
 
+@router.get("/api/v1/observatory/research")
+def get_research_observatory_api(request: Request):
+    """Retrieve continuous research, stage checkpoint metrics, and persistent knowledge telemetry."""
+    return analytics.get_research_and_knowledge_metrics()
+
+
+
 @router.get("/api/v1/observatory/export")
 def export_telemetry_csv(
     data_type: str = Query("telemetry", pattern="^(telemetry|inference)$"),

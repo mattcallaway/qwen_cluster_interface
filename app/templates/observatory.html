@@ -122,6 +122,63 @@
       </div>
     </div>
 
+    <!-- Continuous Research & Knowledge Telemetry Cards -->
+    {% if overview.research_and_knowledge %}
+    <div class="grid-cols-4" style="gap:16px; margin-bottom:20px;">
+      <div class="stat-widget" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="stat-label" style="font-size:0.8rem; color:var(--text-muted); text-transform:uppercase;">Research Checkpoints</div>
+          <span style="font-size:1.1rem;">🔬</span>
+        </div>
+        <div class="stat-value" style="font-size:1.8rem; font-weight:700; margin:8px 0 4px 0;">
+          {{ overview.research_and_knowledge.checkpoints.total }}
+        </div>
+        <div class="stat-sub" style="font-size:0.75rem; color:var(--text-muted);">
+          {{ overview.research_and_knowledge.checkpoints.searches_executed }} web searches · {{ overview.research_and_knowledge.checkpoints.searches_skipped }} KB reused
+        </div>
+      </div>
+
+      <div class="stat-widget" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="stat-label" style="font-size:0.8rem; color:var(--text-muted); text-transform:uppercase;">KB Reuse Rate</div>
+          <span style="font-size:1.1rem;">♻️</span>
+        </div>
+        <div class="stat-value" style="font-size:1.8rem; font-weight:700; margin:8px 0 4px 0; color:var(--color-primary, #10b981);">
+          {{ overview.research_and_knowledge.checkpoints.reuse_rate_percent }}%
+        </div>
+        <div class="stat-sub" style="font-size:0.75rem; color:var(--text-muted);">
+          Reused existing verified knowledge before searching
+        </div>
+      </div>
+
+      <div class="stat-widget" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="stat-label" style="font-size:0.8rem; color:var(--text-muted); text-transform:uppercase;">Knowledge Records</div>
+          <span style="font-size:1.1rem;">📚</span>
+        </div>
+        <div class="stat-value" style="font-size:1.8rem; font-weight:700; margin:8px 0 4px 0;">
+          {{ overview.research_and_knowledge.knowledge_base.total_records }}
+        </div>
+        <div class="stat-sub" style="font-size:0.75rem; color:var(--text-muted);">
+          {{ overview.research_and_knowledge.knowledge_base.collective_records }} collective · {{ overview.research_and_knowledge.knowledge_base.evidence_coverage_percent }}% evidence coverage
+        </div>
+      </div>
+
+      <div class="stat-widget" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="stat-label" style="font-size:0.8rem; color:var(--text-muted); text-transform:uppercase;">Contradictions &amp; Impacts</div>
+          <span style="font-size:1.1rem;">⚠️</span>
+        </div>
+        <div class="stat-value" style="font-size:1.8rem; font-weight:700; margin:8px 0 4px 0; {% if overview.research_and_knowledge.impacts.affected > 0 %}color:var(--color-warning, #f59e0b);{% endif %}">
+          {{ overview.research_and_knowledge.knowledge_base.contradictions_detected }} / {{ overview.research_and_knowledge.impacts.affected }}
+        </div>
+        <div class="stat-sub" style="font-size:0.75rem; color:var(--text-muted);">
+          {{ overview.research_and_knowledge.knowledge_base.contradictions_detected }} contradictions · {{ overview.research_and_knowledge.impacts.affected }} affected impacts
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
     <!-- Cluster Utilization & Online Nodes -->
     <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:20px; margin-bottom:24px;">
       <!-- Machine Health Bars -->

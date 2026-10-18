@@ -234,7 +234,9 @@ def get_cluster_overview() -> Dict[str, Any]:
             "avg_latency_ms": round(float(inf_row.get("avg_latency_ms") or 0.0), 1),
         },
         "active_alerts_count": active_alerts_count,
+        "research_and_knowledge": get_research_and_knowledge_metrics(),
     }
+
 
 
 def get_node_detail(node_id: str) -> Optional[Dict[str, Any]]:
@@ -567,3 +569,102 @@ def generate_system_insights() -> List[Dict[str, Any]]:
             })
 
     return insights
+
+
+def get_research_and_knowledge_metrics() -> Dict[str, Any]:
+    """Calculate observatory telemetry for continuous research and persistent knowledge."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Checkpoint stats
+    cursor.execute("""
+        SELECT 
+            COUNT(*) as total_checkpoints,
+            SUM(CASE WHEN research_needed = 1 AND status = 'completed' THEN 1 ELSE 0 END) as searches_executed,
+            SUM(CASE WHEN research_needed = 0 THEN 1 ELSE 0 END) as searches_skipped,
+            SUM(CASE WHEN status = 'degraded' THEN 1 ELSE 0 END) as degraded_modes
+        FROM stage_research_checkpoints
+    """)
+
+    cp_row = dict(cursor.fetchone() or {})
+    total_cp = cp_row.get("total_checkpoints") or 0
+    searches_exec = cp_row.get("searches_executed") or 0
+    searches_skipped = cp_row.get("searches_skipped") or 0
+    degraded = cp_row.get("degraded_modes") or 0
+    reuse_rate = round((searches_skipped / max(1, total_cp)) * 100.0, 1)
+
+    # Knowledge record counts
+    cursor.execute("""
+        SELECT 
+            COUNT(*) as total_records,
+            SUM(CASE WHEN scope = 'collective' THEN 1 ELSE 0 END) as collective_records,
+            SUM(CASE WHEN scope = 'project' THEN 1 ELSE 0 END) as project_records,
+            SUM(CASE WHEN verification_status IN ('supported', 'corroborated') OR confidence_assessment = 'verified' THEN 1 ELSE 0 END) as verified_records,
+            SUM(CASE WHEN verification_status = 'corroborated' THEN 1 ELSE 0 END) as corroborated_records,
+            SUM(CASE WHEN verification_status = 'contradicted' OR knowledge_type = 'contradiction' THEN 1 ELSE 0 END) as contradictions,
+            SUM(CASE WHEN superseded_by IS NOT NULL THEN 1 ELSE 0 END) as superseded,
+            SUM(CASE WHEN source_ids_json != '[]' THEN 1 ELSE 0 END) as with_sources,
+            SUM(CASE WHEN verification_status = 'outdated' THEN 1 ELSE 0 END) as stale_records
+        FROM knowledge_records
+    """)
+
+    kr_row = dict(cursor.fetchone() or {})
+    total_kr = kr_row.get("total_records") or 0
+    verified_kr = kr_row.get("verified_records") or 0
+    with_sources = kr_row.get("with_sources") or 0
+    evidence_coverage = round((with_sources / max(1, total_kr)) * 100.0, 1) if total_kr > 0 else 0.0
+
+    # Promotions
+    cursor.execute("""
+        SELECT 
+            COUNT(*) as total_promotions,
+            SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved_promotions,
+            SUM(CASE WHEN status = 'proposed' THEN 1 ELSE 0 END) as pending_promotions
+        FROM knowledge_promotions
+    """)
+    pr_row = dict(cursor.fetchone() or {})
+
+    # Impacts
+    cursor.execute("""
+        SELECT 
+            COUNT(*) as total_impacts,
+            SUM(CASE WHEN is_affected = 1 THEN 1 ELSE 0 END) as affected_impacts
+        FROM knowledge_impacts
+    """)
+    imp_row = dict(cursor.fetchone() or {})
+
+    research_efficiency = round(total_kr / max(1, searches_exec), 2) if searches_exec > 0 else round(float(total_kr), 2)
+
+    conn.close()
+
+    return {
+        "checkpoints": {
+            "total": total_cp,
+            "searches_executed": searches_exec,
+            "searches_skipped": searches_skipped,
+            "degraded_modes": degraded,
+            "reuse_rate_percent": reuse_rate,
+        },
+        "knowledge_base": {
+            "total_records": total_kr,
+            "collective_records": kr_row.get("collective_records") or 0,
+            "project_records": kr_row.get("project_records") or 0,
+            "verified_records": verified_kr,
+            "corroborated_records": kr_row.get("corroborated_records") or 0,
+            "contradictions_detected": kr_row.get("contradictions") or 0,
+            "superseded_records": kr_row.get("superseded") or 0,
+            "stale_records": kr_row.get("stale_records") or 0,
+            "evidence_coverage_percent": evidence_coverage,
+            "research_efficiency": research_efficiency,
+        },
+        "promotions": {
+            "total": pr_row.get("total_promotions") or 0,
+            "approved": pr_row.get("approved_promotions") or 0,
+            "pending": pr_row.get("pending_promotions") or 0,
+        },
+        "impacts": {
+            "tracked": imp_row.get("total_impacts") or 0,
+            "affected": imp_row.get("affected_impacts") or 0,
+        },
+    }
+

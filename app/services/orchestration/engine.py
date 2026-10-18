@@ -451,6 +451,19 @@ def _escalate_if_failed(run: Dict[str, Any]) -> bool:
     t = failed[0]
     reason = f"Task '{t['title']}' failed ({t['failure_class']}): {t['last_error'][:200]}. Human decision required: retry, edit, or replan."
     meta = jload(run["analysis_json"])
+    from app.services.orchestration.research_checkpoint import execute_research_checkpoint
+    try:
+        execute_research_checkpoint(
+            project_id=run["project_id"],
+            run_id=run["id"],
+            stage_phase="replanning",
+            stage_name="Replanning Checkpoint",
+            objective=jload(run["intake_json"]).get("objective", ""),
+            context_input={"failure_reason": reason}
+        )
+    except Exception as ex:
+        logger.warning("Replanning research checkpoint failed: %s", ex)
+
     if run["autonomy_level"] == 3 and meta.get("auto_replans", 0) < 1:
         meta["auto_replans"] = meta.get("auto_replans", 0) + 1
         with db_transaction() as c:
@@ -466,6 +479,25 @@ def _escalate_if_failed(run: Dict[str, Any]) -> bool:
 # --- dispatch --------------------------------------------------------------------------------------------------------
 
 def _dispatch(run: Dict[str, Any], nodes: List[Dict[str, Any]], manual: bool) -> None:
+    # Ensure execution research checkpoint has run for this execution cycle
+    c = get_db_connection()
+    try:
+        cp = c.execute("SELECT id FROM stage_research_checkpoints WHERE run_id=? AND stage_phase='execution'", (run["id"],)).fetchone()
+    finally:
+        c.close()
+    if not cp:
+        from app.services.orchestration.research_checkpoint import execute_research_checkpoint
+        try:
+            execute_research_checkpoint(
+                project_id=run["project_id"],
+                run_id=run["id"],
+                stage_phase="execution",
+                stage_name="Execution Checkpoint",
+                objective=jload(run["intake_json"]).get("objective", "")
+            )
+        except Exception as ex:
+            logger.warning("Execution research checkpoint failed: %s", ex)
+
     rows = _orch_tasks(run["id"])
     deps = _deps(run["id"])
     state_by_id = {r["id"]: r["state"] for r in rows}
@@ -609,7 +641,23 @@ def _dispatch_one(run, ot, action, node, model) -> None:
         if ot["plan_key"] in raw_inputs:
             raise ValidationError(f"Task '{ot['plan_key']}' cannot declare itself as an input.")
         inputs = _accepted_inputs(run["id"], [k for k in raw_inputs if k != ot["plan_key"]])
-        prompt = context_manager.build_inference_prompt(action["instruction"], inputs)
+        from app.services.knowledge_store import search_knowledge_records, record_knowledge_impact
+        kn_recs = search_knowledge_records(
+            action.get("instruction", ot["title"]),
+            project_id=run["project_id"],
+            include_collective=True,
+            limit=3
+        )
+        for kr in kn_recs:
+            record_knowledge_impact(
+                knowledge_id=kr["id"],
+                project_id=run["project_id"],
+                run_id=run["id"],
+                task_id=ot["id"],
+                usage_type="task_context",
+                impact_summary=f"Supplied evidence context for task '{ot['plan_key']}'"
+            )
+        prompt = context_manager.build_inference_prompt(action["instruction"], inputs, knowledge_records=kn_recs)
         rid = model_router.get_provider().submit(
             run_id=run["id"], orch_task_id=ot["id"], purpose="task", node_id=node["id"], model=model, prompt=prompt,
             max_tokens=int(action.get("max_tokens", 200)), timeout_seconds=ot["timeout_seconds"], project_ctx=ctx, attempt_key=key)
@@ -830,6 +878,18 @@ def _maybe_finish(run: Dict[str, Any]) -> None:
 def _evaluate_deliverables(run: Dict[str, Any]) -> None:
     meta = jload(run["analysis_json"])
     dmap = meta.get("deliverable_map", {})
+    from app.services.orchestration.research_checkpoint import execute_research_checkpoint
+    try:
+        execute_research_checkpoint(
+            project_id=run["project_id"],
+            run_id=run["id"],
+            stage_phase="evaluation",
+            stage_name="Deliverables Evaluation Checkpoint",
+            objective=jload(run["intake_json"]).get("objective", "")
+        )
+    except Exception as ex:
+        logger.warning("Evaluation research checkpoint failed: %s", ex)
+
     c = get_db_connection()
     try:
         rev = c.execute("SELECT plan_json FROM orchestration_plan_revisions WHERE run_id=? AND status='approved' ORDER BY revision_number DESC LIMIT 1", (run["id"],)).fetchone()
@@ -893,9 +953,47 @@ def _evaluate_deliverables(run: Dict[str, Any]) -> None:
                 if ap and ap["status"] == "approved":
                     D.review_deliverable(did, "accepted", ap["decided_by"] or "user", ap["rationale"] or "Accepted by user.")
             dd = D.get_deliverable(did)
+            if dd and dd["status"] == "accepted":
+                from app.services.knowledge_store import record_knowledge_impact
+                for a in valid:
+                    try:
+                        record_knowledge_impact(
+                            knowledge_id=a["id"],
+                            project_id=run["project_id"],
+                            run_id=run["id"],
+                            deliverable_id=did,
+                            usage_type="deliverable_claim",
+                            impact_summary=f"Deliverable '{d['name']}' verified with artifact {a['filename']}"
+                        )
+                    except Exception:
+                        pass
         if dd["status"] != "accepted":
             all_accepted = False
     if all_accepted and plan.get("deliverables"):
+        try:
+            execute_research_checkpoint(
+                project_id=run["project_id"],
+                run_id=run["id"],
+                stage_phase="final_reporting",
+                stage_name="Final Reporting & Knowledge Archival Checkpoint",
+                objective=jload(run["intake_json"]).get("objective", "")
+            )
+        except Exception as ex:
+            logger.warning("Final reporting research checkpoint failed: %s", ex)
+
+        from app.services.knowledge_store import list_knowledge_records, evaluate_promotion_eligibility, propose_promotion
+        try:
+            projs_k = list_knowledge_records(project_id=run["project_id"], scope="project")
+            for kr in projs_k:
+                elig = evaluate_promotion_eligibility(kr)
+                if elig["eligible"]:
+                    try:
+                        propose_promotion(kr["id"], run["project_id"], "public_technical", "Evaluated at project completion")
+                    except Exception:
+                        pass
+        except Exception as ex:
+            logger.warning("Collective knowledge promotion evaluation failed: %s", ex)
+
         _write_index(run, plan, dmap)
         states.transition(run["id"], "COMPLETED", "completed", "orchestrator", "all deliverables accepted", expected_state="EVALUATING")
 

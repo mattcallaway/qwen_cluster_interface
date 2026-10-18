@@ -1,124 +1,470 @@
 {% extends "base.html" %}
 
 {% block title %}Knowledge Base - Qwen Collective{% endblock %}
-{% block page_title %}Persistent Knowledge Repository{% endblock %}
+{% block page_title %}Qwen Collective Knowledge Base{% endblock %}
+
+{% macro badge(s) -%}
+  {%- set cls = {'collective':'badge-primary','project':'badge-role','supported':'badge-online',
+     'corroborated':'badge-online','unverified':'badge-warning','contradicted':'badge-error',
+     'outdated':'badge-offline','insufficient_evidence':'badge-warning',
+     'proposed':'badge-warning','approved':'badge-online','rejected':'badge-error','superseded':'badge-offline'}.get(s, 'badge-offline') -%}
+  <span class="badge {{ cls }}">{{ s|replace('_',' ') }}</span>
+{%- endmacro %}
 
 {% block content %}
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; gap: 16px; flex-wrap: wrap;">
   <div>
-    <h2 style="font-size: 1.25rem; font-weight: 600;">Durable Markdown Notes</h2>
-    <p style="font-size: 0.85rem; color: var(--text-muted);">
-      Obsidian-compatible plain Markdown files stored in <code>data/knowledge/</code>. Searchable via SQLite FTS5.
+    <h2 style="font-size: 1.35rem; font-weight: 700; margin: 0 0 4px 0;">Collective Knowledge & Evidence Repository</h2>
+    <p style="font-size: 0.88rem; color: var(--text-muted); margin: 0;">
+      Continuous research findings, verified facts, traceable evidence, and cross-project knowledge promotion.
     </p>
   </div>
-  <div style="display: flex; gap: 10px;">
-    <form action="/knowledge/reindex" method="post" style="display:inline;">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <button type="submit" class="btn btn-secondary">Rebuild Search Index</button>
-    </form>
-    <a href="/knowledge/new" class="btn btn-primary">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-      Create Note
+  <div style="display: flex; gap: 10px; align-items: center;">
+    <button class="btn btn-secondary btn-sm" onclick="document.getElementById('new-record-modal').style.display='block'">
+      + Add Knowledge Record
+    </button>
+    <a href="/knowledge/new" class="btn btn-secondary btn-sm">
+      + New Markdown Note
     </a>
   </div>
 </div>
 
-<!-- Search Bar -->
-<div class="card" style="margin-bottom: 24px; padding: 16px;">
-  <form method="get" action="/knowledge" style="display: flex; gap: 12px;">
-    <input class="form-control" type="text" name="q" value="{{ query or '' }}" placeholder="Search full text across all notes (SQLite FTS5)...">
-    <button type="submit" class="btn btn-primary" style="padding: 0 20px;">Search</button>
-    {% if query %}
-      <a href="/knowledge" class="btn btn-secondary">Clear</a>
-    {% endif %}
+<!-- Navigation Tabs -->
+<div style="display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px; flex-wrap: wrap;">
+  <a href="/knowledge?view=records" class="btn btn-sm {% if view == 'records' %}btn-primary{% else %}btn-secondary{% endif %}">
+    📚 Knowledge Records ({{ records|length }})
+  </a>
+  <a href="/knowledge?view=promotions" class="btn btn-sm {% if view == 'promotions' %}btn-primary{% else %}btn-secondary{% endif %}">
+    🚀 Promotion Queue {% if pending_promotions %}<span class="badge badge-warning" style="margin-left:4px;">{{ pending_promotions|length }} pending</span>{% endif %}
+  </a>
+  <a href="/knowledge?view=impacts" class="btn btn-sm {% if view == 'impacts' %}btn-primary{% else %}btn-secondary{% endif %}">
+    ⚠️ Impact Tracking {% if affected_impacts %}<span class="badge badge-error" style="margin-left:4px;">{{ affected_impacts|length }} affected</span>{% endif %}
+  </a>
+  <a href="/knowledge?view=policies" class="btn btn-sm {% if view == 'policies' %}btn-primary{% else %}btn-secondary{% endif %}">
+    ⏱️ Freshness Policies
+  </a>
+  <a href="/knowledge?view=vault" class="btn btn-sm {% if view == 'vault' %}btn-primary{% else %}btn-secondary{% endif %}">
+    🗂️ Markdown Notes Vault
+  </a>
+</div>
+
+{# ==================== VIEW: STRUCTURED KNOWLEDGE RECORDS ==================== #}
+{% if view == 'records' %}
+<div class="card" style="margin-bottom: 20px; padding: 16px;">
+  <form method="get" action="/knowledge" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
+    <input type="hidden" name="view" value="records">
+    <div style="flex: 2; min-width: 250px;">
+      <label class="form-label" style="font-size: 0.8rem;">Search Knowledge (FTS5)</label>
+      <input class="form-control" type="text" name="q" value="{{ query }}" placeholder="Search verified claims, subjects, topics...">
+    </div>
+    <div style="flex: 1; min-width: 140px;">
+      <label class="form-label" style="font-size: 0.8rem;">Scope</label>
+      <select class="form-control" name="scope">
+        <option value="">All Scopes</option>
+        {% for sc in scopes %}
+          <option value="{{ sc }}" {% if selected_scope == sc %}selected{% endif %}>{{ sc|capitalize }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="flex: 1; min-width: 140px;">
+      <label class="form-label" style="font-size: 0.8rem;">Type</label>
+      <select class="form-control" name="knowledge_type">
+        <option value="">All Types</option>
+        {% for kt in knowledge_types %}
+          <option value="{{ kt }}" {% if selected_type == kt %}selected{% endif %}>{{ kt|replace('_', ' ')|capitalize }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="flex: 1; min-width: 140px;">
+      <label class="form-label" style="font-size: 0.8rem;">Status</label>
+      <select class="form-control" name="verification_status">
+        <option value="">All Statuses</option>
+        {% for st in verification_statuses %}
+          <option value="{{ st }}" {% if selected_status == st %}selected{% endif %}>{{ st|replace('_', ' ')|capitalize }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <button type="submit" class="btn btn-primary" style="height: 38px;">Filter</button>
+      {% if query or selected_scope or selected_type or selected_status %}
+        <a href="/knowledge?view=records" class="btn btn-secondary" style="height: 38px;">Clear</a>
+      {% endif %}
+    </div>
   </form>
 </div>
 
-{% if query %}
-  <!-- Search Results Mode -->
-  <div class="card">
-    <div class="card-title">
-      <span>Search Results for "{{ query }}"</span>
-      <span class="badge badge-role">{{ search_results|length }} found</span>
-    </div>
-
-    {% if search_results %}
-      <div style="display: flex; flex-direction: column; gap: 16px; margin-top: 14px;">
-        {% for r in search_results %}
-          <div style="padding: 14px; background: #f8fafc; border: 1px solid var(--border-color); border-radius: 6px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <a href="/knowledge/view?path={{ r.path }}" style="font-size: 1.05rem; font-weight: 600; color: var(--primary); text-decoration: none;">
-                {{ r.title }}
-              </a>
-              <span class="badge badge-role">{{ r.category }}</span>
-            </div>
-            <div style="font-size: 0.85rem; color: var(--text-main); margin-bottom: 6px; line-height: 1.5;">
-              {{ r.snippet|safe }}
-            </div>
-            <div style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">
-              Path: {{ r.path }}
-            </div>
-          </div>
-        {% endfor %}
-      </div>
-    {% else %}
-      <p style="font-size: 0.85rem; color: var(--text-muted);">No notes matched your search query.</p>
-    {% endif %}
+<div class="card" style="padding: 0;">
+  <div style="padding: 14px 16px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+    <h3 class="card-title" style="margin: 0;">
+      Knowledge Records
+      <span class="badge badge-role" style="margin-left: 8px;">{{ records|length }} records</span>
+    </h3>
   </div>
+  {% if records %}
+    <div class="table-container">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Subject / Statement</th>
+            <th>Scope</th>
+            <th>Type</th>
+            <th>Verification</th>
+            <th>Freshness</th>
+            <th>Provenance &amp; Sources</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in records %}
+            <tr>
+              <td style="max-width: 320px;">
+                <div style="font-weight: 600; color: var(--primary);">{{ r.subject }}</div>
+                <div style="font-size: 0.85rem; margin-top: 4px; line-height: 1.4;">{{ r.statement }}</div>
+                {% if r.summary and r.summary != r.statement %}
+                  <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 4px;">{{ r.summary|truncate(120) }}</div>
+                {% endif %}
+                <div style="font-size: 0.72rem; color: var(--text-muted); font-family: var(--font-mono); margin-top: 4px;">ID: {{ r.id }}</div>
+              </td>
+              <td>
+                {{ badge(r.scope) }}
+                {% if r.scope == 'collective' and r.promoted_by %}
+                  <div style="font-size: 0.72rem; color: var(--text-muted);">promoted by {{ r.promoted_by }}</div>
+                {% elif r.project_id %}
+                  <div style="font-size: 0.72rem; color: var(--text-muted);">project: <a href="/projects/{{ r.project_id }}">{{ r.project_id[:12] }}</a></div>
+                {% endif %}
+              </td>
+              <td style="font-size: 0.85rem;">{{ r.knowledge_type|replace('_', ' ') }}</td>
+              <td>
+                {{ badge(r.verification_status) }}
+                <div style="font-size: 0.72rem; color: var(--text-muted);">method: {{ r.verification_method }}</div>
+                {% if r.contradicts %}
+                  <div style="font-size: 0.72rem; color: var(--color-error, #ef4444); font-weight: 600;">⚠️ Contradicts: {{ r.contradicts }}</div>
+                {% endif %}
+                {% if r.superseded_by %}
+                  <div style="font-size: 0.72rem; color: var(--text-muted);">Superseded by: {{ r.superseded_by }}</div>
+                {% endif %}
+              </td>
+              <td>
+                {% if r.freshness.is_fresh %}
+                  <span class="badge badge-online">Fresh ({{ r.freshness.age_days }}d)</span>
+                {% else %}
+                  <span class="badge badge-error">Stale ({{ r.freshness.age_days }}d / max {{ r.freshness.max_age_days }}d)</span>
+                {% endif %}
+                <div style="font-size: 0.72rem; color: var(--text-muted);">Policy: {{ r.freshness.policy_type }}</div>
+              </td>
+              <td style="font-size: 0.8rem; max-width: 220px;">
+                {% if r.source_ids %}
+                  <div><span class="badge badge-secondary">{{ r.source_ids|length }} source(s)</span></div>
+                {% endif %}
+                {% if r.topics %}
+                  <div style="margin-top: 4px;">
+                    {% for top in r.topics[:3] %}
+                      <span class="badge badge-offline" style="font-size: 0.7rem;">{{ top }}</span>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+                <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px;">Created: {{ r.created_at[:10] }}</div>
+              </td>
+              <td>
+                {% if r.verification_status not in ('outdated', 'contradicted') %}
+                  <form action="/knowledge/records/{{ r.id }}/flag-obsolete" method="post" style="display:inline;" onsubmit="return confirm('Flag this knowledge as obsolete? Any relying tasks will be alerted.');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn btn-secondary btn-sm" style="font-size: 0.75rem; padding: 2px 6px;">Flag Obsolete</button>
+                  </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div style="padding: 24px; text-align: center; color: var(--text-muted);">
+      No structured knowledge records matched your filters.
+    </div>
+  {% endif %}
+</div>
+{% endif %}
 
-{% else %}
-  <!-- Category Browser Mode -->
-  <div style="display: flex; gap: 8px; margin-bottom: 20px; overflow-x: auto; padding-bottom: 6px;">
-    <a href="/knowledge" class="btn btn-sm {% if not current_cat %}btn-primary{% else %}btn-secondary{% endif %}">All Categories</a>
+{# ==================== VIEW: PROMOTION QUEUE ==================== #}
+{% if view == 'promotions' %}
+<div class="card" style="padding: 0;">
+  <div style="padding: 14px 16px; border-bottom: 1px solid var(--border-color);">
+    <h3 class="card-title" style="margin: 0;">Collective Knowledge Promotion Queue</h3>
+    <p class="card-subtitle" style="margin: 4px 0 0 0;">
+      Verified technical findings proposed from individual projects for elevation to collective cluster-wide reuse.
+    </p>
+  </div>
+  {% if promotions %}
+    <div class="table-container">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Knowledge Subject &amp; Statement</th>
+            <th>Source Project</th>
+            <th>Status</th>
+            <th>Policy &amp; Privacy Check</th>
+            <th>Rationale</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in promotions %}
+            <tr>
+              <td style="max-width: 300px;">
+                <div style="font-weight: 600;">{{ p.subject }}</div>
+                <div style="font-size: 0.85rem; margin-top: 4px;">{{ p.statement }}</div>
+                <div style="font-size: 0.72rem; color: var(--text-muted); font-family: var(--font-mono);">Record: {{ p.knowledge_id }}</div>
+              </td>
+              <td>
+                <a href="/projects/{{ p.source_project_id }}">{{ p.source_project_id[:14] }}</a>
+                <div style="font-size: 0.72rem; color: var(--text-muted);">Proposed: {{ p.created_at[:10] }}</div>
+              </td>
+              <td>{{ badge(p.status) }}</td>
+              <td style="font-size: 0.85rem;">
+                <div>Policy: <code>{{ p.promotion_policy }}</code></div>
+                {% if p.privacy_check_passed %}
+                  <span class="badge badge-online">Privacy Passed</span>
+                {% else %}
+                  <span class="badge badge-error">Privacy Flagged</span>
+                {% endif %}
+              </td>
+              <td style="font-size: 0.85rem; max-width: 250px;">
+                <div>{{ p.rationale or '—' }}</div>
+                {% if p.reviewed_by %}
+                  <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px;">
+                    Reviewed by {{ p.reviewed_by }} on {{ p.reviewed_at[:10] }}
+                  </div>
+                {% endif %}
+              </td>
+              <td>
+                {% if p.status == 'proposed' %}
+                  <div style="display: flex; gap: 6px;">
+                    <form action="/knowledge/promotions/{{ p.id }}/approve" method="post" style="display:inline;">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                      <button type="submit" class="btn btn-primary btn-sm" style="font-size: 0.75rem;">Approve</button>
+                    </form>
+                    <form action="/knowledge/promotions/{{ p.id }}/reject" method="post" style="display:inline;">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                      <button type="submit" class="btn btn-secondary btn-sm" style="font-size: 0.75rem;">Reject</button>
+                    </form>
+                  </div>
+                {% else %}
+                  <span style="font-size: 0.8rem; color: var(--text-muted);">Completed</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div style="padding: 24px; text-align: center; color: var(--text-muted);">
+      No knowledge promotion proposals recorded yet.
+    </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{# ==================== VIEW: IMPACT TRACKING ==================== #}
+{% if view == 'impacts' %}
+<div class="card" style="padding: 0;">
+  <div style="padding: 14px 16px; border-bottom: 1px solid var(--border-color);">
+    <h3 class="card-title" style="margin: 0;">Knowledge Impact Tracking &amp; Affected Asset Flags</h3>
+    <p class="card-subtitle" style="margin: 4px 0 0 0;">
+      Whenever knowledge is marked superseded, outdated, or contradicted, this ledger tracks every affected planning assumption, task, and deliverable.
+    </p>
+  </div>
+  {% if affected_impacts %}
+    <div class="table-container">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Project</th>
+            <th>Underlying Knowledge</th>
+            <th>Usage Type</th>
+            <th>Affected Reason</th>
+            <th>Flagged At</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for imp in affected_impacts %}
+            <tr style="background: rgba(239, 68, 68, 0.05);">
+              <td>
+                <a href="/projects/{{ imp.project_id }}" style="font-weight: 600;">{{ imp.project_name or imp.project_id[:14] }}</a>
+                {% if imp.task_id %}
+                  <div style="font-size: 0.72rem; color: var(--text-muted);">Task: {{ imp.task_id }}</div>
+                {% endif %}
+                {% if imp.deliverable_id %}
+                  <div style="font-size: 0.72rem; color: var(--text-muted);">Deliverable: {{ imp.deliverable_id }}</div>
+                {% endif %}
+              </td>
+              <td style="max-width: 280px;">
+                <div style="font-weight: 600;">{{ imp.subject }}</div>
+                <div style="font-size: 0.82rem; color: var(--text-muted);">{{ imp.statement|truncate(100) }}</div>
+              </td>
+              <td><span class="badge badge-warning">{{ imp.usage_type|replace('_', ' ') }}</span></td>
+              <td style="color: var(--color-error, #ef4444); font-size: 0.85rem; font-weight: 500;">
+                {{ imp.affected_reason }}
+              </td>
+              <td style="font-size: 0.8rem; color: var(--text-muted);">{{ imp.flagged_at[:16]|replace('T', ' ') }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div style="padding: 24px; text-align: center; color: var(--text-muted);">
+      No affected project assets flagged. All relied-upon knowledge is current and uncontested.
+    </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{# ==================== VIEW: FRESHNESS POLICIES ==================== #}
+{% if view == 'policies' %}
+<div class="card" style="padding: 0;">
+  <div style="padding: 14px 16px; border-bottom: 1px solid var(--border-color);">
+    <h3 class="card-title" style="margin: 0;">Knowledge Freshness Policies</h3>
+    <p class="card-subtitle" style="margin: 4px 0 0 0;">
+      Configured TTL and re-verification policies enforced during Research Checkpoints.
+    </p>
+  </div>
+  <div class="table-container">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Subject Pattern</th>
+          <th>Policy Type</th>
+          <th>Max Age (Days)</th>
+          <th>Refresh Strategy</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for pol in policies %}
+          <tr>
+            <td><code>{{ pol.subject_pattern }}</code></td>
+            <td><span class="badge badge-role">{{ pol.policy_type }}</span></td>
+            <td style="font-weight: 600;">{{ pol.max_age_days }} days</td>
+            <td><code>{{ pol.refresh_strategy }}</code></td>
+            <td style="font-size: 0.85rem;">{{ pol.description }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{# ==================== VIEW: LEGACY VAULT NOTES ==================== #}
+{% if view == 'vault' %}
+<div class="card" style="margin-bottom: 20px;">
+  <div style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px;">
+    <a href="/knowledge?view=vault" class="btn btn-sm {% if not current_cat %}btn-primary{% else %}btn-secondary{% endif %}">All Categories</a>
     {% for cat in categories %}
-      <a href="/knowledge?category={{ cat }}" class="btn btn-sm {% if current_cat == cat %}btn-primary{% else %}btn-secondary{% endif %}">
+      <a href="/knowledge?view=vault&category={{ cat }}" class="btn btn-sm {% if current_cat == cat %}btn-primary{% else %}btn-secondary{% endif %}">
         {{ cat|capitalize }}
       </a>
     {% endfor %}
   </div>
+</div>
 
-  <div class="card">
-    <div class="card-title">
-      <span>Knowledge Files {% if current_cat %}({{ current_cat|capitalize }}){% endif %}</span>
-      <span class="badge badge-role">{{ notes|length }} notes</span>
-    </div>
-
-    {% if notes %}
-      <div class="table-container">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Title</th>
-              <th>Category</th>
-              <th>Path</th>
-              <th>Size</th>
-              <th>Last Modified</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for n in notes %}
-              <tr>
-                <td>
-                  <a href="/knowledge/view?path={{ n.path }}" style="font-weight: 600; color: var(--primary); text-decoration: none;">
-                    {{ n.title }}
-                  </a>
-                </td>
-                <td><span class="badge badge-role">{{ n.category }}</span></td>
-                <td><code style="font-size: 0.8rem;">{{ n.path }}</code></td>
-                <td style="font-size: 0.8rem; color: var(--text-muted);">{{ (n.size_bytes / 1024)|round(1) }} KB</td>
-                <td style="font-size: 0.8rem; color: var(--text-muted);">{{ n.updated_at[:19] }}</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    {% else %}
-      <div class="empty-state">
-        <h3 class="empty-state-title">No Notes in this Category</h3>
-        <p class="empty-state-text">Start documenting research, architectural decisions, and system logs.</p>
-        <a href="/knowledge/new" class="btn btn-primary btn-sm">Create Note</a>
-      </div>
-    {% endif %}
+<div class="card" style="padding: 0;">
+  <div style="padding: 14px 16px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+    <h3 class="card-title" style="margin: 0;">Markdown Files {% if current_cat %}({{ current_cat|capitalize }}){% endif %}</h3>
+    <span class="badge badge-role">{{ vault_notes|length }} notes</span>
   </div>
+  {% if vault_notes %}
+    <div class="table-container">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Category</th>
+            <th>Path</th>
+            <th>Size</th>
+            <th>Last Modified</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for n in vault_notes %}
+            <tr>
+              <td><a href="/knowledge/view?path={{ n.path }}" style="font-weight: 600;">{{ n.title }}</a></td>
+              <td><span class="badge badge-role">{{ n.category }}</span></td>
+              <td style="font-family: var(--font-mono); font-size: 0.8rem;">{{ n.path }}</td>
+              <td>{{ (n.size_bytes / 1024)|round(1) }} KB</td>
+              <td style="font-size: 0.8rem; color: var(--text-muted);">{{ n.updated_at[:10] }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div style="padding: 24px; text-align: center; color: var(--text-muted);">
+      No markdown notes found in this category.
+    </div>
+  {% endif %}
+</div>
 {% endif %}
+
+<!-- Add Knowledge Record Modal -->
+<div id="new-record-modal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5);">
+  <div style="background: #fff; width: 90%; max-width: 600px; margin: 40px auto; border-radius: 8px; padding: 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+      <h3 style="margin: 0; font-size: 1.2rem;">Create Structured Knowledge Record</h3>
+      <button onclick="document.getElementById('new-record-modal').style.display='none'" class="btn btn-secondary btn-sm">✕</button>
+    </div>
+    <form action="/knowledge/records/create" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="form-group" style="margin-bottom: 12px;">
+        <label class="form-label">Subject *</label>
+        <input class="form-control" name="subject" placeholder="e.g. Playwright Chromium headless flags" required>
+      </div>
+      <div class="form-group" style="margin-bottom: 12px;">
+        <label class="form-label">Factual Statement *</label>
+        <textarea class="form-control" name="statement" rows="3" placeholder="Clear factual claim..." required></textarea>
+      </div>
+      <div class="form-group" style="margin-bottom: 12px;">
+        <label class="form-label">Summary / Details</label>
+        <textarea class="form-control" name="summary" rows="2" placeholder="Supporting context or rationale..."></textarea>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+        <div class="form-group">
+          <label class="form-label">Knowledge Type</label>
+          <select class="form-control" name="knowledge_type">
+            {% for kt in knowledge_types %}
+              <option value="{{ kt }}">{{ kt|replace('_', ' ')|capitalize }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Scope</label>
+          <select class="form-control" name="scope">
+            <option value="collective">Collective (Global)</option>
+            <option value="project">Project-Specific</option>
+          </select>
+        </div>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+        <div class="form-group">
+          <label class="form-label">Verification Status</label>
+          <select class="form-control" name="verification_status">
+            <option value="supported">Supported</option>
+            <option value="corroborated">Corroborated</option>
+            <option value="unverified">Unverified</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Topics (comma-separated)</label>
+          <input class="form-control" name="topics" placeholder="e.g. web_scraping, browser">
+        </div>
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 8px;">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('new-record-modal').style.display='none'">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Record</button>
+      </div>
+    </form>
+  </div>
+</div>
 {% endblock %}

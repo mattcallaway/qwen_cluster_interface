@@ -26,11 +26,27 @@ def _compact(obj: Any, limit: int) -> str:
     return text if len(text) <= limit else text[:limit - 20] + "...[truncated]"
 
 
-def build_inference_prompt(instruction: str, inputs: Dict[str, Dict[str, Any]], budget_chars: int = DEFAULT_CONTEXT_CHARS) -> str:
-    """Instruction + labelled, truncated data blocks, never exceeding ``budget_chars``."""
+def build_inference_prompt(
+    instruction: str,
+    inputs: Dict[str, Dict[str, Any]],
+    budget_chars: int = DEFAULT_CONTEXT_CHARS,
+    knowledge_records: Optional[List[Dict[str, Any]]] = None
+) -> str:
+    """Instruction + labelled, truncated data blocks + verified knowledge, never exceeding ``budget_chars``."""
     head = f"{SYSTEM_PREAMBLE}\n\nTask: {instruction.strip()}\n\n"
     blocks: List[str] = []
-    remaining = budget_chars - len(head) - 200
+
+    if knowledge_records:
+        k_lines = []
+        for kr in knowledge_records[:4]:
+            stat = kr.get("verification_status", "supported")
+            src = f" (Source: {kr.get('source_url')})" if kr.get("source_url") else ""
+            k_lines.append(f"- [{stat}] {kr.get('subject')}: {kr.get('statement')}{src}")
+        k_text = "\n".join(k_lines)
+
+        blocks.append(f'<data source="verified_knowledge_base">\n{k_text}\n</data>\n')
+
+    remaining = budget_chars - len(head) - sum(len(b) for b in blocks) - 200
     per = max(300, min(PER_INPUT_CHARS, remaining // max(len(inputs), 1)))
     for key, res in inputs.items():
         data = res.get("data") if res.get("kind") == "worker_telemetry" else res
