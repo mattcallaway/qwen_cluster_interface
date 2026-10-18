@@ -133,6 +133,17 @@ def start_run(run_id: str, actor: str) -> Dict[str, Any]:
     run = get_run(run_id)
     if run["state"] != "READY":
         raise OrchestrationError(f"Run must be READY to start (it is {run['state']}); approve a plan first.")
+    c = get_db_connection()
+    try:
+        rev_row = c.execute("SELECT plan_json FROM orchestration_plan_revisions WHERE id=?", (run["current_revision_id"],)).fetchone()
+    finally:
+        c.close()
+    if rev_row and rev_row["plan_json"]:
+        from app.services.orchestration import task_graph, model_router
+        plan = jload(rev_row["plan_json"])
+        v = task_graph.validate_plan(plan, model_router.node_inventory())
+        if not v["valid"]:
+            raise OrchestrationError("Cannot start run with invalid plan: " + "; ".join(v["errors"][:5]))
     return states.transition(run_id, "RUNNING", "execution_started", actor, "user started execution", expected_state="READY")
 
 
@@ -594,7 +605,10 @@ def _dispatch_one(run, ot, action, node, model) -> None:
     ctx = _task_context(run, ot, action)
     key = f"orch:{ot['id']}:{attempt}"
     if action["type"] == "inference":
-        inputs = _accepted_inputs(run["id"], action.get("inputs") or [])
+        raw_inputs = action.get("inputs") or []
+        if ot["plan_key"] in raw_inputs:
+            raise ValidationError(f"Task '{ot['plan_key']}' cannot declare itself as an input.")
+        inputs = _accepted_inputs(run["id"], [k for k in raw_inputs if k != ot["plan_key"]])
         prompt = context_manager.build_inference_prompt(action["instruction"], inputs)
         rid = model_router.get_provider().submit(
             run_id=run["id"], orch_task_id=ot["id"], purpose="task", node_id=node["id"], model=model, prompt=prompt,
@@ -606,6 +620,8 @@ def _dispatch_one(run, ot, action, node, model) -> None:
             c.close()
         telemetry.record_usage(run["id"], tasks=1)
     else:
+        if action.get("script_id") not in script_library.LIBRARY:
+            raise ValidationError(f"Unknown library script '{action.get('script_id')}'.")
         lib = script_library.get_script(action["script_id"])
         t = T.create_task(title=f"[orch] {ot['title']}", description=ot["title"], task_type="python_execution",
                           assigned_worker=node["id"], input_data={"script": lib["script"], "label": f"orch:{ot['plan_key']}",
@@ -639,10 +655,13 @@ def _run_controller_step(run, ot, action) -> None:
     title = next((d["name"] for d in plan.get("deliverables", []) if d["produced_by"] == ot["plan_key"]), "Project Report")
     prov = [{"key": k, "node": v.get("node"), "attempts": by_key.get(k, {}).get("attempts"), "kind": v.get("kind")} for k, v in sorted(inputs.items())]
     try:
-        rep = reporting.assemble_health_report(run, title, inputs, prov)
-        ev = evaluator.evaluate_report(rep["markdown"], reporting.REQUIRED_SECTIONS)
+        has_telemetry = any(v.get("kind") == "worker_telemetry" for v in inputs.values()) if inputs else False
+        has_ai = any(v.get("kind") == "model_output" for v in inputs.values()) if inputs else False
         has_data = any(v.get("kind") in ("worker_telemetry", "model_output", "controller_generated") for v in inputs.values()) if inputs else False
-        ev["checks"].append({"name": "has_measured_data", "passed": has_data,
+
+        rep = reporting.assemble_project_report(run, title, inputs, prov, objective=plan.get("overview", {}).get("objective"))
+        ev = evaluator.evaluate_report(rep["markdown"], has_telemetry=has_telemetry, has_ai=has_ai)
+        ev["checks"].append({"name": "has_valid_inputs", "passed": has_data,
                              "detail": "at least one validated input source" if has_data else "no input data found"})
         ev["accepted"] = ev["accepted"] and all(c["passed"] for c in ev["checks"])
         ids = []

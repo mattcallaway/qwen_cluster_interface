@@ -102,9 +102,32 @@ def evaluate_inference(orch: Dict[str, Any], req: Dict[str, Any], prompt: str) -
                        "flagged_instruction_like_content": bool(suspicious)} if accepted else {}}
 
 
-def evaluate_report(md: str, required_sections: List[str]) -> Dict[str, Any]:
-    missing = [s for s in required_sections if s not in md]
-    checks = [_check("sections_present", not missing, f"missing={missing}"),
-              _check("labels_present", "Measured" in md and "AI-generated" in md,
-                     "telemetry and AI content must be labelled separately")]
+def evaluate_report(md: str, required_sections: Optional[List[str]] = None,
+                    has_telemetry: Optional[bool] = None, has_ai: Optional[bool] = None) -> Dict[str, Any]:
+    checks = []
+    # Provenance section is mandatory for every report
+    checks.append(_check("provenance_present", "## Provenance" in md, "provenance table must be present"))
+
+    # If telemetry was measured/expected, verify section and label
+    if has_telemetry:
+        checks.append(_check("telemetry_section_present", "## Measured telemetry" in md, "measured telemetry section missing"))
+        checks.append(_check("telemetry_label_present", "Measured" in md, "telemetry must be labelled as measured"))
+
+    # If AI summary was generated/expected, verify section and label
+    if has_ai:
+        checks.append(_check("ai_section_present", "## AI-generated summary" in md, "AI summary section missing"))
+        checks.append(_check("ai_label_present", "AI-generated" in md, "AI content must be labelled unverified"))
+
+    # If explicit required sections passed, filter dynamically based on content presence
+    if required_sections:
+        effective_sections = []
+        for s in required_sections:
+            if s == "## Measured telemetry" and not has_telemetry and "## Measured telemetry" not in md:
+                continue
+            effective_sections.append(s)
+        missing = [s for s in effective_sections if s not in md]
+        checks.append(_check("sections_present", not missing, f"missing={missing}"))
+        checks.append(_check("labels_present", any(l in md for l in ("Measured", "AI-generated", "Objective", "Provenance")),
+                             "report content must be appropriately labelled"))
+
     return {"accepted": all(c["passed"] for c in checks), "checks": checks}

@@ -450,6 +450,7 @@ def record_worker_heartbeat(
             (node_id,),
         ).fetchall()
 
+        conn.commit()
         return {
             "status": "ok",
             "node_id": node_id,
@@ -1325,7 +1326,7 @@ def submit_task_result(
                         "eval_duration_ms": (result_payload.get("eval_duration_s") or 0.0) * 1000.0,
                         "load_duration_ms": (result_payload.get("load_duration_s") or 0.0) * 1000.0,
                         "total_duration_ms": (result_payload.get("total_duration_s") or runtime_seconds) * 1000.0,
-                        "tokens_per_second": result_payload.get("tokens_per_second"),
+                        "tokens_per_second": result_payload.get("tokens_per_second") if result_payload.get("tokens_per_second") is not None else 0.0,
                         "error_category": error_category,
                         "created_at": now,
                         "completed_at": now,

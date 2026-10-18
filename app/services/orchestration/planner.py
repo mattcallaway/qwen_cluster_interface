@@ -209,10 +209,13 @@ def build_planning_prompt(intake: Dict[str, Any], nodes: List[Dict[str, Any]], a
         '  "approval_gates": []\n'
         "}\n\n"
         "Rules:\n"
-        "- Every task MUST have an 'action' object with 'type' set to 'library_script', 'inference', or 'controller_step'.\n"
-        "- For 'inference' tasks, leave 'allowed_nodes': [] so any active inference worker can run it. Do not set allowed_nodes to qwen-vps for inference tasks because qwen-vps only runs python scripts.\n"
+        "- Every task MUST have an 'action' object with 'type' set to 'inference', 'library_script', or 'controller_step'.\n"
+        "- For 'inference' tasks: use for reasoning, research, analysis, planning, code, and text generation. Leave 'allowed_nodes': [] so any active inference worker can run it. Do not set allowed_nodes to qwen-vps for inference tasks. If a task needs previous outputs, list them in 'inputs': ['t1'] AND declare ['t1'] in 'depends_on'. NEVER reference the task's own key in 'inputs'.\n"
+        "- For 'library_script' tasks: ONLY use for pre-registered diagnostics scripts. Currently registered scripts: ['sys_health_basic']. Pin allowed_nodes to ['qwen-vps']. NEVER hallucinate or invent other script names (such as generate_natural_response, buy_tickets, deploy_app). If a task does not run 'sys_health_basic', you MUST use 'inference'.\n"
+        "- For 'controller_step' tasks: use step 'assemble_report' to consolidate results into a final deliverable report.\n"
         "- 'agent_role' must be a single string ('execution', 'analysis', 'research', 'integration', or 'review').\n"
-        "- The last task must be a controller_step with step 'assemble_report' producing the terminal deliverable.\n"
+        "- Deliverable 'type' must be one of: 'document', 'dataset', 'report', 'software_artifact', 'configuration', 'research_result', 'published_material', 'completed_workflow', 'other'.\n"
+        "- At least one deliverable must have 'terminal': true.\n"
         "- Return ONLY the valid JSON object. No markdown backticks or commentary."
     )
 
@@ -221,9 +224,19 @@ def build_repair_prompt(original: str, bad_text: str, errors: List[str]) -> str:
     fix_hints = []
     for err in errors:
         if "action type 'None'" in err or "disallowed action type" in err:
-            fix_hints.append("EVERY task MUST have an 'action' object: {'type': 'library_script', 'script_id': 'sys_health_basic'} OR {'type': 'inference', 'instruction': '...', 'inputs': [], 'max_tokens': 200} OR {'type': 'controller_step', 'step': 'assemble_report', 'inputs': []}.")
+            fix_hints.append("EVERY task MUST have an 'action' object: {'type': 'inference', 'instruction': '...', 'inputs': [], 'max_tokens': 200} OR {'type': 'library_script', 'script_id': 'sys_health_basic'} OR {'type': 'controller_step', 'step': 'assemble_report', 'inputs': []}.")
+        if "unknown script" in err or "references unknown script" in err:
+            fix_hints.append("The only registered library script is 'sys_health_basic'. NEVER invent script names. If the task is not a system health snapshot, you MUST change its action type to 'inference' with an 'instruction'.")
+        if "unknown controller step" in err:
+            fix_hints.append("The only allowed controller step is 'assemble_report'.")
+        if "uses output of itself" in err or "depends on itself" in err:
+            fix_hints.append("A task cannot depend on itself or list its own key in 'inputs'. Remove self-references.")
+        if "without declaring it as a dependency" in err:
+            fix_hints.append("Any task key used in 'inputs' MUST be declared in 'depends_on' of that task.")
+        if "invalid type" in err and "Deliverable" in err:
+            fix_hints.append("Deliverable 'type' must be one of: document, dataset, report, software_artifact, configuration, research_result, published_material, completed_workflow, other.")
         if "unknown agent role" in err or "|" in err:
-            fix_hints.append("'agent_role' must be a single string (e.g. 'execution' or 'analysis'), NEVER a regex with '|'.")
+            fix_hints.append("'agent_role' must be a single string (e.g. 'execution', 'analysis', 'research', 'integration', 'review').")
         if "terminal" in err:
             fix_hints.append("At least one deliverable must have 'terminal': true.")
         if "references unknown stage" in err:
@@ -317,6 +330,14 @@ def store_revision(run_id: str, plan: Dict[str, Any], source: str, actor: str, m
     nodes = model_router.node_inventory()
     plan = task_graph.normalize_plan(plan, nodes)
     validation = task_graph.validate_plan(plan, nodes)
+    if not validation["valid"] and source in ("model", "auto"):
+        repaired, remaining = task_graph.auto_repair_plan(plan, validation["errors"], nodes)
+        repaired_v = task_graph.validate_plan(repaired, nodes)
+        if repaired_v["valid"]:
+            plan = repaired
+            validation = repaired_v
+            if model_info is not None:
+                model_info["auto_repaired"] = True
 
     def _do(c):
         run = get_run(run_id, c)

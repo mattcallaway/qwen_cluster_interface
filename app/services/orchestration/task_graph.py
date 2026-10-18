@@ -111,6 +111,15 @@ def _list_s(v: Any, limit: int = 20, each: int = 300) -> List[str]:
     return [_s(x, each) for x in v[:limit] if _s(x, each)]
 
 
+DELIVERABLE_TYPE_ALIASES = {
+    "response": "document", "text": "document", "summary": "document",
+    "confirmation": "document", "file": "document", "plan": "document",
+    "channel": "other", "service": "other", "deployment": "software_artifact",
+    "app": "software_artifact", "code": "software_artifact", "data": "dataset",
+    "research": "research_result", "analysis": "research_result",
+}
+
+
 def normalize_plan(plan: Dict[str, Any], nodes: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """Coerce a loosely-shaped plan dict into the canonical structure (does not judge validity)."""
     if not isinstance(plan, dict):
@@ -139,6 +148,7 @@ def normalize_plan(plan: Dict[str, Any], nodes: Optional[List[Dict[str, Any]]] =
     for t in (plan.get("tasks") or [])[:MAX_TASKS + 5] if isinstance(plan.get("tasks"), list) else []:
         if not isinstance(t, dict):
             continue
+        task_key = _s(t.get("key"), 40)
         act = t.get("action") if isinstance(t.get("action"), dict) else {}
         if not act.get("type"):
             # Model may put action_type at task root, or as a string in 'action'
@@ -173,6 +183,17 @@ def normalize_plan(plan: Dict[str, Any], nodes: Optional[List[Dict[str, Any]]] =
             if not isinstance(act.get("max_tokens"), int) or act.get("max_tokens", 0) <= 0:
                 act["max_tokens"] = 200
 
+        # Sanitize action inputs: strip self-references
+        if isinstance(act.get("inputs"), list):
+            act["inputs"] = [_s(inp, 40) for inp in act["inputs"] if _s(inp, 40) and _s(inp, 40) != task_key]
+
+        # Sanitize depends_on: strip self-references and automatically align with inputs
+        deps_list = _list_s(t.get("depends_on"), 20, 40)
+        deps_list = [d for d in deps_list if d != task_key]
+        for inp in (act.get("inputs") or []):
+            if inp != task_key and inp not in deps_list:
+                deps_list.append(inp)
+
         # Sanitize agent_role: if the model copied "execution|analysis|...", choose the first valid token
         raw_role = _s(t.get("agent_role"), 40) or "execution"
         if "|" in raw_role or raw_role not in AGENT_ROLES:
@@ -198,11 +219,11 @@ def normalize_plan(plan: Dict[str, Any], nodes: Optional[List[Dict[str, Any]]] =
             allowed = [n for n in allowed if n in py_nodes]
 
         out["tasks"].append({
-            "key": _s(t.get("key"), 40), "title": _s(t.get("title"), 200),
+            "key": task_key, "title": _s(t.get("title"), 200),
             "description": _s(t.get("description")), "stage": _s(t.get("stage"), 40),
             "agent_role": role,
             "action": act, "acceptance": acc,
-            "depends_on": _list_s(t.get("depends_on"), 20, 40),
+            "depends_on": deps_list,
             "required_capabilities": _list_s(t.get("required_capabilities"), 10, 60),
             "preferred_models": _list_s(t.get("preferred_models"), 5, 64),
             "allowed_nodes": allowed,
@@ -215,10 +236,17 @@ def normalize_plan(plan: Dict[str, Any], nodes: Optional[List[Dict[str, Any]]] =
         })
     for d in (plan.get("deliverables") or [])[:20] if isinstance(plan.get("deliverables"), list) else []:
         if isinstance(d, dict):
+            raw_type = _s(d.get("type"), 40).lower()
+            if raw_type not in DELIVERABLE_TYPES:
+                raw_type = DELIVERABLE_TYPE_ALIASES.get(raw_type, "document")
+            raw_prod = _s(d.get("produced_by"), 40)
+            if "," in raw_prod:
+                parts = [x.strip() for x in raw_prod.split(",") if x.strip()]
+                raw_prod = parts[-1] if parts else raw_prod
             out["deliverables"].append({
-                "key": _s(d.get("key"), 40), "name": _s(d.get("name"), 160), "type": _s(d.get("type"), 40) or "document",
+                "key": _s(d.get("key"), 40), "name": _s(d.get("name"), 160), "type": raw_type,
                 "description": _s(d.get("description")), "acceptance_criteria": _s(d.get("acceptance_criteria")),
-                "produced_by": _s(d.get("produced_by"), 40), "stage": _s(d.get("stage"), 40),
+                "produced_by": raw_prod, "stage": _s(d.get("stage"), 40),
                 "terminal": bool(d.get("terminal")),
             })
     for r in (plan.get("risks") or [])[:15] if isinstance(plan.get("risks"), list) else []:
@@ -228,6 +256,113 @@ def normalize_plan(plan: Dict[str, Any], nodes: Optional[List[Dict[str, Any]]] =
         if isinstance(g, dict):
             out["approval_gates"].append({"action": _s(g.get("action"), 200), "reason": _s(g.get("reason"), 300)})
     return out
+
+
+def auto_repair_plan(plan: Dict[str, Any], errors: List[str], nodes: Optional[List[Dict[str, Any]]] = None) -> Tuple[Dict[str, Any], List[str]]:
+    """Deterministically repair common structural, capability, and reference defects in a candidate plan.
+
+    Returns (repaired_plan, remaining_errors) after full re-validation.
+    """
+    import copy
+    repaired = copy.deepcopy(plan) if isinstance(plan, dict) else {}
+    tasks = repaired.get("tasks", [])
+    task_keys = [t.get("key") for t in tasks if isinstance(t, dict) and t.get("key")]
+
+    # 1. Repair tasks
+    for t in tasks:
+        if not isinstance(t, dict):
+            continue
+        k = t.get("key")
+        act = t.get("action")
+        if not isinstance(act, dict):
+            act = {"type": "inference", "instruction": t.get("description") or f"Execute {t.get('title')}", "inputs": [], "max_tokens": 200}
+            t["action"] = act
+
+        typ = act.get("type")
+        if typ == "library_script":
+            script_id = act.get("script_id")
+            if script_id not in script_library.LIBRARY:
+                # Unknown library script: convert to registered inference action
+                act["type"] = "inference"
+                act["instruction"] = act.get("instruction") or t.get("description") or f"Perform {t.get('title')}"
+                act.pop("script_id", None)
+                if not act.get("max_tokens"):
+                    act["max_tokens"] = 200
+                t["allowed_nodes"] = []
+        elif typ == "controller_step":
+            if act.get("step") not in CONTROLLER_STEPS:
+                act["step"] = "assemble_report"
+        elif typ not in ACTION_TYPES:
+            act["type"] = "inference"
+            if not act.get("instruction"):
+                act["instruction"] = t.get("description") or f"Execute {t.get('title')}"
+            if not act.get("max_tokens"):
+                act["max_tokens"] = 200
+
+        # Strip self-reference in inputs
+        if isinstance(act.get("inputs"), list):
+            act["inputs"] = [inp for inp in act["inputs"] if inp != k and inp in task_keys]
+
+        # Strip self-reference in depends_on
+        deps = t.get("depends_on", [])
+        if isinstance(deps, list):
+            deps = [d for d in deps if d != k and d in task_keys]
+        else:
+            deps = []
+
+        # Ensure declared inputs are in depends_on
+        for inp in (act.get("inputs") or []):
+            if inp not in deps:
+                deps.append(inp)
+        t["depends_on"] = deps
+
+        # Sanitize role
+        if t.get("agent_role") not in AGENT_ROLES:
+            t["agent_role"] = "analysis" if "analysis" in str(t.get("agent_role")) else "execution"
+
+    # 2. Cycle detection and repair
+    deps_map = {t["key"]: list(t.get("depends_on", [])) for t in tasks if isinstance(t, dict) and t.get("key")}
+    cyc = detect_cycle(deps_map)
+    if cyc:
+        for t in tasks:
+            if t.get("key") in cyc:
+                t["depends_on"] = [d for d in t.get("depends_on", []) if task_keys.index(d) < task_keys.index(t["key"])]
+                if isinstance(t.get("action", {}).get("inputs"), list):
+                    t["action"]["inputs"] = [inp for inp in t["action"]["inputs"] if inp in t["depends_on"]]
+
+    # 3. Deliverables repair
+    dels = repaired.get("deliverables", [])
+    if dels:
+        has_terminal = False
+        for d in dels:
+            if not isinstance(d, dict):
+                continue
+            dt = str(d.get("type")).lower()
+            if dt not in DELIVERABLE_TYPES:
+                d["type"] = DELIVERABLE_TYPE_ALIASES.get(dt, "document")
+            prod = d.get("produced_by")
+            if prod not in task_keys:
+                d["produced_by"] = task_keys[-1] if task_keys else "t1"
+            if not d.get("acceptance_criteria"):
+                d["acceptance_criteria"] = "Validated output meets project requirements."
+            if d.get("terminal"):
+                has_terminal = True
+        if not has_terminal and dels:
+            dels[-1]["terminal"] = True
+    elif task_keys:
+        repaired["deliverables"] = [{
+            "key": "d1",
+            "name": "Project Deliverable",
+            "type": "document",
+            "acceptance_criteria": "Validated output meets project requirements.",
+            "produced_by": task_keys[-1],
+            "stage": tasks[-1].get("stage", "s1"),
+            "terminal": True
+        }]
+
+    norm = normalize_plan(repaired, nodes)
+    v = validate_plan(norm, nodes)
+    return norm, v["errors"]
 
 
 # --- validation ------------------------------------------------------------------------------------------
@@ -324,7 +459,9 @@ def validate_plan(plan: Dict[str, Any], nodes: Optional[List[Dict[str, Any]]] = 
                 errors.append(f"Task '{k}' depends on unknown task '{d}'.")
     for k, t in by_key.items():
         for inp in (t["action"].get("inputs") or []):
-            if inp not in keys:
+            if inp == k:
+                errors.append(f"Task '{k}' uses output of itself ('{inp}') as an input.")
+            elif inp not in keys:
                 errors.append(f"Task '{k}' uses output of unknown task '{inp}'.")
             elif inp not in deps.get(k, []):
                 errors.append(f"Task '{k}' uses output of '{inp}' without declaring it as a dependency.")
@@ -385,7 +522,7 @@ def _validate_action(t: Dict[str, Any], errors: List[str]) -> None:
         errors.append(f"Task '{k}' action has disallowed fields: {sorted(extra)}.")
     if typ == "library_script":
         if a.get("script_id") not in script_library.LIBRARY:
-            errors.append(f"Task '{k}' references unknown script '{a.get('script_id')}'.")
+            errors.append(f"Task '{k}' references unknown script '{a.get('script_id')}'. Allowed library scripts: {sorted(script_library.LIBRARY.keys())}.")
         if not t["allowed_nodes"]:
             errors.append(f"Task '{k}' (library_script) must pin allowed_nodes.")
     elif typ == "inference":
@@ -403,7 +540,7 @@ def _validate_action(t: Dict[str, Any], errors: List[str]) -> None:
             errors.append(f"Task '{k}' has an invalid model name.")
     elif typ == "controller_step":
         if a.get("step") not in CONTROLLER_STEPS:
-            errors.append(f"Task '{k}' has unknown controller step '{a.get('step')}'.")
+            errors.append(f"Task '{k}' has unknown controller step '{a.get('step')}'. Allowed controller steps: {sorted(CONTROLLER_STEPS)}.")
     if a.get("inputs") is not None and not isinstance(a.get("inputs"), list):
         errors.append(f"Task '{k}' inputs must be a list of task keys.")
 
@@ -417,6 +554,10 @@ def _validate_acceptance(t: Dict[str, Any], errors: List[str]) -> None:
         errors.append(f"Task '{k}' has unknown acceptance kind '{kind}'.")
     if kind == "script_validator" and t["action"].get("type") != "library_script":
         errors.append(f"Task '{k}': script_validator acceptance requires a library_script action.")
+    if kind == "report_sections" and t["action"].get("type") != "controller_step":
+        errors.append(f"Task '{k}': report_sections acceptance requires a controller_step action.")
+    if kind == "nonempty_text" and t["action"].get("type") != "inference":
+        errors.append(f"Task '{k}': nonempty_text acceptance requires an inference action.")
 
 
 def summarize_graph(plan: Dict[str, Any]) -> Dict[str, Any]:

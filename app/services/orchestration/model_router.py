@@ -86,7 +86,7 @@ def eligible_nodes(task: Dict[str, Any], nodes: List[Dict[str, Any]],
 
     if typ == "controller_step":
         for n in nodes:
-            if n["role"] == "controller" and n["enabled"]:
+            if n.get("role") == "controller" and n.get("enabled", True):
                 return {"eligible": [(n, None)], "reasons": []}
         return {"eligible": [({"id": "controller-local", "role": "controller", "load": 0}, None)], "reasons": []}
 
@@ -102,7 +102,7 @@ def eligible_nodes(task: Dict[str, Any], nodes: List[Dict[str, Any]],
             why = "no active worker credential"
         elif require_fresh and n["health"] != "online":
             why = f"health={n['health']} (stale/unavailable)"
-        elif typ in n["restrictions"].get("blocked_task_types", []):
+        elif typ in (n.get("restrictions") or {}).get("blocked_task_types", []):
             why = "task type restricted on this node"
         model = None
         if why is None:

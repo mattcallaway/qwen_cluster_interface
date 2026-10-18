@@ -217,8 +217,9 @@ def materialize(run: Dict[str, Any], rev: Dict[str, Any], actor: str) -> None:
                        t["risk"], state, accepted_json, cur_task, now_iso(), now_iso()))
         for t in plan["tasks"]:
             for dep in t["depends_on"]:
-                c.execute("INSERT INTO orchestration_task_deps (orch_task_id, depends_on_id) VALUES (?,?)",
-                          (id_by_key[t["key"]], id_by_key[dep]))
+                if dep in id_by_key and dep != t["key"]:
+                    c.execute("INSERT INTO orchestration_task_deps (orch_task_id, depends_on_id) VALUES (?,?)",
+                              (id_by_key[t["key"]], id_by_key[dep]))
         # Everything from earlier revisions that is not carried over is superseded (history retained).
         c.execute("""UPDATE orchestration_tasks SET state='superseded', updated_at=? WHERE run_id=? AND revision_id<>?
                      AND state<>'superseded'""", (now_iso(), run_id, rev["id"]))
