@@ -58,7 +58,7 @@ async def project_research_page(project_id: str, request: Request):
     user = get_current_user(request)
     if not user:
         return _err(401, "Authentication required.")
-    project = ps.get_project_by_id(project_id)
+    project = ps.get_project(project_id)
     if not project:
         raise NotFound("Project not found.")
 
@@ -68,16 +68,19 @@ async def project_research_page(project_id: str, request: Request):
     claims = mgr.evidence_ledger.list_claims(project_id)
     budget = mgr.create_or_get_budget(project_id)
 
-    return templates.TemplateResponse("research/index.html", {
-        "request": request,
-        "user": user,
-        "csrf_token": get_csrf_token(request),
-        "project": project,
-        "stats": stats,
-        "sources": sources,
-        "claims": claims,
-        "budget": budget.to_dict(),
-    })
+    return templates.TemplateResponse(
+        request=request,
+        name="research/index.html",
+        context={
+            "user": user,
+            "csrf_token": get_csrf_token(request),
+            "project": project,
+            "stats": stats,
+            "sources": sources,
+            "claims": claims,
+            "budget": budget.to_dict(),
+        },
+    )
 
 
 # --- JSON API Endpoints -------------------------------------------------------------------------------
@@ -87,7 +90,7 @@ async def api_plan_research(project_id: str, request: Request):
     user, err = await _auth(request, mutating=True)
     if err:
         return err
-    project = ps.get_project_by_id(project_id)
+    project = ps.get_project(project_id)
     if not project:
         return _err(404, "Project not found.")
 
@@ -103,7 +106,7 @@ async def api_start_research(project_id: str, request: Request):
     user, err = await _auth(request, mutating=True)
     if err:
         return err
-    project = ps.get_project_by_id(project_id)
+    project = ps.get_project(project_id)
     if not project:
         return _err(404, "Project not found.")
 
@@ -135,7 +138,7 @@ async def api_research_queries(project_id: str, request: Request):
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("SELECT id, query_text, search_provider, results_count, duration_ms, status, created_at FROM research_queries WHERE project_id = ? ORDER BY created_at DESC", (project_id,))
+        cursor.execute("SELECT id, query_text, provider, results_count, duration_ms, status, created_at FROM research_queries WHERE project_id = ? ORDER BY created_at DESC", (project_id,))
         rows = [dict(r) for r in cursor.fetchall()]
         return JSONResponse({"ok": True, "queries": rows})
     finally:
@@ -172,11 +175,12 @@ async def api_research_citations(project_id: str, request: Request):
     try:
         cursor.execute(
             """
-            SELECT c.id, c.citation_marker, c.claim_text, c.supporting_excerpt, c.created_at,
+            SELECT c.id, c.citation_num as citation_marker, c.citation_num, c.formatted_citation,
+                   c.is_verified, c.validation_notes, c.created_at,
                    s.title as source_title, s.original_url, s.publisher, s.quality_score
             FROM research_citations c
             LEFT JOIN research_sources s ON s.id = c.source_id
-            WHERE c.project_id = ? ORDER BY c.citation_marker
+            WHERE c.project_id = ? ORDER BY c.citation_num
             """,
             (project_id,)
         )
@@ -186,13 +190,16 @@ async def api_research_citations(project_id: str, request: Request):
         conn.close()
 
 
-@router.post("/api/v1/projects/{project_id}/research/export")
+@router.api_route("/api/v1/projects/{project_id}/research/export", methods=["GET", "POST"])
 async def api_research_export(project_id: str, request: Request):
-    user, err = await _auth(request, mutating=True)
-    if err:
-        return err
-    b = await _body(request)
-    fmt = b.get("format", "markdown")
+    user = get_current_user(request)
+    if not user:
+        return _err(401, "Authentication required.")
+
+    fmt = request.query_params.get("format", "markdown")
+    if request.method == "POST":
+        b = await _body(request)
+        fmt = b.get("format") or fmt
 
     mgr = ResearchManager()
     sources = mgr.source_library.list_sources(project_id)
@@ -216,8 +223,8 @@ async def api_research_export(project_id: str, request: Request):
     # Default markdown format
     report_md = mgr.synthesizer.synthesize_report(
         project_id=project_id,
-        topic=b.get("topic", "Research Synthesis"),
-        objective=b.get("objective", "Autonomous Research Deliverable"),
+        topic="Research Synthesis",
+        objective="Autonomous Research Deliverable",
         sources=sources,
         claims=claims,
     )

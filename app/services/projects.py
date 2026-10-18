@@ -268,6 +268,9 @@ def get_project(project_id: str) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
+get_project_by_id = get_project
+
+
 def list_projects(include_archived: bool = False) -> List[Dict[str, Any]]:
     conn = get_db_connection()
     try:
