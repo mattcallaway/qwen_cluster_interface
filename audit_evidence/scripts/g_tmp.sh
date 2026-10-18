@@ -1,0 +1,1 @@
+sudo systemctl stop qwen-worker; systemctl is-active qwen-worker

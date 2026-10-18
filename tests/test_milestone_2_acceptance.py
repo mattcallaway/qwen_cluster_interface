@@ -37,16 +37,23 @@ class MockClientSession:
 def test_milestone_2_full_acceptance_flow(tmp_path, db_conn):
     client = TestClient(app)
 
-    # 1. Clear any lingering pending tasks in test database
-    db_conn.execute("UPDATE tasks SET status = 'completed' WHERE status IN ('pending', 'approved')")
+    # 1. Clear any lingering pending or queued tasks in test database
+    db_conn.execute("UPDATE tasks SET status = 'completed' WHERE status IN ('pending', 'approved', 'queued')")
     db_conn.commit()
 
-    # 2. Configure VPS Worker Agent with Mock Session to controller
+    # 2. Provision secure enrollment token for worker
+    _, enr_token = worker_svc.create_enrollment_token(
+        allowed_node_id="vps-production-worker-01",
+        created_by="admin",
+    )
+
+    # 3. Configure VPS Worker Agent with Mock Session to controller
     config = AgentConfig(
         controller_url="http://127.0.0.1:8000",
         worker_id="vps-production-worker-01",
         worker_name="Production VPS Companion Node",
         worker_role="vps_worker",
+        enrollment_token=enr_token,
         data_dir=tmp_path / "vps_data",
         poll_interval=1,
         heartbeat_interval=1,

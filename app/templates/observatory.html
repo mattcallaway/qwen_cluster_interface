@@ -1,0 +1,940 @@
+{% extends "base.html" %}
+
+{% block page_title %}System Observatory{% endblock %}
+
+{% block content %}
+<div class="observatory-container" style="display:flex; flex-direction:column; gap:20px;">
+
+  <!-- Header Bar -->
+  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
+    <div>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <h2 style="font-size:1.4rem; font-weight:700; margin:0; display:flex; align-items:center; gap:8px;">
+          <span>🔭 System Observatory</span>
+        </h2>
+        <span id="live-indicator" class="badge badge-accepted" style="font-size:0.75rem; display:inline-flex; align-items:center; gap:6px;">
+          <span style="width:8px; height:8px; border-radius:50%; background:#22c55e; display:inline-block; animation: pulse 2s infinite;"></span>
+          LIVE TELEMETRY
+        </span>
+      </div>
+      <div style="font-size:0.82rem; color:var(--text-muted); margin-top:4px;">
+        Authoritative hardware metrics, model token accounting, cluster health, and historical performance analytics.
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+      <div style="display:flex; align-items:center; gap:6px; font-size:0.8rem; color:var(--text-muted);">
+        <label for="auto-refresh-toggle" style="cursor:pointer; display:flex; align-items:center; gap:6px;">
+          <input type="checkbox" id="auto-refresh-toggle" checked style="cursor:pointer;">
+          <span>Auto-refresh (5s)</span>
+        </label>
+      </div>
+      <button id="manual-refresh-btn" class="btn btn-sm btn-secondary" onclick="fetchObservatoryData()">
+        🔄 Refresh
+      </button>
+      <a href="/api/v1/observatory/export?data_type=telemetry" class="btn btn-sm btn-secondary" title="Export raw telemetry as CSV">
+        📥 Export Telemetry CSV
+      </a>
+      <a href="/api/v1/observatory/export?data_type=inference" class="btn btn-sm btn-secondary" title="Export inference records as CSV">
+        📥 Export Tokens CSV
+      </a>
+    </div>
+  </div>
+
+  <!-- Primary Observatory Tabs -->
+  <div class="nav-tabs" style="display:flex; gap:6px; border-bottom:1px solid var(--border-color); padding-bottom:8px; overflow-x:auto;">
+    <button class="btn btn-sm tab-btn {% if active_tab == 'overview' %}btn-primary{% else %}btn-secondary{% endif %}" onclick="switchTab('overview')">
+      📊 1. Overview
+    </button>
+    <button class="btn btn-sm tab-btn {% if active_tab == 'machines' %}btn-primary{% else %}btn-secondary{% endif %}" onclick="switchTab('machines')">
+      💻 2. Machines
+    </button>
+    <button class="btn btn-sm tab-btn {% if active_tab == 'models' %}btn-primary{% else %}btn-secondary{% endif %}" onclick="switchTab('models')">
+      🧠 3. Models & Tokens
+    </button>
+    <button class="btn btn-sm tab-btn {% if active_tab == 'tasks' %}btn-primary{% else %}btn-secondary{% endif %}" onclick="switchTab('tasks')">
+      ⚡ 4. Tasks & Projects
+    </button>
+    <button class="btn btn-sm tab-btn {% if active_tab == 'alerts' %}btn-primary{% else %}btn-secondary{% endif %}" onclick="switchTab('alerts')">
+      🚨 5. Errors & Alerts
+      <span id="alerts-badge" class="badge badge-warning" style="margin-left:4px; font-size:0.7rem; display:none;">0</span>
+    </button>
+    <button class="btn btn-sm tab-btn {% if active_tab == 'history' %}btn-primary{% else %}btn-secondary{% endif %}" onclick="switchTab('history')">
+      📈 6. History & Analytics
+    </button>
+  </div>
+
+  <!-- TAB 1: OVERVIEW -->
+  <div id="tab-overview" class="observatory-tab-content" style="{% if active_tab != 'overview' %}display:none;{% endif %}">
+    <!-- Top Summary Cards -->
+    <div class="grid-cols-4" style="gap:16px; margin-bottom:20px;">
+      <div class="stat-widget" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="stat-label" style="font-size:0.8rem; color:var(--text-muted); text-transform:uppercase;">Connected Nodes</div>
+          <span style="font-size:1.1rem;">🖥️</span>
+        </div>
+        <div id="kpi-nodes" class="stat-value" style="font-size:1.8rem; font-weight:700; margin:8px 0 4px 0;">
+          {{ overview.nodes.online }} / {{ overview.nodes.total_physical }}
+        </div>
+        <div id="kpi-nodes-sub" class="stat-sub" style="font-size:0.75rem; color:var(--text-muted);">
+          {{ overview.nodes.online }} online · {{ overview.nodes.offline }} offline
+        </div>
+      </div>
+
+      <div class="stat-widget" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="stat-label" style="font-size:0.8rem; color:var(--text-muted); text-transform:uppercase;">Cluster CPU</div>
+          <span style="font-size:1.1rem;">⚡</span>
+        </div>
+        <div id="kpi-cpu" class="stat-value" style="font-size:1.8rem; font-weight:700; margin:8px 0 4px 0; color:var(--accent);">
+          {{ overview.cluster_capacity.aggregate_cpu_percent }}%
+        </div>
+        <div class="stat-sub" style="font-size:0.75rem; color:var(--text-muted);">
+          Capacity-weighted ({{ overview.cluster_capacity.total_online_cores }} active cores)
+        </div>
+      </div>
+
+      <div class="stat-widget" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="stat-label" style="font-size:0.8rem; color:var(--text-muted); text-transform:uppercase;">Tokens Generated (24h)</div>
+          <span style="font-size:1.1rem;">🪙</span>
+        </div>
+        <div id="kpi-tokens" class="stat-value" style="font-size:1.8rem; font-weight:700; margin:8px 0 4px 0;">
+          {{ "{:,}".format(overview.inference.tokens_24h) }}
+        </div>
+        <div class="stat-sub" style="font-size:0.75rem; color:var(--text-muted);">
+          {{ overview.inference.avg_tokens_per_second }} tok/s avg · {{ "{:,}".format(overview.inference.lifetime_tokens) }} lifetime
+        </div>
+      </div>
+
+      <div class="stat-widget" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="stat-label" style="font-size:0.8rem; color:var(--text-muted); text-transform:uppercase;">Task Success Rate</div>
+          <span style="font-size:1.1rem;">✅</span>
+        </div>
+        <div id="kpi-tasks" class="stat-value" style="font-size:1.8rem; font-weight:700; margin:8px 0 4px 0; color:#22c55e;">
+          {{ overview.tasks.completion_rate_percent }}%
+        </div>
+        <div class="stat-sub" style="font-size:0.75rem; color:var(--text-muted);">
+          {{ overview.tasks.completed }} completed · {{ overview.tasks.failed }} failed
+        </div>
+      </div>
+    </div>
+
+    <!-- Cluster Utilization & Online Nodes -->
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:20px; margin-bottom:24px;">
+      <!-- Machine Health Bars -->
+      <div class="card" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:20px;">
+        <h3 style="font-size:1.05rem; font-weight:600; margin:0 0 16px 0; display:flex; justify-content:space-between; align-items:center;">
+          <span>Physical Machines Health</span>
+          <span style="font-size:0.75rem; color:var(--text-muted);">Real-time Telemetry</span>
+        </h3>
+        <div id="overview-nodes-list" style="display:flex; flex-direction:column; gap:14px;">
+          {% for node in overview.nodes.summaries %}
+          <div style="padding:10px; background:rgba(255,255,255,0.02); border:1px solid var(--border-color); border-radius:6px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <div style="font-weight:600; font-size:0.9rem;">
+                {{ node.name }}
+                <span style="font-size:0.75rem; color:var(--text-muted); font-weight:normal;">({{ node.id }})</span>
+              </div>
+              <div>
+                {% if node.health == 'online' %}
+                  <span class="badge badge-accepted">Online</span>
+                {% elif node.health == 'degraded' %}
+                  <span class="badge badge-warning">Degraded</span>
+                {% else %}
+                  <span class="badge badge-danger">Offline</span>
+                {% endif %}
+              </div>
+            </div>
+            <!-- CPU bar -->
+            <div style="display:flex; align-items:center; gap:8px; font-size:0.75rem; margin-bottom:4px;">
+              <span style="width:50px; color:var(--text-muted);">CPU</span>
+              <div style="flex:1; height:6px; background:rgba(255,255,255,0.1); border-radius:3px; overflow:hidden;">
+                <div style="width:{{ node.cpu_percent }}%; height:100%; background:{% if node.cpu_percent > 85 %}#ef4444{% elif node.cpu_percent > 60 %}#eab308{% else %}#0d9488{% endif %};"></div>
+              </div>
+              <span style="width:40px; text-align:right;">{{ node.cpu_percent }}%</span>
+            </div>
+            <!-- RAM bar -->
+            <div style="display:flex; align-items:center; gap:8px; font-size:0.75rem;">
+              <span style="width:50px; color:var(--text-muted);">RAM</span>
+              <div style="flex:1; height:6px; background:rgba(255,255,255,0.1); border-radius:3px; overflow:hidden;">
+                <div style="width:{{ node.ram_percent }}%; height:100%; background:{% if node.ram_percent > 85 %}#ef4444{% elif node.ram_percent > 70 %}#eab308{% else %}#3b82f6{% endif %};"></div>
+              </div>
+              <span style="width:40px; text-align:right;">{{ node.ram_percent }}%</span>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Capacity & Workload Balance -->
+      <div class="card" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:20px;">
+        <h3 style="font-size:1.05rem; font-weight:600; margin:0 0 16px 0;">Cluster Resource Balance</h3>
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <div>
+            <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:4px;">
+              <span>Aggregate Cluster RAM</span>
+              <span style="font-weight:600;">{{ overview.cluster_capacity.aggregate_ram_percent }}% ({{ "{:,}".format(overview.cluster_capacity.total_online_ram_used_mb) }} / {{ "{:,}".format(overview.cluster_capacity.total_online_ram_mb) }} MB)</span>
+            </div>
+            <div style="height:10px; background:rgba(255,255,255,0.1); border-radius:5px; overflow:hidden;">
+              <div style="width:{{ overview.cluster_capacity.aggregate_ram_percent }}%; height:100%; background:#3b82f6;"></div>
+            </div>
+          </div>
+
+          <div>
+            <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:4px;">
+              <span>Aggregate Cluster Swap</span>
+              <span style="font-weight:600;">{{ overview.cluster_capacity.aggregate_swap_percent }}% ({{ "{:,}".format(overview.cluster_capacity.total_online_swap_used_mb) }} / {{ "{:,}".format(overview.cluster_capacity.total_online_swap_total_mb) }} MB)</span>
+            </div>
+            <div style="height:10px; background:rgba(255,255,255,0.1); border-radius:5px; overflow:hidden;">
+              <div style="width:{{ overview.cluster_capacity.aggregate_swap_percent }}%; height:100%; background:#8b5cf6;"></div>
+            </div>
+          </div>
+
+          <div style="margin-top:10px; padding:12px; background:rgba(255,255,255,0.02); border:1px solid var(--border-color); border-radius:6px; font-size:0.8rem; color:var(--text-muted); line-height:1.5;">
+            <strong>Capacity Aggregation Policy:</strong> CPU utilization is strictly capacity-weighted across online cores.
+            Physical RAM and OS swap partitions are tracked and presented as separate, distinct metrics.
+            Legacy historical records (e.g. <code>node-d35568f5</code>) are strictly excluded from cluster totals.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 2: MACHINES -->
+  <div id="tab-machines" class="observatory-tab-content" style="{% if active_tab != 'machines' %}display:none;{% endif %}">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <label for="machine-select" style="font-size:0.85rem; font-weight:600;">Select Machine:</label>
+        <select id="machine-select" class="form-control" style="width:auto; min-width:220px;" onchange="loadSelectedMachine()">
+          {% for node in overview.nodes.summaries %}
+          <option value="{{ node.id }}">{{ node.name }} ({{ node.id }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div id="machine-last-seen" style="font-size:0.8rem; color:var(--text-muted);">
+        Telemetry: Active
+      </div>
+    </div>
+
+    <!-- Machine Detail Cards Grid -->
+    <div id="machine-detail-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:16px; margin-bottom:20px;">
+      <!-- CPU Card -->
+      <div class="card" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <h4 style="margin:0; font-size:0.95rem;">⚡ CPU Metrics</h4>
+          <span id="m-cpu-badge" class="badge badge-accepted">Active</span>
+        </div>
+        <div style="font-size:1.6rem; font-weight:700; color:var(--accent); margin-bottom:6px;" id="m-cpu-pct">--%</div>
+        <div style="font-size:0.75rem; color:var(--text-muted); line-height:1.6;" id="m-cpu-details">
+          Load average: <span id="m-load">N/A</span><br>
+          Cores: <span id="m-cores">--</span> · Worker CPU: <span id="m-worker-cpu">--%</span>
+        </div>
+      </div>
+
+      <!-- Memory & Swap Card -->
+      <div class="card" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <h4 style="margin:0; font-size:0.95rem;">🧠 Memory & Swap</h4>
+          <span id="m-ram-badge" class="badge badge-secondary">Measured</span>
+        </div>
+        <div style="font-size:1.6rem; font-weight:700; color:#3b82f6; margin-bottom:6px;" id="m-ram-pct">--%</div>
+        <div style="font-size:0.75rem; color:var(--text-muted); line-height:1.6;" id="m-ram-details">
+          RAM Used: <span id="m-ram-used">--</span> / <span id="m-ram-total">--</span> MB<br>
+          Swap: <span id="m-swap-pct">--%</span> (<span id="m-swap-used">--</span> / <span id="m-swap-total">--</span> MB)
+        </div>
+      </div>
+
+      <!-- GPU Card -->
+      <div class="card" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <h4 style="margin:0; font-size:0.95rem;">🎮 GPU Acceleration</h4>
+          <span id="m-gpu-badge" class="badge badge-secondary">Detected</span>
+        </div>
+        <div style="font-size:1.2rem; font-weight:700; color:#a855f7; margin-bottom:6px;" id="m-gpu-name">Unavailable</div>
+        <div style="font-size:0.75rem; color:var(--text-muted); line-height:1.6;" id="m-gpu-details">
+          Util: <span id="m-gpu-util">Not supported</span><br>
+          VRAM: <span id="m-gpu-vram">Not supported</span> · Temp: <span id="m-gpu-temp">--</span>
+        </div>
+      </div>
+
+      <!-- Storage & Disk I/O -->
+      <div class="card" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <h4 style="margin:0; font-size:0.95rem;">💾 Storage & Headroom</h4>
+          <span class="badge badge-accepted">OK</span>
+        </div>
+        <div style="font-size:1.6rem; font-weight:700; color:#22c55e; margin-bottom:6px;" id="m-disk-free">-- GB</div>
+        <div style="font-size:0.75rem; color:var(--text-muted); line-height:1.6;" id="m-disk-details">
+          Disk Total: <span id="m-disk-total">--</span> GB<br>
+          Throughput: <span id="m-disk-io">-- MB/s</span>
+        </div>
+      </div>
+
+      <!-- Power & Thermal -->
+      <div class="card" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <h4 style="margin:0; font-size:0.95rem;">🌡️ Power & Thermal</h4>
+          <span id="m-power-badge" class="badge badge-secondary">Sensor</span>
+        </div>
+        <div style="font-size:1.6rem; font-weight:700; margin-bottom:6px;" id="m-temp">--°C</div>
+        <div style="font-size:0.75rem; color:var(--text-muted); line-height:1.6;" id="m-power-details">
+          AC Power: <span id="m-ac-status">--</span><br>
+          Battery: <span id="m-battery">--</span>
+        </div>
+      </div>
+
+      <!-- OS & Worker Health -->
+      <div class="card" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <h4 style="margin:0; font-size:0.95rem;">⚙️ OS & Worker Service</h4>
+          <span id="m-svc-badge" class="badge badge-accepted">Running</span>
+        </div>
+        <div style="font-size:1.1rem; font-weight:600; margin-bottom:6px;" id="m-os-name">--</div>
+        <div style="font-size:0.75rem; color:var(--text-muted); line-height:1.6;" id="m-svc-details">
+          Uptime: <span id="m-uptime">--</span><br>
+          Worker RSS: <span id="m-worker-rss">-- MB</span> · Latency: <span id="m-latency">-- ms</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Node Chart -->
+    <div class="card" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <h3 style="font-size:1.05rem; font-weight:600; margin:0;">Real-Time Resource Trends (Last 60 Samples)</h3>
+        <div style="display:flex; gap:16px; font-size:0.75rem;">
+          <span style="color:var(--accent);">■ CPU %</span>
+          <span style="color:#3b82f6;">■ RAM %</span>
+          <span style="color:#8b5cf6;">■ Swap %</span>
+        </div>
+      </div>
+      <canvas id="node-live-chart" width="900" height="220" style="width:100%; height:220px; background:#0f172a; border-radius:6px;"></canvas>
+    </div>
+  </div>
+
+  <!-- TAB 3: MODELS & TOKENS -->
+  <div id="tab-models" class="observatory-tab-content" style="{% if active_tab != 'models' %}display:none;{% endif %}">
+    <div style="margin-bottom:20px;">
+      <h3 style="font-size:1.1rem; font-weight:600; margin:0 0 12px 0;">Model Performance Comparison (Qwen vs. Llama)</h3>
+      <div id="model-comparison-container" class="grid-cols-2" style="gap:16px; margin-bottom:20px;">
+        <!-- Filled dynamically -->
+      </div>
+    </div>
+
+    <div style="margin-bottom:24px;">
+      <h3 style="font-size:1.1rem; font-weight:600; margin:0 0 12px 0;">Inference Telemetry by Model</h3>
+      <div class="table-responsive">
+        <table class="data-table" style="width:100%;">
+          <thead>
+            <tr>
+              <th>Model</th>
+              <th>Requests</th>
+              <th>Prompt Tokens</th>
+              <th>Gen Tokens</th>
+              <th>Total Tokens</th>
+              <th>Tokens/Sec</th>
+              <th>Avg Latency</th>
+              <th>Avg Load Time</th>
+              <th>Success Rate</th>
+            </tr>
+          </thead>
+          <tbody id="models-table-body">
+            <tr><td colspan="9" style="text-align:center; color:var(--text-muted);">Loading model performance data...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div>
+      <h3 style="font-size:1.1rem; font-weight:600; margin:0 0 12px 0;">Token Accounting & Cost Ledger</h3>
+      <div class="grid-cols-4" style="gap:16px; margin-bottom:16px;" id="token-accounting-cards">
+        <!-- Filled dynamically -->
+      </div>
+      <div style="padding:12px; background:rgba(255,255,255,0.02); border:1px solid var(--border-color); border-radius:6px; font-size:0.8rem; color:var(--text-muted);">
+        💡 <strong>Cost Accounting Note:</strong> All inference requests execute natively on private cluster nodes. External API billing fee is <strong>$0.00</strong>.
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 4: TASKS & PROJECTS -->
+  <div id="tab-tasks" class="observatory-tab-content" style="{% if active_tab != 'tasks' %}display:none;{% endif %}">
+    <div style="margin-bottom:24px;">
+      <h3 style="font-size:1.1rem; font-weight:600; margin:0 0 12px 0;">Worker Execution Efficiency</h3>
+      <div class="table-responsive">
+        <table class="data-table" style="width:100%;">
+          <thead>
+            <tr>
+              <th>Worker Node</th>
+              <th>Total Executions</th>
+              <th>Successes</th>
+              <th>Errors</th>
+              <th>Timeouts</th>
+              <th>Success Rate</th>
+              <th>Avg Runtime</th>
+              <th>Total Work Time</th>
+            </tr>
+          </thead>
+          <tbody id="worker-efficiency-tbody">
+            <tr><td colspan="8" style="text-align:center; color:var(--text-muted);">Loading worker efficiency data...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div>
+      <h3 style="font-size:1.1rem; font-weight:600; margin:0 0 12px 0;">Autonomous Project Orchestrator Telemetry</h3>
+      <div id="orchestrator-telemetry-container" class="grid-cols-3" style="gap:16px;">
+        <!-- Filled dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 5: ERRORS & ALERTS -->
+  <div id="tab-alerts" class="observatory-tab-content" style="{% if active_tab != 'alerts' %}display:none;{% endif %}">
+    <!-- Active Alerts Banner -->
+    <div style="margin-bottom:24px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <h3 style="font-size:1.1rem; font-weight:600; margin:0;">Active Alerts & Threshold Breaches</h3>
+        <span id="active-alert-count-label" class="badge badge-secondary">0 Active</span>
+      </div>
+      <div id="active-alerts-list" style="display:flex; flex-direction:column; gap:10px;">
+        <div style="padding:16px; text-align:center; color:var(--text-muted); background:var(--bg-surface); border:1px solid var(--border-color); border-radius:6px;">
+          ✅ No active alerts firing. All cluster metrics are within safe operational thresholds.
+        </div>
+      </div>
+    </div>
+
+    <!-- System Insights & Recommendations -->
+    <div style="margin-bottom:24px;">
+      <h3 style="font-size:1.1rem; font-weight:600; margin:0 0 12px 0;">Deterministic System Insights & Diagnostics</h3>
+      <div id="system-insights-list" style="display:flex; flex-direction:column; gap:12px;">
+        <!-- Filled dynamically -->
+      </div>
+    </div>
+
+    <!-- Alert Rules Table -->
+    <div>
+      <h3 style="font-size:1.1rem; font-weight:600; margin:0 0 12px 0;">Configured Health Alert Rules</h3>
+      <div class="table-responsive">
+        <table class="data-table" style="width:100%;">
+          <thead>
+            <tr>
+              <th>Rule Name</th>
+              <th>Category</th>
+              <th>Metric</th>
+              <th>Threshold</th>
+              <th>Hysteresis Duration</th>
+              <th>Severity</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="alert-rules-tbody">
+            <tr><td colspan="7" style="text-align:center; color:var(--text-muted);">Loading alert rules...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 6: HISTORY & ANALYTICS -->
+  <div id="tab-history" class="observatory-tab-content" style="{% if active_tab != 'history' %}display:none;{% endif %}">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <label for="history-resolution" style="font-size:0.85rem; font-weight:600;">Resolution:</label>
+        <select id="history-resolution" class="form-control" style="width:auto;" onchange="loadHistoricalAnalytics()">
+          <option value="raw">Raw High-Frequency Samples</option>
+          <option value="minute" selected>1-Minute Rollups (30-Day Retention)</option>
+          <option value="hour">1-Hour Rollups (1-Year Retention)</option>
+        </select>
+      </div>
+      <div style="font-size:0.8rem; color:var(--text-muted);">
+        Retention: Raw (7d) · 1m (30d) · 1h (365d)
+      </div>
+    </div>
+
+    <!-- Historical Chart -->
+    <div class="card" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:20px; margin-bottom:20px;">
+      <h3 style="font-size:1.05rem; font-weight:600; margin:0 0 12px 0;">Historical Cluster Utilization Over Time</h3>
+      <canvas id="history-chart" width="900" height="260" style="width:100%; height:260px; background:#0f172a; border-radius:6px;"></canvas>
+    </div>
+  </div>
+
+</div>
+
+<!-- Inline JavaScript for System Observatory -->
+<script>
+let currentTab = '{{ active_tab }}';
+let refreshInterval = null;
+let liveChartData = [];
+let historicalChartData = [];
+
+function switchTab(tabName) {
+  currentTab = tabName;
+  document.querySelectorAll('.observatory-tab-content').forEach(el => el.style.display = 'none');
+  const target = document.getElementById('tab-' + tabName);
+  if (target) target.style.display = 'block';
+
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.remove('btn-primary');
+    btn.classList.add('btn-secondary');
+  });
+  event.target.classList.remove('btn-secondary');
+  event.target.classList.add('btn-primary');
+
+  // Trigger specific tab loading
+  if (tabName === 'machines') loadSelectedMachine();
+  if (tabName === 'models') loadModelsData();
+  if (tabName === 'tasks') loadTasksData();
+  if (tabName === 'alerts') loadAlertsData();
+  if (tabName === 'history') loadHistoricalAnalytics();
+}
+
+async function fetchObservatoryData() {
+  try {
+    const res = await fetch('/api/v1/observatory/overview');
+    if (!res.ok) return;
+    const data = await res.json();
+    renderOverview(data);
+  } catch (err) {
+    console.warn('Observatory refresh failed:', err);
+  }
+}
+
+function renderOverview(data) {
+  if (!data) return;
+  const nodes = data.nodes || {};
+  const cap = data.cluster_capacity || {};
+  const inf = data.inference || {};
+  const tasks = data.tasks || {};
+
+  document.getElementById('kpi-nodes').innerText = `${nodes.online || 0} / ${nodes.total_physical || 0}`;
+  document.getElementById('kpi-nodes-sub').innerText = `${nodes.online || 0} online · ${nodes.offline || 0} offline`;
+  document.getElementById('kpi-cpu').innerText = `${cap.aggregate_cpu_percent || 0}%`;
+  document.getElementById('kpi-tokens').innerText = (inf.tokens_24h || 0).toLocaleString();
+  document.getElementById('kpi-tasks').innerText = `${tasks.completion_rate_percent || 100}%`;
+
+  // Update alerts badge
+  const alertCount = data.active_alerts_count || 0;
+  const badge = document.getElementById('alerts-badge');
+  if (badge) {
+    badge.innerText = alertCount;
+    badge.style.display = alertCount > 0 ? 'inline-block' : 'none';
+  }
+}
+
+async function loadSelectedMachine() {
+  const select = document.getElementById('machine-select');
+  if (!select) return;
+  const nodeId = select.value;
+  try {
+    const res = await fetch(`/api/v1/observatory/nodes/${nodeId}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    renderMachineDetail(data);
+  } catch (err) {
+    console.warn('Machine detail fetch failed:', err);
+  }
+}
+
+function renderMachineDetail(detail) {
+  if (!detail) return;
+  const s = detail.latest_sample || {};
+  const n = detail.node || {};
+
+  document.getElementById('m-cpu-pct').innerText = (s.cpu_percent !== null && s.cpu_percent !== undefined) ? `${s.cpu_percent}%` : '--%';
+  document.getElementById('m-cores').innerText = (s.per_core && s.per_core.length) ? s.per_core.length : (n.cpu_count || 1);
+  document.getElementById('m-load').innerText = s.load_1m ? `${s.load_1m}, ${s.load_5m || ''}` : 'N/A';
+  document.getElementById('m-worker-cpu').innerText = s.worker_cpu_percent ? `${s.worker_cpu_percent}%` : 'N/A';
+
+  document.getElementById('m-ram-pct').innerText = s.ram_percent ? `${s.ram_percent}%` : '--%';
+  document.getElementById('m-ram-used').innerText = s.ram_used_mb || '--';
+  document.getElementById('m-ram-total').innerText = s.ram_total_mb || n.installed_ram_mb || '--';
+  document.getElementById('m-swap-pct').innerText = (s.swap_percent !== null && s.swap_percent !== undefined) ? `${s.swap_percent}%` : '--%';
+  document.getElementById('m-swap-used').innerText = s.swap_used_mb || 0;
+  document.getElementById('m-swap-total').innerText = s.swap_total_mb || 0;
+
+  const gpu = s.gpu || {};
+  if (gpu.supported) {
+    document.getElementById('m-gpu-name').innerText = gpu.name || 'Dedicated GPU';
+    document.getElementById('m-gpu-util').innerText = `${gpu.utilization_percent || 0}%`;
+    document.getElementById('m-gpu-vram').innerText = `${gpu.vram_used_mb || 0} / ${gpu.vram_total_mb || 0} MB`;
+    document.getElementById('m-gpu-temp').innerText = gpu.temperature_c ? `${gpu.temperature_c}°C` : '--';
+  } else {
+    document.getElementById('m-gpu-name').innerText = 'Not supported';
+    document.getElementById('m-gpu-util').innerText = 'Unavailable';
+    document.getElementById('m-gpu-vram').innerText = 'Not supported';
+    document.getElementById('m-gpu-temp').innerText = 'N/A';
+  }
+
+  document.getElementById('m-disk-free').innerText = s.disk_free_gb ? `${s.disk_free_gb} GB` : '-- GB';
+  document.getElementById('m-disk-total').innerText = s.disk_total_gb || n.storage_total_gb || '--';
+  document.getElementById('m-disk-io').innerText = `${s.disk_read_mbs || 0} R / ${s.disk_write_mbs || 0} W`;
+
+  document.getElementById('m-temp').innerText = s.cpu_temp_c ? `${s.cpu_temp_c}°C` : 'Not supported';
+  document.getElementById('m-ac-status').innerText = s.is_ac_online === 1 ? 'Connected (AC)' : (s.is_ac_online === 0 ? 'On Battery' : 'Desktop / N/A');
+  document.getElementById('m-battery').innerText = s.battery_percent ? `${s.battery_percent}%` : 'N/A';
+
+  document.getElementById('m-os-name').innerText = `${n.os_name || ''} ${n.os_version || ''}`;
+  document.getElementById('m-uptime').innerText = s.os_uptime_s ? `${Math.round(s.os_uptime_s / 3600)}h` : '--';
+  document.getElementById('m-worker-rss').innerText = s.worker_res_mb ? `${s.worker_res_mb} MB` : '--';
+  document.getElementById('m-latency').innerText = (s.latency_to_controller_ms !== null && s.latency_to_controller_ms !== undefined) ? `${s.latency_to_controller_ms} ms` : '0 ms';
+
+  // Render chart
+  if (detail.recent_samples && detail.recent_samples.length) {
+    drawLiveCanvasChart('node-live-chart', detail.recent_samples);
+  }
+}
+
+function drawLiveCanvasChart(canvasId, samples) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+
+  ctx.clearRect(0, 0, w, h);
+  if (!samples.length) return;
+
+  const padLeft = 40;
+  const padRight = 20;
+  const padTop = 20;
+  const padBottom = 30;
+  const plotW = w - padLeft - padRight;
+  const plotH = h - padTop - padBottom;
+
+  // Grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 1;
+  for (let pct = 0; pct <= 100; pct += 25) {
+    const y = padTop + plotH - (pct / 100) * plotH;
+    ctx.beginPath();
+    ctx.moveTo(padLeft, y);
+    ctx.lineTo(w - padRight, y);
+    ctx.stroke();
+
+    ctx.fillStyle = '#64748b';
+    ctx.font = '10px sans-serif';
+    ctx.fillText(`${pct}%`, 10, y + 3);
+  }
+
+  function drawSeries(key, color) {
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+
+    samples.forEach((s, idx) => {
+      const val = Math.max(0, Math.min(100, (s[key] || 0)));
+      const x = padLeft + (idx / Math.max(1, samples.length - 1)) * plotW;
+      const y = padTop + plotH - (val / 100) * plotH;
+      if (idx === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+
+  drawSeries('cpu_percent', '#14b8a6');
+  drawSeries('ram_percent', '#3b82f6');
+  drawSeries('swap_percent', '#8b5cf6');
+}
+
+async function loadModelsData() {
+  try {
+    const res = await fetch('/api/v1/observatory/inference');
+    if (!res.ok) return;
+    const data = await res.json();
+
+    // Render comparison
+    const cmp = data.comparison || {};
+    const qwen = cmp.qwen || {};
+    const llama = cmp.llama || {};
+    const cmpContainer = document.getElementById('model-comparison-container');
+    if (cmpContainer) {
+      cmpContainer.innerHTML = `
+        <div class="card" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+          <h4 style="margin:0 0 10px 0; color:var(--accent);">🤖 Qwen (${qwen.model || 'qwen2.5:1.5b'})</h4>
+          <div style="font-size:0.85rem; line-height:1.7;">
+            Throughput: <strong>${qwen.avg_tps || 0} tok/s</strong><br>
+            Avg Latency: <strong>${qwen.avg_latency_ms || 0} ms</strong><br>
+            Load Duration: <strong>${qwen.avg_load_ms || 0} ms</strong><br>
+            Total Tokens: <strong>${(qwen.total_tokens || 0).toLocaleString()}</strong><br>
+            Success Rate: <strong>${qwen.success_rate_percent || 100}%</strong>
+          </div>
+        </div>
+        <div class="card" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+          <h4 style="margin:0 0 10px 0; color:#3b82f6;">🦙 Llama (${llama.model || 'llama3.2:1b'})</h4>
+          <div style="font-size:0.85rem; line-height:1.7;">
+            Throughput: <strong>${llama.avg_tps || 0} tok/s</strong><br>
+            Avg Latency: <strong>${llama.avg_latency_ms || 0} ms</strong><br>
+            Load Duration: <strong>${llama.avg_load_ms || 0} ms</strong><br>
+            Total Tokens: <strong>${(llama.total_tokens || 0).toLocaleString()}</strong><br>
+            Success Rate: <strong>${llama.success_rate_percent || 100}%</strong>
+          </div>
+        </div>
+      `;
+    }
+
+    // Render table
+    const tbody = document.getElementById('models-table-body');
+    if (tbody && data.models) {
+      if (data.models.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color:var(--text-muted);">No model inference records yet.</td></tr>';
+      } else {
+        tbody.innerHTML = data.models.map(m => `
+          <tr>
+            <td><strong>${m.model}</strong></td>
+            <td>${m.total_requests || 0}</td>
+            <td>${(m.total_prompt_tokens || 0).toLocaleString()}</td>
+            <td>${(m.total_gen_tokens || 0).toLocaleString()}</td>
+            <td><strong>${(m.total_tokens || 0).toLocaleString()}</strong></td>
+            <td>${m.avg_tps || 0}</td>
+            <td>${m.avg_latency_ms || 0} ms</td>
+            <td>${m.avg_load_ms || 0} ms</td>
+            <td><span class="badge badge-accepted">${m.success_rate_percent || 100}%</span></td>
+          </tr>
+        `).join('');
+      }
+    }
+
+    // Render token accounting
+    const acct = data.token_accounting || {};
+    const sum = acct.summary || {};
+    const acctCards = document.getElementById('token-accounting-cards');
+    if (acctCards) {
+      acctCards.innerHTML = `
+        <div class="card" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:14px;">
+          <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase;">Tokens Today</div>
+          <div style="font-size:1.4rem; font-weight:700; margin-top:4px;">${((sum.today && sum.today.total_tokens) || 0).toLocaleString()}</div>
+        </div>
+        <div class="card" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:14px;">
+          <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase;">Last 7 Days</div>
+          <div style="font-size:1.4rem; font-weight:700; margin-top:4px;">${((sum.last_7d && sum.last_7d.total_tokens) || 0).toLocaleString()}</div>
+        </div>
+        <div class="card" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:14px;">
+          <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase;">Last 30 Days</div>
+          <div style="font-size:1.4rem; font-weight:700; margin-top:4px;">${((sum.last_30d && sum.last_30d.total_tokens) || 0).toLocaleString()}</div>
+        </div>
+        <div class="card" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:14px;">
+          <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase;">Lifetime Tokens</div>
+          <div style="font-size:1.4rem; font-weight:700; margin-top:4px; color:var(--accent);">${((sum.lifetime && sum.lifetime.total_tokens) || 0).toLocaleString()}</div>
+        </div>
+      `;
+    }
+  } catch (err) {
+    console.warn('Failed to load models data:', err);
+  }
+}
+
+async function loadTasksData() {
+  try {
+    const res = await fetch('/api/v1/observatory/tasks');
+    if (!res.ok) return;
+    const data = await res.json();
+
+    const tbody = document.getElementById('worker-efficiency-tbody');
+    if (tbody && data.workers) {
+      if (data.workers.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--text-muted);">No worker task execution history recorded yet.</td></tr>';
+      } else {
+        tbody.innerHTML = data.workers.map(w => `
+          <tr>
+            <td><strong>${w.worker_id}</strong></td>
+            <td>${w.total_executions}</td>
+            <td style="color:#22c55e;">${w.success_count}</td>
+            <td style="color:#ef4444;">${w.error_count}</td>
+            <td style="color:#eab308;">${w.timeout_count}</td>
+            <td><span class="badge badge-accepted">${w.success_rate_pct}%</span></td>
+            <td>${w.avg_runtime_s}s</td>
+            <td>${w.total_runtime_m} min</td>
+          </tr>
+        `).join('');
+      }
+    }
+
+    const orchCont = document.getElementById('orchestrator-telemetry-container');
+    if (orchCont && data.orchestrator) {
+      const oSum = data.orchestrator.summary || {};
+      const oTasks = data.orchestrator.tasks || {};
+      orchCont.innerHTML = `
+        <div class="card" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+          <h4 style="margin:0 0 10px 0;">Project Runs</h4>
+          <div style="font-size:0.85rem; line-height:1.7;">
+            Total Runs: <strong>${oSum.total_runs || 0}</strong><br>
+            Active Runs: <strong>${oSum.active_runs || 0}</strong><br>
+            Completed: <strong>${oSum.completed_runs || 0}</strong><br>
+            Blocked: <strong>${oSum.blocked_runs || 0}</strong>
+          </div>
+        </div>
+        <div class="card" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+          <h4 style="margin:0 0 10px 0;">Plan Tasks</h4>
+          <div style="font-size:0.85rem; line-height:1.7;">
+            Total Tasks: <strong>${oTasks.total_orch_tasks || 0}</strong><br>
+            Accepted: <strong>${oTasks.accepted_tasks || 0}</strong><br>
+            Failed: <strong>${oTasks.failed_tasks || 0}</strong><br>
+            Pending: <strong>${oTasks.pending_tasks || 0}</strong>
+          </div>
+        </div>
+        <div class="card" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+          <h4 style="margin:0 0 10px 0;">Retry Overhead</h4>
+          <div style="font-size:1.8rem; font-weight:700; color:var(--accent); margin:6px 0;">
+            ${data.orchestrator.task_retry_overhead_percent || 0}%
+          </div>
+          <div style="font-size:0.75rem; color:var(--text-muted);">
+            Retry attempts / total tasks
+          </div>
+        </div>
+      `;
+    }
+  } catch (err) {
+    console.warn('Failed to load tasks data:', err);
+  }
+}
+
+async function loadAlertsData() {
+  try {
+    const res = await fetch('/api/v1/observatory/alerts');
+    const insRes = await fetch('/api/v1/observatory/insights');
+    if (!res.ok) return;
+    const data = await res.json();
+    const insData = insRes.ok ? await insRes.json() : { insights: [] };
+
+    // Render active alerts
+    const alertsList = document.getElementById('active-alerts-list');
+    const activeAlerts = (data.alerts || []).filter(a => a.state === 'firing');
+    document.getElementById('active-alert-count-label').innerText = `${activeAlerts.length} Active`;
+
+    if (alertsList) {
+      if (activeAlerts.length === 0) {
+        alertsList.innerHTML = `
+          <div style="padding:16px; text-align:center; color:var(--text-muted); background:var(--bg-surface); border:1px solid var(--border-color); border-radius:6px;">
+            ✅ No active alerts firing. All cluster metrics are within safe operational thresholds.
+          </div>
+        `;
+      } else {
+        alertsList.innerHTML = activeAlerts.map(a => `
+          <div style="padding:14px; background:rgba(239, 68, 68, 0.08); border:1px solid rgba(239, 68, 68, 0.3); border-radius:6px; display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="font-weight:600; color:#ef4444; margin-bottom:4px;">🚨 ${a.title}</div>
+              <div style="font-size:0.8rem; color:var(--text-muted);">${a.description}</div>
+            </div>
+            <button class="btn btn-sm btn-secondary" onclick="acknowledgeAlert('${a.id}')">Acknowledge</button>
+          </div>
+        `).join('');
+      }
+    }
+
+    // Render insights
+    const insightsList = document.getElementById('system-insights-list');
+    if (insightsList) {
+      const insights = insData.insights || [];
+      if (insights.length === 0) {
+        insightsList.innerHTML = `
+          <div style="padding:14px; text-align:center; color:var(--text-muted); background:var(--bg-surface); border:1px solid var(--border-color); border-radius:6px;">
+            🔍 System Observatory is actively analyzing metrics. No abnormal trends detected.
+          </div>
+        `;
+      } else {
+        insightsList.innerHTML = insights.map(i => `
+          <div style="padding:14px; background:var(--bg-surface); border:1px solid var(--border-color); border-left:4px solid var(--accent); border-radius:6px;">
+            <div style="font-weight:600; font-size:0.9rem; margin-bottom:4px;">💡 ${i.observation}</div>
+            <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:6px;">${i.likely_explanation}</div>
+            <div style="font-size:0.8rem; color:var(--accent);"><strong>Recommendation:</strong> ${i.recommended_action}</div>
+          </div>
+        `).join('');
+      }
+    }
+
+    // Render alert rules
+    const rulesTbody = document.getElementById('alert-rules-tbody');
+    if (rulesTbody && data.rules) {
+      rulesTbody.innerHTML = data.rules.map(r => `
+        <tr>
+          <td><strong>${r.name}</strong></td>
+          <td><span class="badge badge-secondary">${r.category}</span></td>
+          <td><code>${r.metric_name}</code></td>
+          <td>${r.operator} ${r.threshold}</td>
+          <td>${r.duration_seconds}s</td>
+          <td><span class="badge ${r.severity === 'critical' ? 'badge-danger' : 'badge-warning'}">${r.severity}</span></td>
+          <td><span class="badge badge-accepted">Active</span></td>
+        </tr>
+      `).join('');
+    }
+  } catch (err) {
+    console.warn('Failed to load alerts data:', err);
+  }
+}
+
+async function acknowledgeAlert(alertId) {
+  try {
+    const res = await fetch(`/api/v1/observatory/alerts/${alertId}/acknowledge`, { method: 'POST' });
+    if (res.ok) {
+      loadAlertsData();
+    }
+  } catch (err) {
+    console.warn('Failed to acknowledge alert:', err);
+  }
+}
+
+async function loadHistoricalAnalytics() {
+  const resSelect = document.getElementById('history-resolution');
+  const resolution = resSelect ? resSelect.value : 'minute';
+  try {
+    const res = await fetch(`/api/v1/observatory/metrics?resolution=${resolution}&limit=200`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.data) {
+      drawLiveCanvasChart('history-chart', data.data);
+    }
+  } catch (err) {
+    console.warn('Failed to load historical analytics:', err);
+  }
+}
+
+// Auto-refresh management
+function setupAutoRefresh() {
+  const toggle = document.getElementById('auto-refresh-toggle');
+  if (refreshInterval) clearInterval(refreshInterval);
+
+  if (toggle && toggle.checked) {
+    refreshInterval = setInterval(() => {
+      fetchObservatoryData();
+      if (currentTab === 'machines') loadSelectedMachine();
+    }, 5000);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const toggle = document.getElementById('auto-refresh-toggle');
+  if (toggle) toggle.addEventListener('change', setupAutoRefresh);
+  setupAutoRefresh();
+  fetchObservatoryData();
+  if (currentTab === 'machines') loadSelectedMachine();
+});
+</script>
+
+<style>
+@keyframes pulse {
+  0% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.tab-btn {
+  white-space: nowrap;
+  font-weight: 500;
+  border-radius: 6px;
+  padding: 6px 14px;
+}
+.data-table th, .data-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.85rem;
+}
+.data-table th {
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-muted);
+  font-weight: 600;
+  text-align: left;
+}
+</style>
+{% endblock %}

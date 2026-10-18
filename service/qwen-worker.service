@@ -1,0 +1,50 @@
+[Unit]
+Description=Qwen Collective VPS Execution Worker Daemon
+Documentation=https://github.com/mattcallaway/qwen_cluster_interface
+After=network-online.target tailscaled.service
+Wants=network-online.target
+StartLimitIntervalSec=300s
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=qwen-worker
+Group=qwen-worker
+
+# Working Directory & Environment
+WorkingDirectory=/opt/qwen-collective/source
+EnvironmentFile=/etc/qwen-collective/worker.env
+ExecStart=/opt/qwen-collective/.venv/bin/python -m vps_agent
+
+# Lifecycle & Restart Management (Bounded retry behavior prevents crash loops)
+Restart=on-failure
+RestartSec=10s
+TimeoutStopSec=15s
+KillMode=mixed
+
+# Journal Logging (Structured systemd logs without secret exposure)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=qwen-worker
+
+# Sandboxing & Hardening (Tailored for unprivileged worker invoking scoped root launcher)
+# ProtectSystem=full protects /usr, /boot, /etc as read-only while permitting ReadWritePaths
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/opt/qwen-collective/data /opt/qwen-collective/workspaces /tmp
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictRealtime=true
+LockPersonality=true
+
+# CRITICAL: NoNewPrivileges MUST NOT be set to 'yes' because qwen-worker requires
+# sudo setuid transition to invoke /usr/local/bin/qwen-sandbox-runner under restricted sudoers.
+NoNewPrivileges=no
+
+# No listening network ports exposed by the worker
+PrivateDevices=true
+
+[Install]
+WantedBy=multi-user.target

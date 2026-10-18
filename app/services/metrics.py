@@ -48,6 +48,10 @@ STATUS_ASSESSMENTS = [
     "on_target", "ahead_of_forecast", "behind_forecast", "at_risk", "insufficient_data"
 ]
 
+VALID_VERIFICATION_STATUSES = [
+    "reported", "validated", "verified", "accepted", "unverified", "rejected"
+]
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -277,8 +281,8 @@ def record_observation(
     except (ValueError, TypeError):
         raise ValidationError("Observation value must be a valid numeric value.")
 
-    if verification_status not in ("unverified", "verified", "rejected"):
-        raise ValidationError(f"Invalid verification_status '{verification_status}'.")
+    if verification_status not in VALID_VERIFICATION_STATUSES:
+        raise ValidationError(f"Invalid verification_status '{verification_status}'. Allowed: {VALID_VERIFICATION_STATUSES}")
 
     meas_time = measured_at or _now()
     _parse_iso(meas_time)
@@ -289,6 +293,17 @@ def record_observation(
     clean_evidence = _clean(evidence_reference, "Evidence reference", 500)
     clean_notes = _clean(notes, "Notes", TEXT_MAX)
     clean_creator = _clean(created_by, "Created by", NAME_MAX, required=True)
+
+    # Map lifecycle concepts into SQLite schema allowed CHECK values ('unverified', 'verified', 'rejected')
+    db_status = verification_status
+    if verification_status in ("reported", "validated"):
+        db_status = "unverified"
+        if f"[{verification_status.capitalize()}" not in clean_notes:
+            clean_notes = f"[{verification_status.capitalize()}] " + clean_notes
+    elif verification_status == "accepted":
+        db_status = "verified"
+        if "[Accepted" not in clean_notes:
+            clean_notes = "[Accepted] " + clean_notes
 
     obs_id = f"obs_{uuid.uuid4().hex[:12]}"
 
@@ -308,7 +323,7 @@ def record_observation(
             """,
             (
                 obs_id, metric_id, val, meas_time, rec_time, clean_source,
-                clean_method, verification_status, clean_evidence,
+                clean_method, db_status, clean_evidence,
                 clean_notes, clean_creator
             )
         )
@@ -351,6 +366,16 @@ def record_observation_correction(
     clean_notes = _clean(notes, "Notes", TEXT_MAX)
     clean_creator = _clean(created_by, "Created by", NAME_MAX, required=True)
 
+    db_status = verification_status
+    if verification_status in ("reported", "validated"):
+        db_status = "unverified"
+        if f"[{verification_status.capitalize()}" not in clean_notes:
+            clean_notes = f"[{verification_status.capitalize()}] " + clean_notes
+    elif verification_status == "accepted":
+        db_status = "verified"
+        if "[Accepted" not in clean_notes:
+            clean_notes = "[Accepted] " + clean_notes
+
     obs_id = f"obs_{uuid.uuid4().hex[:12]}"
 
     with db_transaction() as conn:
@@ -373,7 +398,7 @@ def record_observation_correction(
             """,
             (
                 obs_id, metric_id, val, meas_time, rec_time, clean_source,
-                clean_method, verification_status, clean_evidence,
+                clean_method, db_status, clean_evidence,
                 clean_notes, supersedes_id, clean_reason, clean_creator
             )
         )
@@ -387,7 +412,46 @@ def get_observation(observation_id: str) -> Dict[str, Any]:
         row = conn.execute("SELECT * FROM metric_observations WHERE id = ?", (observation_id,)).fetchone()
         if not row:
             raise NotFound("Observation not found.")
-        return dict(row)
+        d = dict(row)
+        n = d.get("notes") or ""
+        if "[Accepted" in n:
+            d["lifecycle_state"] = "accepted"
+        elif "[Validated" in n:
+            d["lifecycle_state"] = "validated"
+        elif d["verification_status"] == "verified":
+            d["lifecycle_state"] = "verified"
+        else:
+            d["lifecycle_state"] = "reported"
+        return d
+
+
+def accept_observation(
+    observation_id: str,
+    reviewer: str = "admin",
+    notes: str = "",
+) -> Dict[str, Any]:
+    """
+    Promote an observation to 'accepted' under administrative review via an auditable superseding correction.
+    Preserves database immutability trigger (trg_observations_no_update).
+    """
+    clean_reviewer = _clean(reviewer, "Reviewer", NAME_MAX, required=True)
+    obs = get_observation(observation_id)
+    acceptance_reason = f"Accepted under administrative review by {clean_reviewer}"
+    acceptance_note = (obs["notes"] or "") + f" [Accepted by {clean_reviewer}" + (f": {notes}" if notes else "") + "]"
+    return record_observation_correction(
+        metric_id=obs["metric_id"],
+        supersedes_id=observation_id,
+        correction_reason=acceptance_reason,
+        value=obs["value"],
+        measured_at=obs["measured_at"],
+        source=obs["source"],
+        collection_method=obs["collection_method"],
+        verification_status="accepted",
+        evidence_reference=obs["evidence_reference"],
+        notes=acceptance_note,
+        created_by=clean_reviewer,
+    )
+
 
 
 def list_metric_observations(

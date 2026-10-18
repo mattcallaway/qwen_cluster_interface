@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from app.config import settings
 from app.database import db_transaction, get_db_connection
 from app.services import knowledge_meta as km_svc
+from app.services.node_health import effective_health
 from app.services.knowledge import write_note_atomic
 from app.services.projects import NotFound, ValidationError, NAME_MAX, TEXT_MAX
 
@@ -219,6 +220,36 @@ def sync_from_existing_machines_and_vps() -> None:
                 ))
                 ensure_default_capabilities(m_id)
 
+        # 3. Sync from infrastructure_nodes back to machines table
+        infra_nodes = conn.execute("SELECT * FROM infrastructure_nodes WHERE id <> 'controller-local'").fetchall()
+        for node in infra_nodes:
+            m_exists = conn.execute("SELECT id FROM machines WHERE id = ?", (node["id"],)).fetchone()
+            role_mapping = "distributed_worker" if node["role"] in ("inference_node", "compute_worker") else "vps_worker"
+            ip_val = node["tailscale_ip"] or node["ip_address"] or "127.0.0.1"
+            if not m_exists:
+                conn.execute("""
+                    INSERT INTO machines (
+                        id, display_name, hostname, ip_address, connection_type,
+                        os_info, cpu_info, ram_total_mb, ram_avail_mb, disk_info,
+                        role, connection_status, last_checked_at, last_successful_connection,
+                        capabilities_json, notes, is_enabled, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, 'api', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    node["id"], node["name"], node["hostname"], ip_val,
+                    f"{node['os_name']} {node['os_version']}".strip(), node["cpu_info"] or "",
+                    node["installed_ram_mb"], node["available_ram_mb"],
+                    f"{node['storage_total_gb']} GB" if node["storage_total_gb"] else "",
+                    role_mapping, node["health_status"], node["last_contact_at"], node["last_contact_at"],
+                    node["installed_runtimes_json"] or "[]", node["notes"] or "", node["is_enabled"], now, now
+                ))
+            else:
+                conn.execute("""
+                    UPDATE machines SET
+                        display_name = ?, connection_status = ?, last_checked_at = ?,
+                        ram_avail_mb = ?, updated_at = ?
+                    WHERE id = ?
+                """, (node["name"], node["health_status"], node["last_contact_at"], node["available_ram_mb"], now, node["id"]))
+
 
 def register_or_update_node(
     node_id: str,
@@ -304,6 +335,8 @@ def get_node(node_id: str) -> Optional[Dict[str, Any]]:
         d["installed_runtimes"] = json.loads(d.get("installed_runtimes_json") or "[]")
         d["registered_services"] = json.loads(d.get("registered_services_json") or "[]")
         d["available_models"] = json.loads(d.get("available_models_json") or "[]")
+        d["health_status_recorded"] = d.get("health_status")
+        d["health_status"] = effective_health(d.get("role"), d.get("health_status"), d.get("last_contact_at"))
         d["capability_restrictions"] = json.loads(d.get("capability_restrictions_json") or "{}")
         return d
 
@@ -321,6 +354,8 @@ def list_nodes(role: Optional[str] = None) -> List[Dict[str, Any]]:
             d["installed_runtimes"] = json.loads(d.get("installed_runtimes_json") or "[]")
             d["registered_services"] = json.loads(d.get("registered_services_json") or "[]")
             d["available_models"] = json.loads(d.get("available_models_json") or "[]")
+            d["health_status_recorded"] = d.get("health_status")
+            d["health_status"] = effective_health(d.get("role"), d.get("health_status"), d.get("last_contact_at"))
             d["capability_restrictions"] = json.loads(d.get("capability_restrictions_json") or "{}")
             res.append(d)
         return res

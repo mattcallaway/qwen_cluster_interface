@@ -28,6 +28,9 @@ class Settings(BaseModel):
     session_expire_hours: int = int(os.getenv("QC_SESSION_EXPIRE_HOURS", "72"))
     
     environment: str = os.getenv("QC_ENV", "development").lower()
+
+    # Project Orchestrator background engine (opt-in; the UI/API are always available, the engine loop only runs when enabled)
+    orchestrator_enabled: bool = os.getenv("QC_ORCHESTRATOR_ENABLED", "0").lower() in ("1", "true", "yes")
     
     # Paths derived from data_dir
     @property
@@ -37,6 +40,12 @@ class Settings(BaseModel):
     @property
     def knowledge_dir(self) -> Path:
         return self.data_dir / "knowledge"
+
+    @property
+    def evidence_dir(self) -> Path:
+        p = self.data_dir / "evidence"
+        p.mkdir(parents=True, exist_ok=True)
+        return p
 
 settings = Settings()
 

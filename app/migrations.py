@@ -871,6 +871,472 @@ _M7: List[str] = [
     """,
 ]
 
+# ---------------------------------------------------------------------------
+# Migration 8 — Worker Enrollment Security & Chat Project Context (Integration Repair)
+# ---------------------------------------------------------------------------
+_M8: List[str] = [
+    # 1. Administrator-Issued Worker Enrollment Tokens
+    """
+    CREATE TABLE worker_enrollment_tokens (
+        id TEXT PRIMARY KEY,
+        token_hash TEXT NOT NULL UNIQUE,
+        token_prefix TEXT NOT NULL,
+        allowed_node_id TEXT,
+        created_by TEXT NOT NULL DEFAULT 'admin',
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        used_at TEXT,
+        used_by_node_id TEXT,
+        revoked INTEGER NOT NULL DEFAULT 0 CHECK (revoked IN (0, 1))
+    )
+    """,
+    "CREATE INDEX idx_enrollment_tokens_hash ON worker_enrollment_tokens(token_hash)",
+    "CREATE INDEX idx_enrollment_tokens_status ON worker_enrollment_tokens(revoked, used_at, expires_at)",
+
+    # 2. Chat Conversation to Project Association
+    "ALTER TABLE chat_conversations ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL",
+    "CREATE INDEX idx_chat_conv_project ON chat_conversations(project_id)",
+]
+
+# --- Milestone 9 (Autonomous Project Orchestrator) ---------------------------
+# Additive only: no existing table is altered. Orchestration sits ON TOP of the existing
+# projects / project_paths / path_stages / tasks / deliverables / worker_* tables.
+_M9: List[str] = [
+    # One orchestration run per project (durable state machine; optimistic 'version' for idempotent transitions)
+    """
+    CREATE TABLE orchestration_runs (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL UNIQUE REFERENCES projects(id),
+        state TEXT NOT NULL DEFAULT 'DRAFT' CHECK (state IN (
+            'DRAFT','ANALYZING','AWAITING_CLARIFICATION','PLANNING','AWAITING_PLAN_APPROVAL','READY',
+            'RUNNING','EVALUATING','COMPLETED','PAUSED','BLOCKED','REPLANNING','FAILED','CANCELLED')),
+        resume_state TEXT,
+        autonomy_level INTEGER NOT NULL DEFAULT 1 CHECK (autonomy_level BETWEEN 0 AND 3),
+        intake_json TEXT NOT NULL DEFAULT '{}',
+        analysis_json TEXT NOT NULL DEFAULT '{}',
+        current_revision_id TEXT,
+        block_reason TEXT NOT NULL DEFAULT '',
+        planning_error TEXT NOT NULL DEFAULT '',
+        version INTEGER NOT NULL DEFAULT 0,
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        started_at TEXT,
+        completed_at TEXT
+    )
+    """,
+    "CREATE INDEX idx_orch_runs_state ON orchestration_runs(state)",
+
+    # Immutable plan revisions: once approved/superseded the plan body can never change.
+    """
+    CREATE TABLE orchestration_plan_revisions (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL REFERENCES orchestration_runs(id),
+        revision_number INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'proposed' CHECK (status IN ('proposed','approved','superseded','rejected')),
+        source TEXT NOT NULL CHECK (source IN ('model','template','manual_edit')),
+        plan_json TEXT NOT NULL,
+        validation_json TEXT NOT NULL DEFAULT '{}',
+        critique_json TEXT NOT NULL DEFAULT '{}',
+        model_info_json TEXT NOT NULL DEFAULT '{}',
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        approved_by TEXT,
+        approved_at TEXT,
+        UNIQUE (run_id, revision_number)
+    )
+    """,
+    """
+    CREATE TRIGGER trg_orch_plan_immutable BEFORE UPDATE OF plan_json, source, revision_number, run_id
+    ON orchestration_plan_revisions
+    WHEN OLD.status IN ('approved','superseded')
+    BEGIN
+        SELECT RAISE(ABORT, 'approved plan revisions are immutable; create a new revision');
+    END
+    """,
+    """
+    CREATE TRIGGER trg_orch_plan_no_delete BEFORE DELETE ON orchestration_plan_revisions
+    BEGIN
+        SELECT RAISE(ABORT, 'plan revisions cannot be deleted');
+    END
+    """,
+
+    # Append-only audit log
+    """
+    CREATE TABLE orchestration_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id TEXT NOT NULL REFERENCES orchestration_runs(id),
+        project_id TEXT NOT NULL,
+        ts TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        previous_state TEXT,
+        new_state TEXT,
+        actor TEXT NOT NULL,
+        reason TEXT NOT NULL DEFAULT '',
+        task_id TEXT,
+        stage_id TEXT,
+        detail_json TEXT NOT NULL DEFAULT '{}'
+    )
+    """,
+    "CREATE INDEX idx_orch_events_run ON orchestration_events(run_id, id)",
+    """
+    CREATE TRIGGER trg_orch_events_no_update BEFORE UPDATE ON orchestration_events
+    BEGIN SELECT RAISE(ABORT, 'orchestration events are append-only'); END
+    """,
+    """
+    CREATE TRIGGER trg_orch_events_no_delete BEFORE DELETE ON orchestration_events
+    BEGIN SELECT RAISE(ABORT, 'orchestration events are append-only'); END
+    """,
+
+    # Human approval gates (specific to the proposed action)
+    """
+    CREATE TABLE orchestration_approvals (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL REFERENCES orchestration_runs(id),
+        kind TEXT NOT NULL CHECK (kind IN ('plan','task','budget','deliverable','action','clarification')),
+        subject_id TEXT NOT NULL,
+        requested_action TEXT NOT NULL,
+        risk TEXT NOT NULL DEFAULT 'low' CHECK (risk IN ('low','medium','high')),
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','denied','superseded')),
+        requested_at TEXT NOT NULL,
+        decided_by TEXT,
+        decided_at TEXT,
+        rationale TEXT NOT NULL DEFAULT ''
+    )
+    """,
+    "CREATE UNIQUE INDEX ux_orch_approval_pending ON orchestration_approvals(run_id, kind, subject_id) WHERE status = 'pending'",
+    "CREATE INDEX idx_orch_approvals_run ON orchestration_approvals(run_id, status)",
+
+    # Plan task -> real task mapping, per-task orchestration metadata
+    """
+    CREATE TABLE orchestration_tasks (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL REFERENCES orchestration_runs(id),
+        revision_id TEXT NOT NULL REFERENCES orchestration_plan_revisions(id),
+        plan_key TEXT NOT NULL,
+        stage_id TEXT REFERENCES path_stages(id),
+        title TEXT NOT NULL,
+        agent_role TEXT NOT NULL,
+        action_json TEXT NOT NULL,
+        acceptance_json TEXT NOT NULL DEFAULT '{}',
+        required_capabilities_json TEXT NOT NULL DEFAULT '[]',
+        preferred_models_json TEXT NOT NULL DEFAULT '[]',
+        allowed_nodes_json TEXT NOT NULL DEFAULT '[]',
+        priority INTEGER NOT NULL DEFAULT 3,
+        max_attempts INTEGER NOT NULL DEFAULT 2,
+        timeout_seconds INTEGER NOT NULL DEFAULT 600,
+        approval_mode TEXT NOT NULL DEFAULT 'auto' CHECK (approval_mode IN ('auto','required')),
+        risk TEXT NOT NULL DEFAULT 'low' CHECK (risk IN ('low','medium','high')),
+        state TEXT NOT NULL DEFAULT 'pending' CHECK (state IN (
+            'pending','dispatched','accepted','failed','blocked','cancelled','superseded')),
+        attempts INTEGER NOT NULL DEFAULT 0,
+        current_task_id TEXT REFERENCES tasks(id),
+        dispatched_node TEXT,
+        dispatched_model TEXT,
+        dispatched_at TEXT,
+        backoff_until TEXT,
+        failure_class TEXT,
+        last_error TEXT NOT NULL DEFAULT '',
+        accepted_result_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (run_id, revision_id, plan_key)
+    )
+    """,
+    "CREATE INDEX idx_orch_tasks_run ON orchestration_tasks(run_id, state)",
+    "CREATE INDEX idx_orch_tasks_current ON orchestration_tasks(current_task_id)",
+    """
+    CREATE TABLE orchestration_task_deps (
+        orch_task_id TEXT NOT NULL REFERENCES orchestration_tasks(id) ON DELETE CASCADE,
+        depends_on_id TEXT NOT NULL REFERENCES orchestration_tasks(id) ON DELETE CASCADE,
+        PRIMARY KEY (orch_task_id, depends_on_id),
+        CHECK (orch_task_id <> depends_on_id)
+    )
+    """,
+    # One row per execution attempt (retries create new underlying tasks; history is preserved)
+    """
+    CREATE TABLE orchestration_attempts (
+        id TEXT PRIMARY KEY,
+        orch_task_id TEXT NOT NULL REFERENCES orchestration_tasks(id),
+        attempt_number INTEGER NOT NULL,
+        task_id TEXT REFERENCES tasks(id),
+        node_id TEXT,
+        model TEXT,
+        started_at TEXT NOT NULL,
+        finished_at TEXT,
+        outcome TEXT CHECK (outcome IN ('accepted','rejected','failed','timeout','cancelled')),
+        failure_class TEXT,
+        evaluation_json TEXT NOT NULL DEFAULT '{}',
+        UNIQUE (orch_task_id, attempt_number)
+    )
+    """,
+
+    # Central artifact metadata (files themselves stay in the existing evidence directory)
+    """
+    CREATE TABLE artifact_metadata (
+        id TEXT PRIMARY KEY,
+        run_id TEXT REFERENCES orchestration_runs(id),
+        project_id TEXT NOT NULL REFERENCES projects(id),
+        task_id TEXT REFERENCES tasks(id),
+        orch_task_id TEXT REFERENCES orchestration_tasks(id),
+        worker_id TEXT,
+        filename TEXT NOT NULL,
+        mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+        size_bytes INTEGER NOT NULL,
+        sha256 TEXT NOT NULL,
+        storage_path TEXT NOT NULL,
+        provenance TEXT NOT NULL CHECK (provenance IN ('worker_telemetry','model_output','controller_generated','user_supplied')),
+        validation_state TEXT NOT NULL DEFAULT 'pending' CHECK (validation_state IN ('pending','valid','invalid')),
+        validation_detail TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        UNIQUE (storage_path)
+    )
+    """,
+    "CREATE INDEX idx_artifact_meta_project ON artifact_metadata(project_id)",
+
+    # Budgets and usage counters
+    """
+    CREATE TABLE resource_budgets (
+        run_id TEXT PRIMARY KEY REFERENCES orchestration_runs(id),
+        max_tasks INTEGER NOT NULL DEFAULT 40,
+        max_concurrent INTEGER NOT NULL DEFAULT 2,
+        max_inference_requests INTEGER NOT NULL DEFAULT 30,
+        max_tokens INTEGER NOT NULL DEFAULT 60000,
+        max_runtime_seconds INTEGER NOT NULL DEFAULT 7200,
+        max_retries_total INTEGER NOT NULL DEFAULT 12,
+        max_storage_bytes INTEGER NOT NULL DEFAULT 104857600,
+        used_tasks INTEGER NOT NULL DEFAULT 0,
+        used_inference_requests INTEGER NOT NULL DEFAULT 0,
+        used_tokens INTEGER NOT NULL DEFAULT 0,
+        used_retries INTEGER NOT NULL DEFAULT 0,
+        used_storage_bytes INTEGER NOT NULL DEFAULT 0,
+        used_runtime_seconds REAL NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL
+    )
+    """,
+
+    # Inference accounting (planning, critique, task and evaluation requests routed through workers)
+    """
+    CREATE TABLE model_inference_requests (
+        id TEXT PRIMARY KEY,
+        run_id TEXT REFERENCES orchestration_runs(id),
+        orch_task_id TEXT REFERENCES orchestration_tasks(id),
+        purpose TEXT NOT NULL CHECK (purpose IN ('analysis','planning','plan_repair','plan_critique','task','evaluation')),
+        node_id TEXT NOT NULL,
+        model TEXT NOT NULL,
+        task_id TEXT REFERENCES tasks(id),
+        status TEXT NOT NULL DEFAULT 'submitted' CHECK (status IN ('submitted','completed','failed','cancelled','timeout')),
+        prompt_chars INTEGER NOT NULL DEFAULT 0,
+        prompt_tokens INTEGER,
+        gen_tokens INTEGER,
+        latency_s REAL,
+        error_class TEXT,
+        response_text TEXT,
+        created_at TEXT NOT NULL,
+        completed_at TEXT
+    )
+    """,
+    "CREATE INDEX idx_model_inf_run ON model_inference_requests(run_id, status)",
+
+    # Single-holder scheduler lease (prevents two scheduler instances dispatching the same work)
+    """
+    CREATE TABLE orchestration_scheduler_lock (
+        name TEXT PRIMARY KEY,
+        holder TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE orchestration_checkpoints (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id TEXT NOT NULL REFERENCES orchestration_runs(id),
+        ts TEXT NOT NULL,
+        state TEXT NOT NULL,
+        snapshot_json TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_orch_checkpoints_run ON orchestration_checkpoints(run_id, id)",
+]
+
+# --- Milestone 10 (System Observatory: Telemetry, Rollups, Inference Accounting & Alerting) ---
+_M10: List[str] = [
+    # 1. Telemetry Samples (Raw time-series samples from workers and controller)
+    """
+    CREATE TABLE telemetry_samples (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        node_id TEXT NOT NULL REFERENCES infrastructure_nodes(id) ON DELETE CASCADE,
+        timestamp TEXT NOT NULL,
+        cpu_percent REAL,
+        per_core_json TEXT NOT NULL DEFAULT '[]',
+        cpu_freq_mhz REAL,
+        load_1m REAL,
+        load_5m REAL,
+        load_15m REAL,
+        ram_total_mb INTEGER,
+        ram_used_mb INTEGER,
+        ram_available_mb INTEGER,
+        ram_percent REAL,
+        swap_total_mb INTEGER,
+        swap_used_mb INTEGER,
+        swap_percent REAL,
+        disk_total_gb REAL,
+        disk_used_gb REAL,
+        disk_free_gb REAL,
+        disk_read_mbs REAL,
+        disk_write_mbs REAL,
+        disk_iops REAL,
+        net_rx_kbs REAL,
+        net_tx_kbs REAL,
+        cpu_temp_c REAL,
+        battery_percent REAL,
+        is_ac_online INTEGER NOT NULL DEFAULT -1,
+        worker_res_mb REAL,
+        ollama_res_mb REAL,
+        worker_cpu_percent REAL,
+        ollama_cpu_percent REAL,
+        gpu_info_json TEXT NOT NULL DEFAULT '{}',
+        latency_to_controller_ms REAL,
+        os_uptime_s INTEGER,
+        worker_service_status TEXT NOT NULL DEFAULT 'running',
+        ollama_service_status TEXT NOT NULL DEFAULT 'unknown'
+    )
+    """,
+    "CREATE INDEX idx_telemetry_samples_node_ts ON telemetry_samples(node_id, timestamp)",
+    "CREATE INDEX idx_telemetry_samples_ts ON telemetry_samples(timestamp)",
+
+    # 2. Telemetry Minute Rollups (30-day retention)
+    """
+    CREATE TABLE telemetry_rollups_minute (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        node_id TEXT NOT NULL REFERENCES infrastructure_nodes(id) ON DELETE CASCADE,
+        bucket_time TEXT NOT NULL,
+        sample_count INTEGER NOT NULL,
+        cpu_avg REAL,
+        cpu_min REAL,
+        cpu_max REAL,
+        ram_used_avg REAL,
+        ram_used_min REAL,
+        ram_used_max REAL,
+        swap_used_avg REAL,
+        swap_used_min REAL,
+        swap_used_max REAL,
+        temp_avg REAL,
+        temp_max REAL,
+        net_rx_avg REAL,
+        net_tx_avg REAL,
+        disk_read_avg REAL,
+        disk_write_avg REAL,
+        latency_avg REAL,
+        UNIQUE (node_id, bucket_time)
+    )
+    """,
+    "CREATE INDEX idx_telemetry_min_bucket ON telemetry_rollups_minute(bucket_time)",
+    "CREATE INDEX idx_telemetry_min_node ON telemetry_rollups_minute(node_id, bucket_time)",
+
+    # 3. Telemetry Hourly Rollups (1-year retention)
+    """
+    CREATE TABLE telemetry_rollups_hour (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        node_id TEXT NOT NULL REFERENCES infrastructure_nodes(id) ON DELETE CASCADE,
+        bucket_time TEXT NOT NULL,
+        sample_count INTEGER NOT NULL,
+        cpu_avg REAL,
+        cpu_min REAL,
+        cpu_max REAL,
+        ram_used_avg REAL,
+        ram_used_min REAL,
+        ram_used_max REAL,
+        swap_used_avg REAL,
+        swap_used_min REAL,
+        swap_used_max REAL,
+        temp_avg REAL,
+        temp_max REAL,
+        net_rx_avg REAL,
+        net_tx_avg REAL,
+        disk_read_avg REAL,
+        disk_write_avg REAL,
+        latency_avg REAL,
+        UNIQUE (node_id, bucket_time)
+    )
+    """,
+    "CREATE INDEX idx_telemetry_hour_bucket ON telemetry_rollups_hour(bucket_time)",
+    "CREATE INDEX idx_telemetry_hour_node ON telemetry_rollups_hour(node_id, bucket_time)",
+
+    # 4. Comprehensive Inference Telemetry (authoritative engine token accounting)
+    """
+    CREATE TABLE inference_telemetry (
+        id TEXT PRIMARY KEY,
+        request_id TEXT NOT NULL,
+        run_id TEXT REFERENCES orchestration_runs(id) ON DELETE SET NULL,
+        project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+        task_id TEXT REFERENCES tasks(id) ON DELETE SET NULL,
+        node_id TEXT NOT NULL REFERENCES infrastructure_nodes(id) ON DELETE CASCADE,
+        model TEXT NOT NULL,
+        provider TEXT NOT NULL DEFAULT 'ollama',
+        status TEXT NOT NULL DEFAULT 'success' CHECK (status IN ('success', 'error', 'timeout')),
+        prompt_tokens INTEGER NOT NULL DEFAULT 0,
+        gen_tokens INTEGER NOT NULL DEFAULT 0,
+        total_tokens INTEGER NOT NULL DEFAULT 0,
+        prompt_eval_duration_ms REAL NOT NULL DEFAULT 0.0,
+        eval_duration_ms REAL NOT NULL DEFAULT 0.0,
+        load_duration_ms REAL NOT NULL DEFAULT 0.0,
+        total_duration_ms REAL NOT NULL DEFAULT 0.0,
+        tokens_per_second REAL NOT NULL DEFAULT 0.0,
+        time_to_first_token_ms REAL,
+        error_category TEXT,
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        completed_at TEXT
+    )
+    """,
+    "CREATE INDEX idx_inf_tel_node ON inference_telemetry(node_id, created_at)",
+    "CREATE INDEX idx_inf_tel_model ON inference_telemetry(model, created_at)",
+    "CREATE INDEX idx_inf_tel_project ON inference_telemetry(project_id, created_at)",
+    "CREATE INDEX idx_inf_tel_task ON inference_telemetry(task_id)",
+
+    # 5. Alert Definitions / Rules
+    """
+    CREATE TABLE observatory_alert_rules (
+        id TEXT PRIMARY KEY,
+        name TEXT UNIQUE NOT NULL,
+        category TEXT NOT NULL CHECK (category IN (
+            'cpu', 'memory', 'swap', 'temperature', 'storage', 'worker', 'model', 'controller'
+        )),
+        metric_name TEXT NOT NULL,
+        threshold REAL NOT NULL,
+        operator TEXT NOT NULL CHECK (operator IN ('>', '>=', '<', '<=', '==', '!=')),
+        duration_seconds INTEGER NOT NULL DEFAULT 30,
+        severity TEXT NOT NULL DEFAULT 'warning' CHECK (severity IN ('info', 'warning', 'critical')),
+        is_enabled INTEGER NOT NULL DEFAULT 1 CHECK (is_enabled IN (0, 1)),
+        created_at TEXT NOT NULL
+    )
+    """,
+
+    # 6. Active and Historical Alert Instances
+    """
+    CREATE TABLE observatory_alerts (
+        id TEXT PRIMARY KEY,
+        rule_name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        node_id TEXT REFERENCES infrastructure_nodes(id) ON DELETE CASCADE,
+        severity TEXT NOT NULL CHECK (severity IN ('info', 'warning', 'critical')),
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        metrics_json TEXT NOT NULL DEFAULT '{}',
+        state TEXT NOT NULL DEFAULT 'firing' CHECK (state IN ('firing', 'acknowledged', 'resolved')),
+        fired_at TEXT NOT NULL,
+        acknowledged_at TEXT,
+        acknowledged_by TEXT,
+        resolved_at TEXT,
+        cooldown_until TEXT
+    )
+    """,
+    "CREATE INDEX idx_obs_alerts_state ON observatory_alerts(state, severity)",
+    "CREATE INDEX idx_obs_alerts_node ON observatory_alerts(node_id, state)",
+    "CREATE INDEX idx_obs_alerts_fired ON observatory_alerts(fired_at)",
+]
+
 MIGRATIONS: List[Migration] = [
     (1, "project intelligence foundation", _M1),
     (2, "execution and evidence", _M2),
@@ -879,6 +1345,9 @@ MIGRATIONS: List[Migration] = [
     (5, "historical learning and performance evaluation", _M5),
     (6, "infrastructure awareness and capability registry", _M6),
     (7, "worker communication, task leasing, and execution history", _M7),
+    (8, "worker enrollment security and chat project context", _M8),
+    (9, "autonomous project orchestrator", _M9),
+    (10, "system observatory telemetry, rollups, inference accounting, and alerting", _M10),
 ]
 
 
