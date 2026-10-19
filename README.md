@@ -1,7 +1,7 @@
 # Qwen Collective
-### A Sovereign, Distributed AI Coordination & Execution Platform
+### A Sovereign, Distributed AI Coordination & Autonomous Execution Platform
 
-[![Tests](https://img.shields.io/badge/Tests-233%20Passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-470%2B%20Passed-brightgreen.svg)]()
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20VPS-blue.svg)]()
 [![Python](https://img.shields.io/badge/Python-3.12%2B-blue.svg)]()
 [![FastAPI](https://img.shields.io/badge/FastAPI-Production%20Hardened-green.svg)]()
@@ -11,11 +11,11 @@
 
 > *"Use what we have. Understand what we control. Keep what we learn. Expand without rebuilding."*
 
-**Qwen Collective** transforms heterogeneous computing hardware—an always-on Windows coordination controller, local low-power Linux compute nodes running quantized Qwen inference models, and an isolated cloud VPS operational environment—into a sovereign, distributed AI operating system.
+**Qwen Collective** transforms heterogeneous computing hardware—an always-on Windows coordination controller, local low-power Linux compute nodes running quantized open models, and an isolated cloud VPS operational environment—into a sovereign, distributed AI operating system.
 
 It bridges the gap between **autonomous reasoning** and **safe, deterministic real-world execution**:
-- The **Windows Controller** provides authoritative coordination, strict human approval gates, persistent memory, and live infrastructure self-awareness.
-- **Local Qwen Nodes** provide local intelligence, planning, task decomposition, and code drafting without relying on cloud APIs.
+- The **Windows Controller** provides authoritative coordination, strict human approval gates, continuous web research, content-addressable artifact management, and live infrastructure self-awareness.
+- **Local Inference Nodes** provide local intelligence, planning, task decomposition, and code drafting without relying on cloud APIs.
 - The **Remote VPS Operational Node** runs approved programs, recurring scheduled jobs, browser automation, and data pipelines independently of AI inference.
 
 ---
@@ -26,11 +26,12 @@ It bridges the gap between **autonomous reasoning** and **safe, deterministic re
                                +--------------------------------------------+
                                |        AUTHORITATIVE COORDINATOR           |
                                |    Windows Controller (Port 8000/8010)     |
-                               |  - Projects, Paths, Stages, Deliverables   |
+                               |  - Autonomous Multi-Stage Project Engine   |
+                               |  - Unified Deliverables & CAS Artifacts    |
+                               |  - Web Research & Citation Audit Ledger    |
                                |  - Infrastructure & Capability Registry    |
-                               |  - Human Approval Gates & Audit Logs       |
+                               |  - System Observatory & Real-time Telemetry|
                                |  - SQLite WAL + Obsidian Markdown Vault    |
-                               |  - Token-Budgeted Architecture Context     |
                                +--------------------------------------------+
                                        /                             \
                 Tailscale / OpenSSH   /                               \  Tailscale HTTPS / Pull Protocol
@@ -48,37 +49,41 @@ It bridges the gap between **autonomous reasoning** and **safe, deterministic re
 
 ---
 
-## 🚀 Key Highlights & Capabilities
+## 🚀 Key Subsystems & Highlights
 
-### 1. Infrastructure Self-Awareness & Capability Registry
-- **Persistent Infrastructure Topology**: Live inventory of CPU cores, exact physical and available RAM (via Windows `GlobalMemoryStatusEx`), storage free space, active system services, and installed Python runtimes.
-- **Three-Tier Capability Separation**:
-  - *Declared*: What configuration or admins propose a node should support.
-  - *Discovered*: Software, packages, and runtimes actually detected via read-only inspection.
-  - *Verified*: Operational functions proven through side-effect-free test probes.
-- **15 Structured Capability Categories**: AI Inference, Web Retrieval, Search, Browser Automation, Python Execution, Approved Shell, File Processing, Document Extraction, Data Transformation, API Integrations, Scheduled Execution, Persistent Services, Monitoring, Software Deployment, and Reporting.
-- **Side-Effect-Free Probes**: Verifies capability readiness (in-memory AST compilation, local permission checks, loopback socket binding) without modifying system state or executing external scripts.
-- **Token-Budgeted Architecture Context Packets**: Dynamically synthesizes live infrastructure facts into token-budgeted prompt packets (500 to 4,000 tokens) tailored for local Qwen models with priority pruning and omission notices.
-- **Durable Obsidian Vault Synchronization**: Synchronizes live infrastructure facts to durable Markdown notes in `knowledge/system/infrastructure_architecture.md`.
+### 1. Autonomous Project Orchestrator
+- **State Machine**: Driven by an audited state machine (`DRAFT` → `PLANNING` → `AWAITING_PLAN_APPROVAL` → `READY` → `RUNNING` → `EVALUATING` → `COMPLETED`).
+- **Dynamic Task Graph (DAG)**: Compiles high-level user objectives into topologically sorted stages and tasks conforming to `qc.plan.v1`.
+- **Bounded Model Repair**: Models generate plans with `PLANNER_MAX_TOKENS = 2048`. Truncated JSON streams are automatically repaired via bracket/quote balancing (`try_repair_truncated_json`), and schema violations are healed with bounded repair iterations.
+- **Hybrid Controller/Worker Execution**: Deterministic controller-steps (research extraction, citation audits, report compilation) execute locally with zero worker overhead; distributed computations lease to verified remote workers.
 
-### 2. Comprehensive Project Intelligence (Milestones 1–5)
-- **Hierarchical Decomposition**: `Project` → `Path` → `Stage` → `Task` → `Deliverable`.
-- **Evidence & Governance**: Strict approval gates, deliverable promotion workflows, cryptographic checksums, and immutable event logs.
-- **Metrics & Accuracy Tracking**: Versioned forecasts vs actual observations, task throughput, accuracy tracking, and automated calibration.
-- **Historical Learning & Retrospectives**: Captures project retrospectives, operational failure modes, and reusable procedural lessons directly into the persistent knowledge vault.
+### 2. Unified Deliverables & Artifact System
+- **Every Output is an Asset**: No more disposable outputs. Every generated file, report, dataset, and code artifact is versioned and discoverable.
+- **Content-Addressable Storage (CAS)**: SHA-256 deduplicated binary storage (`data/artifacts/{hash[:2]}/{hash}`).
+- **Interactive UI**: Preview in-browser, download with 1-click, and inspect comprehensive lineage (which task, stage, worker, and model produced it).
+- **Cross-Project Reuse**: Send any deliverable back into another project as an authoritative input with full audit history.
+- **Full-Text Search (FTS5)**: Fast keyword and BM25 search across all project deliverables, claims, and notes.
 
-### 3. Secure VPS Execution Companion (Milestone 2)
-- **Outbound Pull-Based Protocol**: The VPS connects inbound to the controller over private Tailscale WireGuard. No public controller ports are exposed.
-- **Durable Task Leasing**: Atomic lease claims, configurable lease timeouts, heartbeat extensions, and duplicate submission guards.
-- **Local Disconnect Buffering**: If network connectivity drops, the VPS agent safely executes authorized tasks and buffers results in a local SQLite store until reconnection.
-- **Inference-Free Independence**: Approved recurring scheduled jobs and systemd services execute continuously on the VPS without requiring active Qwen model sessions.
+### 3. Continuous Web Research & Citation Audits
+- **Multi-Provider Search**: Pluggable backends (DuckDuckGo, SearXNG, Custom Search API) with automatic health tracking and failovers.
+- **Secure Retrieval & SPA Fallback**: SSRF-hardened fetcher with automatic headless Chromium fallback for JavaScript-rendered SPAs.
+- **Claim & Citation Audit Ledger**: Deterministically extracts claims, scores supporting evidence passages, and audits citations so every fact traces back to an immutable source record.
+- **Enforceable Budgets**: Query, document, token, and browser runtime limits prevent runaway resource usage.
 
-### 4. Zero-Trust Security Architecture
+### 4. System Observatory & Telemetry
+- **Live Cluster Monitoring**: Real-time snapshots of CPU, memory, inference latency, task queues, and network connectivity.
+- **Enforceable Alerts & Baselines**: Automated anomaly detection comparing real-time telemetry to statistical baselines.
+
+### 5. Infrastructure Self-Awareness & Capability Registry
+- **Three-Tier Capability Separation**: `Declared` (admin configuration) → `Discovered` (read-only inspection) → `Verified` (side-effect-free test probes).
+- **15 Structured Categories**: AI Inference, Web Retrieval, Search, Browser Automation, Python Execution, Approved Shell, File Processing, Document Extraction, Data Transformation, API Integrations, Scheduled Execution, Persistent Services, Monitoring, Software Deployment, and Reporting.
+- **Token-Budgeted Context Packets**: Dynamically synthesizes hardware facts into token-budgeted prompt packets (500 to 4,000 tokens) with priority pruning for small local models.
+
+### 6. Zero-Trust Security Architecture
 - **Dedicated Worker Identities**: Granular Bearer tokens per machine; no shared administrative secrets.
 - **Secret Scrubbing**: Automatic redaction of passwords, tokens, and keys from AI prompts, execution logs, and knowledge notes.
-- **Defensive Hardware Probes**: Uses `paramiko.RejectPolicy` with strict `known_hosts` checks for SSH nodes.
-- **Web Security**: CSRF token validation on all mutating endpoints, HttpOnly/SameSite session cookies, bounded SQLite login rate-limiting lockout against brute-force attacks, and SSRF loopback protections.
-- **Windows Service Reliability**: Packaged with WinSW for automatic boot startup, crash recovery policies, and rotating logs.
+- **Prompt Injection Defense**: Untrusted user inputs, search results, and extracted documents are wrapped in boundary markers (`<<<OBJECTIVE...OBJECTIVE>>>`) and scanned for injection attempts.
+- **Rate-Limiting Lockout**: SQLite-backed `login_attempts` tracker locks out both the client IP and username after 5 failed attempts for 300 seconds.
 
 ---
 
@@ -86,82 +91,55 @@ It bridges the gap between **autonomous reasoning** and **safe, deterministic re
 
 | Component | Technology | Rationale |
 |---|---|---|
-| **Core Framework** | Python 3.12+, FastAPI | High performance, async I/O, native typing |
-| **Web UI** | Jinja2, HTMX, Vanilla CSS | Server-rendered, reactive, zero JavaScript bundle bloat |
-| **Persistence** | SQLite WAL Mode + FTS5 | ACID transactions, concurrent reads, instant full-text search |
-| **Knowledge Vault** | Markdown (Obsidian Compatible) | Future-proof, durable, portable human-readable knowledge |
+| **Core Framework** | Python 3.12+, FastAPI, Uvicorn | Async I/O, strict typing, high throughput |
+| **Web UI** | Jinja2, HTMX, Vanilla CSS | Server-rendered, reactive, zero JS bundle bloat |
+| **Persistence** | SQLite 3 WAL Mode + FTS5 | ACID transactions, concurrent reads, instant full-text search |
+| **Storage Engine** | Content-Addressable (CAS, SHA-256)| Deduplication, cryptographic integrity |
+| **Knowledge Vault**| Markdown (Obsidian Compatible) | Future-proof, durable, portable human-readable knowledge |
 | **Service Host** | WinSW (Windows Service Wrapper) | Robust Windows service management and crash recovery |
-| **Networking** | Tailscale (WireGuard) | Private authenticated mesh with end-to-end encryption |
-| **Inference Engines**| llama.cpp, Ollama | Sovereign, local quantized open models (Qwen2.5) |
+| **Networking** | Tailscale (WireGuard Mesh) | Private authenticated mesh with end-to-end encryption |
+| **Inference Engines**| llama.cpp, Ollama, llama-server | Sovereign, local quantized open models (Qwen2.5) |
 
 ---
 
 ## 🚦 Quickstart
 
 ### Prerequisites
-- Windows 10/11 or Windows Server (Controller)
-- Python 3.12 or newer
-- Git
+- Python 3.12+ (64-bit)
+- Windows Host (Controller) and optional Linux/VPS nodes
 
-### 1. Clone & Set Up Virtual Environment
-```powershell
+### 1. Clone & Setup Environment
+```bash
 git clone https://github.com/mattcallaway/qwen_cluster_interface.git
 cd qwen_cluster_interface
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+.venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2. Configure Environment Secrets
-Create a secure configuration file at `$HOME\.qwen-collective\qwen-collective.env`:
-```ini
-QC_APP_NAME=Qwen Collective
-QC_ENV=development
-QC_HOST=127.0.0.1
-QC_PORT=8000
-QC_DATA_DIR=C:\Users\<YourUser>\.qwen-collective\data
-QC_SECRET_KEY=your-secure-random-secret-key-min-32-chars
-QC_ADMIN_PASSWORD=your-secure-admin-password
-QC_SESSION_EXPIRE_HOURS=72
-QC_LOG_LEVEL=INFO
+### 2. Initialize Database & Run Migrations
+```bash
+python -c "from app.migrations import run_migrations; run_migrations()"
 ```
 
-### 3. Run the Development Server
-```powershell
+### 3. Start the Controller
+```bash
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
-Open [http://127.0.0.1:8000](http://127.0.0.1:8000) in your browser and sign in with `admin` and your configured password.
+Navigate to `http://127.0.0.1:8000` to access the web dashboard.
 
-### 4. Run the Test Suite
-```powershell
-pytest -v
+### 4. Run the Full Test Suite
+```bash
+pytest
 ```
-*Current test suite: 233 automated unit, integration, and security tests passing.*
 
 ---
 
-## 📖 Documentation Index
+## 📚 Documentation Sitemap
 
-- **[Technical Architecture Map (TECHMAP.md)](TECHMAP.md)**: Deep dive into the database schema (Migrations 1–6), component communication mesh, leasing protocols, and security boundaries.
-- **[Operator & Administrator Guide (HOWTO.md)](HOWTO.md)**: Step-by-step instructions for running the Windows service, connecting Linux inference nodes, setting up the VPS agent, managing capabilities, and running projects.
-- **[Capability Registry Specification (CAPABILITY_REGISTRY_SPEC.md)](CAPABILITY_REGISTRY_SPEC.md)**: Typed schema, lifecycle stages, and verification probes for all 15 capability categories.
-- **[VPS Agent Protocol Specification (VPS_AGENT_PROTOCOL.md)](VPS_AGENT_PROTOCOL.md)**: Detailed message formats, leasing state machine, idempotency keys, and buffering rules.
-- **[Deployment Lifecycle (DEPLOYMENT_LIFECYCLE.md)](DEPLOYMENT_LIFECYCLE.md)**: The 8-stage deployment lifecycle from proposal to retirement.
-- **[Execution Security Guide (EXECUTION_SECURITY.md)](EXECUTION_SECURITY.md)**: Least privilege execution, sandbox containment, network guards, and secret isolation.
-- **[Infrastructure Context Specification (INFRASTRUCTURE_CONTEXT_SPEC.md)](INFRASTRUCTURE_CONTEXT_SPEC.md)**: Token-budgeted prompt packet synthesis and priority pruning rules.
-- **[Operations Runbook (VPS_OPERATIONS_RUNBOOK.md)](VPS_OPERATIONS_RUNBOOK.md)**: Troubleshooting, health check routines, and emergency disaster recovery.
-
----
-
-## 🔒 Security Policy
-
-Qwen Collective enforces strict defensive controls:
-1. No unauthenticated public endpoints.
-2. The VPS execution environment runs as a non-privileged user and never receives root permissions.
-3. Arbitrary shell execution is forbidden; only approved, declared, and verified operations may run.
-4. AI-generated proposals require explicit human review and approval before execution.
-
----
-
-## 📄 License
-MIT License. Created by Matt Callaway and the Qwen Collective Contributors.
+- [Technical Architecture Map (TECHMAP)](file:///TECHMAP.md) — Comprehensive architectural map & M0–M10 schemas
+- [LLM System Explainer](file:///COLLECTIVE_EXPLAINER_FOR_LLMS.md) — Deep-dive mental model and operating guide for AI agents
+- [Artifact System Architecture](file:///ARTIFACT_SYSTEM_ARCHITECTURE.md) — Deliverable & artifact CAS storage design
+- [Continuous Web Research Architecture](file:///WEB_RESEARCH_ARCHITECTURE.md) — Search, retrieval, claims, and citations
+- [System Observatory Architecture](file:///SYSTEM_OBSERVATORY_ARCHITECTURE.md) — Telemetry, metrics, and alerting
+- [VPS Deployment Guide](file:///VPS_DAEMON_DEPLOYMENT_GUIDE.md) — Cloud worker companion setup
