@@ -190,3 +190,13 @@ Ensures AI agents plan tasks only on verified, capable hardware:
 - **Host Wrapper**: WinSW (Windows Service Wrapper) for Windows background controller service
 - **Networking**: Tailscale WireGuard mesh with TLS
 - **Inference Runtimes**: Ollama, llama.cpp / llama-server, Quantized Qwen2.5 models
+
+---
+
+## 6. Technical Specifications & References
+
+- [LLM System Explainer](file:///COLLECTIVE_EXPLAINER_FOR_LLMS.md) — Comprehensive operating mental model & invariant rules for LLMs
+- [System Interaction Patterns](file:///SYSTEM_INTERACTION_PATTERNS.md) — Visual Mermaid sequence diagrams & execution flows
+- [API & Integration Specification](file:///API_AND_INTEGRATION_SPECIFICATION.md) — Complete REST endpoints, schemas & worker protocol
+- [LLM Prompt & Schema Playbook](file:///LLM_PROMPT_AND_SCHEMA_PLAYBOOK.md) — Context packets, action catalogs & valid vs invalid plan examples
+- [Operations & Incident Runbook](file:///OPERATIONS_AND_RUNBOOK.md) — Service controls, backups, CAS audits & troubleshooting trees
