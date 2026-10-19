@@ -713,10 +713,22 @@ def _run_research_controller_step(run, ot, action, plan, inputs) -> Dict[str, An
 
     elif step in ("research_fetch", "research_browser_read", "research_extract"):
         conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT url, title, snippet, search_provider as provider, search_query FROM research_search_results WHERE project_id = ? ORDER BY rank LIMIT 10", (project_id,))
-        results = [dict(r) for r in cursor.fetchall()]
-        conn.close()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT r.url, r.title, r.snippet, r.provider, r.provider AS search_provider, COALESCE(q.query_text, '') AS search_query
+                FROM research_search_results r
+                LEFT JOIN research_queries q ON q.id = r.query_id
+                WHERE r.project_id = ?
+                ORDER BY r.rank
+                LIMIT 10
+                """,
+                (project_id,),
+            )
+            results = [dict(r) for r in cursor.fetchall()]
+        finally:
+            conn.close()
         res = mgr.execute_fetch_and_extract_step(project_id, ot["id"], results)
         ev = evaluator.evaluate_research_step(step, res)
         ids = []
