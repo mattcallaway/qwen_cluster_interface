@@ -21,6 +21,7 @@ from app.routes import (
     orchestration,
     observatory,
     research,
+    deliverables,
     settings as settings_route
 )
 
@@ -84,6 +85,7 @@ app.include_router(infrastructure.router)
 app.include_router(worker.router)
 app.include_router(observatory.router)
 app.include_router(research.router)
+app.include_router(deliverables.router)
 app.include_router(settings_route.router)
 
 if __name__ == "__main__":

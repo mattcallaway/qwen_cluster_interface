@@ -555,6 +555,16 @@
           {% if d.artifact_references %}
             <div><strong>Artifacts:</strong> <span style="white-space:pre-wrap;">{{ d.artifact_references }}</span></div>
           {% else %}<span style="color:var(--text-muted);">No artifacts submitted</span>{% endif %}
+          {% if d.primary_artifact_id %}
+            <div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">
+              <a href="/deliverables/{{ d.primary_artifact_id }}" class="btn btn-secondary btn-sm" style="font-size:0.72rem; padding:3px 8px; text-decoration:none;" title="Open and Preview Deliverable">
+                Open / Preview
+              </a>
+              <a href="/api/v1/artifacts/{{ d.primary_artifact_id }}/download" class="btn btn-primary btn-sm" style="font-size:0.72rem; padding:3px 8px; text-decoration:none;" title="Download exact file">
+                Download
+              </a>
+            </div>
+          {% endif %}
           {% if d.verification_results %}
             <div style="margin-top:4px;"><strong>Verification:</strong> <span style="white-space:pre-wrap;">{{ d.verification_results }}</span></div>
           {% endif %}
@@ -616,6 +626,77 @@
   {% else %}
     <div class="empty-state" style="border:none;"><h3 class="empty-state-title">No deliverables planned</h3>
       <p class="empty-state-text">Plan deliverables to define tangible outputs for project stages.</p></div>
+  {% endif %}
+</div>
+
+<!-- Managed Project Artifacts & Output Assets Table -->
+<div class="card" style="padding:0; margin-bottom:20px;">
+  <div style="padding:14px 16px 10px; display:flex; justify-content:space-between; align-items:center;">
+    <div>
+      <h3 class="card-title" style="margin:0;">Project Artifacts &amp; Output Assets ({{ project_artifacts|length }})</h3>
+      <p class="card-subtitle" style="margin:2px 0 0 0;">All physical files, datasets, code, and reports registered for this project.</p>
+    </div>
+    <a href="/deliverables?project_id={{ project.id }}" class="btn btn-secondary btn-sm" style="font-size:0.78rem;">
+      View in Global Hub &rarr;
+    </a>
+  </div>
+  {% if project_artifacts %}
+  <div class="table-container"><table class="data-table">
+    <thead>
+      <tr>
+        <th>Artifact</th>
+        <th>Type &amp; Version</th>
+        <th>Size</th>
+        <th>Status</th>
+        <th>Knowledge</th>
+        <th style="text-align:right;">One-Click Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for art in project_artifacts %}
+      <tr>
+        <td>
+          <a href="/deliverables/{{ art.id }}" style="font-weight:600; color:var(--color-primary, #4f46e5); text-decoration:none;">
+            {{ art.display_name }}
+          </a>
+          <div style="font-size:0.7rem; color:var(--text-muted); font-family:var(--font-mono);">
+            {{ art.id }} · SHA: {{ art.checksum_sha256[:10] }}...
+          </div>
+        </td>
+        <td style="font-size:0.8rem;">
+          <span class="badge" style="background:#e0e7ff; color:#3730a3; font-size:0.7rem; padding:1px 6px;">{{ art.artifact_type }}</span>
+          <span class="badge" style="background:#dbeafe; color:#1e40af; font-size:0.7rem; padding:1px 6px;">v{{ art.current_version_number }}</span>
+        </td>
+        <td style="font-size:0.8rem;">
+          {% if art.size_bytes < 1024 %}{{ art.size_bytes }} B
+          {% elif art.size_bytes < 1024*1024 %}{{ (art.size_bytes / 1024)|round(1) }} KB
+          {% else %}{{ (art.size_bytes / (1024*1024))|round(2) }} MB{% endif %}
+        </td>
+        <td>
+          <span class="badge" style="font-size:0.7rem;">{{ art.status }}</span>
+        </td>
+        <td style="font-size:0.75rem;">
+          {% if art.knowledge_status in ('extracted', 'verified') %}
+            <span style="color:#059669; font-weight:600;">✓ In Knowledge</span>
+          {% else %}
+            <form action="/deliverables/{{ art.id }}/knowledge" method="post" style="display:inline;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="btn btn-secondary btn-sm" style="font-size:0.7rem; padding:1px 6px;">+ Extract</button>
+            </form>
+          {% endif %}
+        </td>
+        <td style="text-align:right; white-space:nowrap;">
+          <a href="/deliverables/{{ art.id }}" class="btn btn-secondary btn-sm" style="font-size:0.75rem; padding:2px 8px; margin-right:4px;">Open</a>
+          <a href="/api/v1/artifacts/{{ art.id }}/download" class="btn btn-primary btn-sm" style="font-size:0.75rem; padding:2px 8px;">Download</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <div style="padding:20px; text-align:center; color:var(--text-muted); font-size:0.85rem;">
+    No artifacts recorded yet. Worker task executions and model analyses will automatically populate this asset registry.
+  </div>
   {% endif %}
 </div>
 

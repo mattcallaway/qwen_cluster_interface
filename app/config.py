@@ -47,6 +47,12 @@ class Settings(BaseModel):
         p.mkdir(parents=True, exist_ok=True)
         return p
 
+    @property
+    def artifacts_dir(self) -> Path:
+        p = self.data_dir / "artifacts"
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
 settings = Settings()
 
 def validate_production_settings():

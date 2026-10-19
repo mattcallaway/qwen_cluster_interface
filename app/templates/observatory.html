@@ -179,6 +179,63 @@
     </div>
     {% endif %}
 
+    <!-- Unified Deliverables & Artifacts Telemetry Cards -->
+    {% if overview.artifacts_and_deliverables %}
+    <div class="grid-cols-4" style="gap:16px; margin-bottom:20px;">
+      <div class="stat-widget" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="stat-label" style="font-size:0.8rem; color:var(--text-muted); text-transform:uppercase;">Managed Artifacts</div>
+          <span style="font-size:1.1rem;">📦</span>
+        </div>
+        <div class="stat-value" style="font-size:1.8rem; font-weight:700; margin:8px 0 4px 0; color:var(--color-primary, #4f46e5);">
+          {{ overview.artifacts_and_deliverables.artifacts.total }}
+        </div>
+        <div class="stat-sub" style="font-size:0.75rem; color:var(--text-muted);">
+          {{ overview.artifacts_and_deliverables.artifacts.total_versions }} immutable versions · {{ (overview.artifacts_and_deliverables.artifacts.total_storage_bytes / 1024)|round(1) }} KB
+        </div>
+      </div>
+
+      <div class="stat-widget" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="stat-label" style="font-size:0.8rem; color:var(--text-muted); text-transform:uppercase;">Accepted Deliverables</div>
+          <span style="font-size:1.1rem;">🏆</span>
+        </div>
+        <div class="stat-value" style="font-size:1.8rem; font-weight:700; margin:8px 0 4px 0; color:#059669;">
+          {{ overview.artifacts_and_deliverables.deliverables.accepted }} / {{ overview.artifacts_and_deliverables.deliverables.total }}
+        </div>
+        <div class="stat-sub" style="font-size:0.75rem; color:var(--text-muted);">
+          {{ overview.artifacts_and_deliverables.deliverables.linked_to_artifact }} backed by canonical artifacts
+        </div>
+      </div>
+
+      <div class="stat-widget" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="stat-label" style="font-size:0.8rem; color:var(--text-muted); text-transform:uppercase;">Reuses &amp; Lineage</div>
+          <span style="font-size:1.1rem;">🔄</span>
+        </div>
+        <div class="stat-value" style="font-size:1.8rem; font-weight:700; margin:8px 0 4px 0; color:#7c3aed;">
+          {{ overview.artifacts_and_deliverables.reuse_and_lineage.total_links }}
+        </div>
+        <div class="stat-sub" style="font-size:0.75rem; color:var(--text-muted);">
+          {{ overview.artifacts_and_deliverables.reuse_and_lineage.input_reuses }} input reuses · {{ overview.artifacts_and_deliverables.reuse_and_lineage.active_grants }} cross-project grants
+        </div>
+      </div>
+
+      <div class="stat-widget" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="stat-label" style="font-size:0.8rem; color:var(--text-muted); text-transform:uppercase;">Knowledge Integration</div>
+          <span style="font-size:1.1rem;">🧠</span>
+        </div>
+        <div class="stat-value" style="font-size:1.8rem; font-weight:700; margin:8px 0 4px 0; color:#0284c7;">
+          {{ overview.artifacts_and_deliverables.knowledge_integration.findings_extracted }}
+        </div>
+        <div class="stat-sub" style="font-size:0.75rem; color:var(--text-muted);">
+          Findings extracted into verified knowledge
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
     <!-- Cluster Utilization & Online Nodes -->
     <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:20px; margin-bottom:24px;">
       <!-- Machine Health Bars -->

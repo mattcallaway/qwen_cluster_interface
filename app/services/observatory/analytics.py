@@ -235,6 +235,7 @@ def get_cluster_overview() -> Dict[str, Any]:
         },
         "active_alerts_count": active_alerts_count,
         "research_and_knowledge": get_research_and_knowledge_metrics(),
+        "artifacts_and_deliverables": get_deliverables_and_artifacts_metrics(),
     }
 
 
@@ -667,4 +668,91 @@ def get_research_and_knowledge_metrics() -> Dict[str, Any]:
             "affected": imp_row.get("affected_impacts") or 0,
         },
     }
+
+
+def get_deliverables_and_artifacts_metrics() -> Dict[str, Any]:
+    """Calculate Observatory metrics for Unified Deliverables and Artifacts Management."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT
+            COUNT(*) as total_artifacts,
+            COALESCE(SUM(size_bytes), 0) as total_storage_bytes,
+            SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) as available_count,
+            SUM(CASE WHEN status = 'accepted' THEN 1 ELSE 0 END) as accepted_count,
+            SUM(CASE WHEN status = 'needs_review' THEN 1 ELSE 0 END) as review_count,
+            SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count,
+            SUM(CASE WHEN knowledge_status IN ('extracted', 'verified') THEN 1 ELSE 0 END) as knowledge_count
+        FROM artifacts
+    """)
+    art_row = dict(cursor.fetchone() or {})
+
+    cursor.execute("SELECT COUNT(*) FROM artifact_versions")
+    total_versions = cursor.fetchone()[0]
+
+    cursor.execute("""
+        SELECT
+            COUNT(*) as total_deliverables,
+            SUM(CASE WHEN status = 'accepted' THEN 1 ELSE 0 END) as accepted_deliverables,
+            SUM(CASE WHEN primary_artifact_id IS NOT NULL THEN 1 ELSE 0 END) as linked_to_artifact
+        FROM deliverables
+    """)
+    del_row = dict(cursor.fetchone() or {})
+
+    cursor.execute("""
+        SELECT
+            COUNT(*) as total_lineage_links,
+            SUM(CASE WHEN relationship_type = 'uses_as_input' THEN 1 ELSE 0 END) as input_reuses,
+            SUM(CASE WHEN relationship_type = 'revised_from' THEN 1 ELSE 0 END) as revisions,
+            SUM(CASE WHEN relationship_type = 'derived_from' THEN 1 ELSE 0 END) as derivatives
+        FROM artifact_lineage
+    """)
+    lin_row = dict(cursor.fetchone() or {})
+
+    cursor.execute("SELECT COUNT(*) FROM artifact_access_grants WHERE status = 'active'")
+    active_grants = cursor.fetchone()[0]
+
+    cursor.execute("SELECT COUNT(*) FROM artifact_knowledge_links")
+    knowledge_extracted = cursor.fetchone()[0]
+
+    cursor.execute("""
+        SELECT artifact_type, COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as storage_bytes
+        FROM artifacts
+        GROUP BY artifact_type
+        ORDER BY storage_bytes DESC
+    """)
+    type_rows = [dict(r) for r in cursor.fetchall()]
+
+    conn.close()
+
+    return {
+        "artifacts": {
+            "total": art_row.get("total_artifacts") or 0,
+            "total_versions": total_versions,
+            "total_storage_bytes": art_row.get("total_storage_bytes") or 0,
+            "available": art_row.get("available_count") or 0,
+            "accepted": art_row.get("accepted_count") or 0,
+            "needs_review": art_row.get("review_count") or 0,
+            "failed": art_row.get("failed_count") or 0,
+            "in_knowledge_base": art_row.get("knowledge_count") or 0,
+        },
+        "deliverables": {
+            "total": del_row.get("total_deliverables") or 0,
+            "accepted": del_row.get("accepted_deliverables") or 0,
+            "linked_to_artifact": del_row.get("linked_to_artifact") or 0,
+        },
+        "reuse_and_lineage": {
+            "total_links": lin_row.get("total_lineage_links") or 0,
+            "input_reuses": lin_row.get("input_reuses") or 0,
+            "revisions": lin_row.get("revisions") or 0,
+            "derivatives": lin_row.get("derivatives") or 0,
+            "active_grants": active_grants,
+        },
+        "knowledge_integration": {
+            "findings_extracted": knowledge_extracted,
+        },
+        "types_breakdown": type_rows,
+    }
+
 

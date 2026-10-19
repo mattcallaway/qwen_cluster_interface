@@ -48,6 +48,28 @@
   </a>
 </div>
 
+{% if search_results %}
+<div class="card" style="margin-bottom: 20px;">
+  <div class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
+    <span>Markdown Note Matches for "{{ query }}"</span>
+    <span class="badge badge-role">{{ search_results|length }} found</span>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 14px;">
+    {% for r in search_results %}
+      <div style="padding: 12px; background: rgba(0,0,0,0.02); border: 1px solid var(--border-color); border-radius: 6px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+          <a href="/knowledge/view?path={{ r.path }}" style="font-weight: 600; color: var(--primary);">{{ r.title }}</a>
+          <span class="badge badge-role">{{ r.category }}</span>
+        </div>
+        <div style="font-size: 0.85rem; line-height: 1.5; color: var(--text-main);">
+          {{ r.snippet|safe }}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 {# ==================== VIEW: STRUCTURED KNOWLEDGE RECORDS ==================== #}
 {% if view == 'records' %}
 <div class="card" style="margin-bottom: 20px; padding: 16px;">

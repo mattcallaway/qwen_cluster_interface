@@ -1,0 +1,416 @@
+{% extends "base.html" %}
+{% set active_nav = "deliverables" %}
+
+{% block page_title %}{{ artifact.display_name }} — Deliverable Details{% endblock %}
+
+{% block content %}
+<div class="content-container" style="max-width: 1400px; margin: 0 auto; padding: 20px;">
+
+  <!-- Breadcrumbs & Navigation -->
+  <div style="margin-bottom: 16px; font-size: 0.85rem;">
+    <a href="/deliverables" style="color: var(--color-primary, #4f46e5); text-decoration: none; font-weight: 500;">
+      &larr; Back to Deliverables Hub
+    </a>
+    {% if artifact.origin_project_id %}
+      <span style="color: var(--text-muted, #9ca3af); margin: 0 6px;">/</span>
+      <a href="/projects/{{ artifact.origin_project_id }}?tab=deliverables" style="color: var(--text-muted, #6b7280); text-decoration: none;">
+        Project Deliverables
+      </a>
+    {% endif %}
+  </div>
+
+  <!-- Artifact Header & Primary Actions -->
+  <div class="card" style="padding: 20px; margin-bottom: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
+      
+      <div>
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <h1 style="font-size: 1.5rem; font-weight: 700; color: var(--text-color, #111827); margin: 0;">
+            {{ artifact.display_name }}
+          </h1>
+          <span class="badge" style="background: #e0e7ff; color: #3730a3; font-size: 0.75rem; text-transform: uppercase; padding: 3px 8px; border-radius: 4px;">
+            {{ artifact.artifact_type }}
+          </span>
+          <span class="badge" style="background: #dbeafe; color: #1e40af; font-size: 0.75rem; padding: 3px 8px; border-radius: 4px;">
+            v{{ selected_version }} of {{ artifact.current_version_number }}
+          </span>
+          {% if artifact.deliverable %}
+            <span class="badge" style="background: #fef3c7; color: #92400e; font-size: 0.75rem; padding: 3px 8px; border-radius: 4px;">
+              Formal Deliverable
+            </span>
+          {% endif %}
+          {% if artifact.status == 'accepted' %}
+            <span class="badge" style="background: #d1fae5; color: #065f46; font-size: 0.75rem; padding: 3px 8px; border-radius: 4px;">
+              Accepted
+            </span>
+          {% endif %}
+        </div>
+
+        <div style="font-size: 0.8rem; color: var(--text-muted, #6b7280); font-family: monospace; margin-top: 6px;">
+          ID: {{ artifact.id }} · SHA-256: {{ artifact.checksum_sha256 }}
+        </div>
+
+        {% if artifact.description %}
+          <div style="font-size: 0.9rem; color: var(--text-color, #374151); margin-top: 8px;">
+            {{ artifact.description }}
+          </div>
+        {% endif %}
+      </div>
+
+      <!-- Action Buttons -->
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        
+        <!-- One-click Download -->
+        {% if artifact.file_exists %}
+          <a href="/api/v1/artifacts/{{ artifact.id }}/download?version={{ selected_version }}" class="btn btn-primary" style="font-size: 0.85rem; padding: 8px 16px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px; vertical-align: -1px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            Download Exact File
+          </a>
+        {% else %}
+          <button class="btn btn-secondary" disabled style="opacity: 0.5;">File Unavailable</button>
+        {% endif %}
+
+        <!-- Use in Project Dropdown / Modal Trigger -->
+        <details class="dropdown" style="position: relative; display: inline-block;">
+          <summary class="btn btn-secondary" style="cursor: pointer; font-size: 0.85rem; padding: 8px 14px;">
+            Reuse Asset ▾
+          </summary>
+          <div style="position: absolute; right: 0; top: 100%; margin-top: 6px; width: 280px; background: white; border: 1px solid var(--border-color, #e5e7eb); border-radius: 6px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); padding: 12px; z-index: 50;">
+            <div style="font-weight: 600; font-size: 0.82rem; margin-bottom: 8px; color: var(--text-color, #111827);">Reuse in Project</div>
+            <form action="/deliverables/{{ artifact.id }}/reuse" method="post">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <div class="form-group" style="margin-bottom: 8px;">
+                <label style="font-size: 0.75rem; color: var(--text-muted, #6b7280);">Target Project</label>
+                <select name="target_project_id" class="form-control" style="font-size: 0.8rem; width: 100%;">
+                  {% for p in projects %}
+                    <option value="{{ p.id }}" {% if artifact.origin_project_id == p.id %}selected{% endif %}>{{ p.name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="form-group" style="margin-bottom: 8px;">
+                <label style="font-size: 0.75rem; color: var(--text-muted, #6b7280);">Action</label>
+                <select name="action_type" class="form-control" style="font-size: 0.8rem; width: 100%;">
+                  <option value="analyze">Analyze Content</option>
+                  <option value="revise">Revise Deliverable</option>
+                  <option value="expand">Expand Report</option>
+                  <option value="summarize">Summarize Document</option>
+                  <option value="convert">Convert Format</option>
+                  <option value="extract_data">Extract Structured Data</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin-bottom: 8px;">
+                <label style="font-size: 0.75rem; color: var(--text-muted, #6b7280);">Instructions (Optional)</label>
+                <input type="text" name="instructions" placeholder="e.g. Expand section 3 with charts" class="form-control" style="font-size: 0.8rem; width: 100%;">
+              </div>
+              <button type="submit" class="btn btn-primary btn-sm" style="width: 100%; font-size: 0.78rem;">Create Task with Artifact</button>
+            </form>
+          </div>
+        </details>
+
+        <!-- Create Project From This Trigger -->
+        <details class="dropdown" style="position: relative; display: inline-block;">
+          <summary class="btn btn-secondary" style="cursor: pointer; font-size: 0.85rem; padding: 8px 14px;">
+            Create Project From This ▾
+          </summary>
+          <div style="position: absolute; right: 0; top: 100%; margin-top: 6px; width: 320px; background: white; border: 1px solid var(--border-color, #e5e7eb); border-radius: 6px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); padding: 14px; z-index: 50;">
+            <div style="font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; color: var(--text-color, #111827);">New Artifact-Aware Project</div>
+            <div style="font-size: 0.75rem; color: var(--text-muted, #6b7280); margin-bottom: 10px;">Initializes a new project plan centered around this deliverable and its supporting research.</div>
+            <form action="/deliverables/{{ artifact.id }}/create-project" method="post">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <div class="form-group" style="margin-bottom: 8px;">
+                <label style="font-size: 0.75rem; color: var(--text-muted, #6b7280);">Project Title (Optional)</label>
+                <input type="text" name="title" placeholder="e.g. Interactive Website for {{ artifact.display_name }}" class="form-control" style="font-size: 0.8rem; width: 100%;">
+              </div>
+              <div class="form-group" style="margin-bottom: 10px;">
+                <label style="font-size: 0.75rem; color: var(--text-muted, #6b7280);">Objective *</label>
+                <textarea name="user_objective" rows="3" required placeholder="Describe what the new project should build or accomplish using this material..." class="form-control" style="font-size: 0.8rem; width: 100%;"></textarea>
+              </div>
+              <button type="submit" class="btn btn-primary btn-sm" style="width: 100%; font-size: 0.78rem;">Launch Project</button>
+            </form>
+          </div>
+        </details>
+
+        <!-- Add to Knowledge -->
+        <form action="/deliverables/{{ artifact.id }}/knowledge" method="post" style="display: inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="btn btn-secondary" style="font-size: 0.85rem; padding: 8px 14px;" title="Extract factual findings into Project Knowledge Base">
+            Add to Knowledge
+          </button>
+        </form>
+
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Main Grid: Left Column (Preview & Lineage) / Right Column (Metadata & Versions) -->
+  <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px;">
+
+    <!-- Left Column -->
+    <div>
+      
+      <!-- Safe Preview Panel -->
+      <div class="card" id="preview" style="padding: 0; margin-bottom: 24px; overflow: hidden;">
+        <div style="padding: 12px 18px; border-bottom: 1px solid var(--border-color, #e5e7eb); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.01);">
+          <div style="font-weight: 600; font-size: 0.9rem; color: var(--text-color, #111827);">
+            Safe File Preview
+          </div>
+          <div style="font-size: 0.75rem; color: var(--text-muted, #6b7280);">
+            Mode: {{ preview.preview_type|capitalize }} {% if preview.truncated %}(Truncated for display){% endif %}
+          </div>
+        </div>
+
+        <div style="padding: 16px; min-height: 250px; max-height: 600px; overflow-y: auto; background: #fafafa;">
+          {% if preview.preview_type == 'json' %}
+            <pre style="margin: 0; font-family: monospace; font-size: 0.82rem; white-space: pre-wrap; word-break: break-all; color: #1f2937;"><code>{{ preview.content }}</code></pre>
+
+          {% elif preview.preview_type == 'csv' %}
+            <div style="overflow-x: auto;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem; background: white;">
+                {% for row in preview.content.rows %}
+                  <tr style="border-bottom: 1px solid #e5e7eb;">
+                    {% for cell in row %}
+                      <td style="padding: 6px 10px; border-right: 1px solid #f3f4f6;">{{ cell }}</td>
+                    {% endfor %}
+                  </tr>
+                {% endfor %}
+              </table>
+            </div>
+
+          {% elif preview.preview_type == 'markdown' %}
+            <div style="font-size: 0.88rem; line-height: 1.6; color: #1f2937; white-space: pre-wrap; word-break: break-word;">{{ preview.content }}</div>
+
+          {% elif preview.preview_type == 'code' %}
+            <pre style="margin: 0; font-family: monospace; font-size: 0.82rem; white-space: pre-wrap; word-break: break-all; background: #1e1e1e; color: #d4d4d4; padding: 14px; border-radius: 4px;"><code>{{ preview.content }}</code></pre>
+
+          {% elif preview.preview_type == 'image' %}
+            <div style="text-align: center;">
+              <img src="{{ preview.content }}" alt="{{ artifact.display_name }}" style="max-width: 100%; max-height: 480px; border-radius: 4px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+            </div>
+
+          {% elif preview.preview_type == 'pdf' %}
+            <div style="text-align: center; padding: 30px;">
+              <div style="font-weight: 600; font-size: 1rem; margin-bottom: 8px;">PDF Document Ready</div>
+              <a href="{{ preview.content }}" target="_blank" class="btn btn-primary" style="font-size: 0.85rem;">Open PDF in Browser Viewer</a>
+            </div>
+
+          {% else %}
+            <div style="padding: 30px; text-align: center; color: var(--text-muted, #6b7280);">
+              <div style="font-size: 0.9rem; margin-bottom: 6px;">{{ preview.content }}</div>
+              <a href="/api/v1/artifacts/{{ artifact.id }}/download?version={{ selected_version }}" class="btn btn-primary btn-sm" style="font-size: 0.8rem;">
+                Download File
+              </a>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Lineage Graph (Upstream & Downstream) -->
+      <div class="card" style="padding: 0; margin-bottom: 24px; overflow: hidden;">
+        <div style="padding: 12px 18px; border-bottom: 1px solid var(--border-color, #e5e7eb); background: rgba(0,0,0,0.01);">
+          <div style="font-weight: 600; font-size: 0.9rem; color: var(--text-color, #111827);">
+            Asset Lineage &amp; Transformations
+          </div>
+        </div>
+
+        <div style="padding: 16px;">
+          <!-- Upstream Sources -->
+          <div style="margin-bottom: 16px;">
+            <div style="font-size: 0.78rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted, #6b7280); letter-spacing: 0.05em; margin-bottom: 8px;">
+              Upstream Inputs &amp; Parent Sources ({{ lineage.upstream|length }})
+            </div>
+            {% if lineage.upstream %}
+              <div style="display: flex; flex-direction: column; gap: 8px;">
+                {% for up in lineage.upstream %}
+                  <div style="padding: 10px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem;">
+                    <div>
+                      <span class="badge" style="background: #e0e7ff; color: #3730a3; font-size: 0.7rem; padding: 2px 6px;">{{ up.relationship_type }}</span>
+                      <a href="/deliverables/{{ up.source_artifact_id }}" style="font-weight: 600; color: var(--color-primary, #4f46e5); text-decoration: none; margin-left: 6px;">
+                        {{ up.source_name }}
+                      </a>
+                      {% if up.context_description %}
+                        <span style="color: var(--text-muted, #6b7280); font-size: 0.75rem;">— {{ up.context_description }}</span>
+                      {% endif %}
+                    </div>
+                    <div style="font-size: 0.72rem; color: var(--text-muted, #9ca3af);">v{{ up.source_version_number }}</div>
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <div style="font-size: 0.8rem; color: var(--text-muted, #9ca3af); font-style: italic;">
+                No upstream parent artifacts (primary source).
+              </div>
+            {% endif %}
+          </div>
+
+          <!-- Downstream Derivatives -->
+          <div>
+            <div style="font-size: 0.78rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted, #6b7280); letter-spacing: 0.05em; margin-bottom: 8px;">
+              Downstream Derivatives &amp; Reuses ({{ lineage.downstream|length }})
+            </div>
+            {% if lineage.downstream %}
+              <div style="display: flex; flex-direction: column; gap: 8px;">
+                {% for down in lineage.downstream %}
+                  <div style="padding: 10px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem;">
+                    <div>
+                      <span class="badge" style="background: #dbeafe; color: #1e40af; font-size: 0.7rem; padding: 2px 6px;">{{ down.relationship_type }}</span>
+                      <a href="/deliverables/{{ down.target_artifact_id }}" style="font-weight: 600; color: var(--color-primary, #4f46e5); text-decoration: none; margin-left: 6px;">
+                        {{ down.target_name }}
+                      </a>
+                      {% if down.context_description %}
+                        <span style="color: var(--text-muted, #6b7280); font-size: 0.75rem;">— {{ down.context_description }}</span>
+                      {% endif %}
+                    </div>
+                    <div style="font-size: 0.72rem; color: var(--text-muted, #9ca3af);">v{{ down.target_version_number }}</div>
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <div style="font-size: 0.8rem; color: var(--text-muted, #9ca3af); font-style: italic;">
+                No downstream derivative deliverables yet. Click "Reuse Asset" to branch or revise.
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Knowledge Base Extractions -->
+      <div class="card" style="padding: 0; overflow: hidden;">
+        <div style="padding: 12px 18px; border-bottom: 1px solid var(--border-color, #e5e7eb); background: rgba(0,0,0,0.01);">
+          <div style="font-weight: 600; font-size: 0.9rem; color: var(--text-color, #111827);">
+            Knowledge Base Extractions ({{ knowledge_links|length }})
+          </div>
+        </div>
+        <div style="padding: 16px;">
+          {% if knowledge_links %}
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              {% for k in knowledge_links %}
+                <div style="padding: 10px; border-left: 3px solid #059669; background: #f0fdf4; border-radius: 0 4px 4px 0;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <span class="badge" style="background: #d1fae5; color: #065f46; font-size: 0.7rem; padding: 1px 6px;">{{ k.knowledge_type }}</span>
+                    <span style="font-size: 0.72rem; color: var(--text-muted, #6b7280);">Status: {{ k.verification_status }}</span>
+                  </div>
+                  <div style="font-size: 0.85rem; color: #1f2937;">{{ k.statement }}</div>
+                  <div style="font-size: 0.72rem; color: var(--text-muted, #6b7280); margin-top: 4px; font-family: monospace;">
+                    Record ID: <a href="/knowledge?q={{ k.knowledge_record_id }}" style="color: #059669;">{{ k.knowledge_record_id }}</a>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div style="font-size: 0.8rem; color: var(--text-muted, #9ca3af); font-style: italic;">
+              No knowledge extracted yet. Click "Add to Knowledge" above to harvest structured findings.
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Right Column: Metadata & Version History -->
+    <div>
+      
+      <!-- Metadata Summary Card -->
+      <div class="card" style="padding: 16px; margin-bottom: 24px;">
+        <h3 style="font-size: 0.9rem; font-weight: 600; margin: 0 0 12px 0; color: var(--text-color, #111827); border-bottom: 1px solid #f3f4f6; padding-bottom: 6px;">
+          Asset Metadata
+        </h3>
+        
+        <div style="display: flex; flex-direction: column; gap: 10px; font-size: 0.8rem;">
+          <div>
+            <div style="color: var(--text-muted, #6b7280); font-size: 0.72rem;">File Extension &amp; MIME</div>
+            <div style="font-weight: 500; font-family: monospace;">{{ artifact.file_extension or 'None' }} · {{ artifact.mime_type }}</div>
+          </div>
+
+          <div>
+            <div style="color: var(--text-muted, #6b7280); font-size: 0.72rem;">Exact File Size</div>
+            <div style="font-weight: 500;">{{ artifact.size_bytes }} bytes</div>
+          </div>
+
+          <div>
+            <div style="color: var(--text-muted, #6b7280); font-size: 0.72rem;">Storage Backend &amp; Key</div>
+            <div style="font-weight: 500; font-family: monospace; word-break: break-all; font-size: 0.75rem;">
+              {{ artifact.storage_backend }}: {{ artifact.storage_key }}
+            </div>
+          </div>
+
+          <div>
+            <div style="color: var(--text-muted, #6b7280); font-size: 0.72rem;">Producing Worker &amp; Task</div>
+            <div style="font-weight: 500;">
+              {{ artifact.origin_worker_id or 'controller-local' }}
+              {% if artifact.origin_task_id %}
+                · <a href="/tasks/{{ artifact.origin_task_id }}">{{ artifact.origin_task_id }}</a>
+              {% endif %}
+            </div>
+          </div>
+
+          <div>
+            <div style="color: var(--text-muted, #6b7280); font-size: 0.72rem;">Registered Timestamp</div>
+            <div style="font-weight: 500;">{{ artifact.created_at[:19] }} UTC</div>
+          </div>
+
+          <div>
+            <div style="color: var(--text-muted, #6b7280); font-size: 0.72rem;">Physical Integrity</div>
+            {% if artifact.file_exists %}
+              <div style="color: #059669; font-weight: 600;">✓ Verified on disk</div>
+            {% else %}
+              <div style="color: #dc2626; font-weight: 600;">⚠ Physical file missing</div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Version History Card -->
+      <div class="card" style="padding: 16px; margin-bottom: 24px;">
+        <h3 style="font-size: 0.9rem; font-weight: 600; margin: 0 0 12px 0; color: var(--text-color, #111827); border-bottom: 1px solid #f3f4f6; padding-bottom: 6px;">
+          Immutable Version History ({{ artifact.versions|length }})
+        </h3>
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          {% for ver in artifact.versions %}
+            <div style="padding: 8px 10px; border-radius: 4px; border: 1px solid {% if ver.version_number == selected_version %}var(--color-primary, #4f46e5){% else %}#e5e7eb{% endif %}; background: {% if ver.version_number == selected_version %}#eef2ff{% else %}#ffffff{% endif %}; font-size: 0.8rem;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <a href="/deliverables/{{ artifact.id }}?version={{ ver.version_number }}" style="font-weight: 600; text-decoration: none; color: {% if ver.version_number == selected_version %}var(--color-primary, #4f46e5){% else %}#111827{% endif %};">
+                  Version {{ ver.version_number }}
+                </a>
+                <span style="font-size: 0.7rem; color: var(--text-muted, #6b7280);">{{ ver.created_at[:10] }}</span>
+              </div>
+              <div style="font-size: 0.72rem; color: var(--text-muted, #4b5563); margin-top: 3px;">
+                {{ ver.change_description or 'No change description' }}
+              </div>
+              <div style="font-size: 0.7rem; font-family: monospace; color: var(--text-muted, #9ca3af); margin-top: 2px;">
+                SHA: {{ ver.checksum_sha256[:10] }}... · {{ ver.size_bytes }} B
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Project Access & Grants -->
+      <div class="card" style="padding: 16px;">
+        <h3 style="font-size: 0.9rem; font-weight: 600; margin: 0 0 12px 0; color: var(--text-color, #111827); border-bottom: 1px solid #f3f4f6; padding-bottom: 6px;">
+          Project Associations &amp; Sharing
+        </h3>
+
+        {% if artifact.projects %}
+          <div style="display: flex; flex-direction: column; gap: 6px; font-size: 0.8rem;">
+            {% for prj in artifact.projects %}
+              <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px solid #f3f4f6;">
+                <a href="/projects/{{ prj.id }}" style="font-weight: 500; color: var(--text-color, #1f2937); text-decoration: none;">
+                  {{ prj.name }}
+                </a>
+                <span class="badge" style="font-size: 0.68rem; background: #f3f4f6; color: #4b5563;">{{ prj.role }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div style="font-size: 0.78rem; color: var(--text-muted, #9ca3af);">No associated projects.</div>
+        {% endif %}
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+{% endblock %}

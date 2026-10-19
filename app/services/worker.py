@@ -551,6 +551,7 @@ def store_task_artifact(
     content_bytes: bytes,
     expected_sha256: Optional[str] = None,
     worker_id: Optional[str] = None,
+    conn: Optional[sqlite3.Connection] = None,
 ) -> Dict[str, Any]:
     """
     Store a physical artifact in controlled evidence storage and compute independent SHA256 checksum.
@@ -587,7 +588,40 @@ def store_task_artifact(
         safe_name, task_id, len(content_bytes), computed_sha256, matches
     )
 
+    canonical_art_id = None
+    try:
+        from app.services.artifacts import artifact_service
+        own_conn = conn is None
+        c = get_db_connection() if own_conn else conn
+        proj_id = None
+        try:
+            trow = c.execute("SELECT project_id FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            if trow:
+                proj_id = trow["project_id"]
+        finally:
+            if own_conn:
+                c.close()
+
+        canonical_art = artifact_service.register_artifact(
+            name=safe_name,
+            data=content_bytes,
+            project_id=proj_id,
+            description=f"Artifact uploaded from task {task_id} by worker {worker_id or 'unknown'}",
+            task_id=task_id,
+            worker_id=worker_id,
+            created_by=worker_id or "worker",
+            expected_sha256=expected_sha256,
+            status="available" if matches else "failed",
+            validation_status="valid" if matches else "invalid",
+            validation_detail="Checksum verified" if matches else f"Checksum mismatch: expected {expected_sha256}, computed {computed_sha256}",
+            db_conn=conn,
+        )
+        canonical_art_id = canonical_art["id"]
+    except Exception as ex:
+        logger.warning("Failed to register canonical artifact for task %s: %s", task_id, ex)
+
     return {
+        "artifact_id": canonical_art_id,
         "task_id": task_id,
         "filename": safe_name,
         "stored_path": str(dest_file.resolve()),
@@ -1214,6 +1248,7 @@ def submit_task_result(
                                 content_bytes=content_bytes,
                                 expected_sha256=expected_sha,
                                 worker_id=worker_id,
+                                conn=conn,
                             )
                             processed_artifacts.append(stored)
                         except Exception as art_err:
@@ -1231,15 +1266,22 @@ def submit_task_result(
                             artifact_ref_parts.append(f"artifact:{actual_task_id}/{pa['filename']}")
                         artifact_ref = ";".join(artifact_ref_parts)
 
+                        primary_art_id = None
+                        for pa in processed_artifacts:
+                            if pa.get("artifact_id"):
+                                primary_art_id = pa["artifact_id"]
+                                break
+
                         conn.execute(
                             """
                             UPDATE deliverables
                             SET status = ?,
+                                primary_artifact_id = COALESCE(primary_artifact_id, ?),
                                 artifact_references = CASE WHEN artifact_references = '' THEN ? ELSE artifact_references || ';' || ? END,
                                 updated_at = ?
                             WHERE id = ?
                             """,
-                            (new_deliv_status, artifact_ref, artifact_ref, now, deliv_id),
+                            (new_deliv_status, primary_art_id, artifact_ref, artifact_ref, now, deliv_id),
                         )
                         # Add revision
                         rev_count = conn.execute(

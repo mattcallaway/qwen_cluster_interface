@@ -59,6 +59,54 @@ def _insert(run_id: Optional[str], project_id: str, task_id: Optional[str], orch
     if run_id:
         from app.services.orchestration.telemetry import record_usage
         record_usage(run_id, storage_bytes=len(data))
+
+    # Sync with canonical artifacts tables
+    try:
+        from app.services.artifacts import artifact_service
+        # Check if canonical artifact already exists
+        with db_transaction() as c:
+            c.execute(
+                """
+                INSERT OR IGNORE INTO artifacts (
+                    id, display_name, description, artifact_type, mime_type, file_extension,
+                    size_bytes, checksum_sha256, storage_backend, storage_key, current_version_number,
+                    status, validation_status, validation_detail, knowledge_status, visibility,
+                    retention_policy, origin_project_id, origin_task_id, origin_worker_id,
+                    created_by, created_at, updated_at
+                ) VALUES (?, ?, 'Task output artifact', 'document', ?, ?, ?, ?, 'local_filesystem', ?, 1,
+                          'available', 'valid', '', 'not_processed', 'private', 'standard', ?, ?, ?, 'orchestrator', ?, ?)
+                """,
+                (
+                    aid, path.name, _mime(path.name), Path(path.name).suffix.lower(),
+                    len(data), hashlib.sha256(data).hexdigest(), str(path.resolve()),
+                    project_id, task_id, worker_id, now_iso(), now_iso(),
+                ),
+            )
+            c.execute(
+                """
+                INSERT OR IGNORE INTO artifact_versions (
+                    id, artifact_id, version_number, storage_backend, storage_key,
+                    size_bytes, checksum_sha256, change_description, producing_task_id,
+                    producing_worker_id, validation_status, created_by, created_at
+                ) VALUES (?, ?, 1, 'local_filesystem', ?, ?, ?, 'Orchestration task output', ?, ?, 'valid', 'orchestrator', ?)
+                """,
+                (
+                    f"artver-{aid[4:] if aid.startswith('art-') else aid}",
+                    aid, str(path.resolve()), len(data), hashlib.sha256(data).hexdigest(),
+                    task_id, worker_id, now_iso(),
+                ),
+            )
+            c.execute(
+                """
+                INSERT OR IGNORE INTO artifact_project_links (id, artifact_id, project_id, role, added_at, added_by)
+                VALUES (?, ?, ?, 'output', ?, 'orchestrator')
+                """,
+                (f"apl-{aid[4:] if aid.startswith('art-') else aid}", aid, project_id, now_iso()),
+            )
+    except Exception as ex:
+        # Non-fatal sync
+        pass
+
     return aid
 
 
@@ -93,6 +141,8 @@ def set_validation(artifact_id: str, state: str, detail: str = "") -> None:
     with db_transaction() as c:
         c.execute("UPDATE artifact_metadata SET validation_state = ?, validation_detail = ? WHERE id = ?",
                   (state, detail[:1000], artifact_id))
+        c.execute("UPDATE artifacts SET validation_status = ?, validation_detail = ?, updated_at = ? WHERE id = ?",
+                  (state, detail[:1000], now_iso(), artifact_id))
 
 
 def list_artifacts(project_id: str) -> List[Dict[str, Any]]:

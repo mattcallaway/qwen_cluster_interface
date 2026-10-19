@@ -103,11 +103,13 @@ def project_detail(request: Request, project_id: str, tab: str = "overview",
     knowledge = km.list_project_knowledge(project_id)
     from app.services.knowledge_store import list_knowledge_records, list_affected_impacts, list_promotions
     from app.services.orchestration.research_checkpoint import list_project_checkpoints
+    from app.services.artifacts import artifact_service
 
     structured_knowledge = list_knowledge_records(project_id=project_id, include_collective=True)
     checkpoints = list_project_checkpoints(project_id)
     affected_impacts = list_affected_impacts(project_id)
     project_promotions = [p for p in list_promotions() if p.get("source_project_id") == project_id]
+    project_artifacts = artifact_service.list_artifacts(project_id=project_id)
 
     parent = ps.get_project(project["parent_id"]) if project["parent_id"] else None
     path_names = {p["id"]: p["name"] for p in paths}
@@ -133,6 +135,7 @@ def project_detail(request: Request, project_id: str, tab: str = "overview",
         "candidate_parents": [p for p in ps.list_projects() if p["id"] != project_id],
         "paths": paths, "stages_by_path": stages_by_path, "path_names": path_names, "stage_names": stage_names,
         "deliverables": deliverables, "deliverable_names": deliverable_names,
+        "project_artifacts": project_artifacts,
         "deliverable_types": ds.DELIVERABLE_TYPES, "deliverable_statuses": ds.DELIVERABLE_STATUSES,
         "deliverable_revisions": deliverable_revisions, "stage_gates": stage_gates,
         "path_revisions": path_revisions,

@@ -1,0 +1,286 @@
+{% extends "base.html" %}
+{% set active_nav = "deliverables" %}
+
+{% block page_title %}Deliverables &amp; Artifacts Hub{% endblock %}
+
+{% block content %}
+<div class="content-container" style="max-width: 1400px; margin: 0 auto; padding: 20px;">
+
+  <!-- Hero Header -->
+  <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
+    <div>
+      <h1 style="font-size: 1.75rem; font-weight: 700; color: var(--text-color, #111827); margin: 0 0 6px 0;">
+        Deliverables &amp; Artifacts Hub
+      </h1>
+      <p style="font-size: 0.95rem; color: var(--text-muted, #6b7280); margin: 0;">
+        Universal, immutable, provenance-aware deliverables and project assets. Every output is durable, discoverable, and reusable.
+      </p>
+    </div>
+  </div>
+
+  <!-- Telemetry Stat Cards -->
+  <div class="stat-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px;">
+    <div class="card" style="padding: 16px;">
+      <div style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted, #6b7280); letter-spacing: 0.05em;">Total Managed Artifacts</div>
+      <div style="font-size: 1.8rem; font-weight: 700; color: var(--color-primary, #4f46e5); margin-top: 4px;">{{ total_count }}</div>
+      <div style="font-size: 0.78rem; color: var(--text-muted, #6b7280); margin-top: 4px;">Immutable indexed assets</div>
+    </div>
+    <div class="card" style="padding: 16px;">
+      <div style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted, #6b7280); letter-spacing: 0.05em;">Physical Storage</div>
+      <div style="font-size: 1.8rem; font-weight: 700; color: #059669; margin-top: 4px;">
+        {% if total_storage < 1024 * 1024 %}
+          {{ (total_storage / 1024)|round(1) }} KB
+        {% else %}
+          {{ (total_storage / (1024 * 1024))|round(2) }} MB
+        {% endif %}
+      </div>
+      <div style="font-size: 0.78rem; color: var(--text-muted, #6b7280); margin-top: 4px;">Durable controller storage</div>
+    </div>
+    <div class="card" style="padding: 16px;">
+      <div style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted, #6b7280); letter-spacing: 0.05em;">Stage Deliverables</div>
+      <div style="font-size: 1.8rem; font-weight: 700; color: #d97706; margin-top: 4px;">{{ deliverables_count }}</div>
+      <div style="font-size: 0.78rem; color: var(--text-muted, #6b7280); margin-top: 4px;">Bound stage outputs</div>
+    </div>
+    <div class="card" style="padding: 16px;">
+      <div style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted, #6b7280); letter-spacing: 0.05em;">Reuses &amp; Lineage</div>
+      <div style="font-size: 1.8rem; font-weight: 700; color: #7c3aed; margin-top: 4px;">{{ reuse_count }}</div>
+      <div style="font-size: 0.78rem; color: var(--text-muted, #6b7280); margin-top: 4px;">Cross-project &amp; derivative uses</div>
+    </div>
+  </div>
+
+  <!-- Search & Filter Controls -->
+  <div class="card" style="padding: 16px; margin-bottom: 24px;">
+    <form method="get" action="/deliverables" style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;">
+      
+      <div style="flex: 2; min-width: 240px;">
+        <label style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted, #4b5563); display: block; margin-bottom: 4px;">
+          Search Artifacts (FTS5)
+        </label>
+        <input type="text" name="q" value="{{ search_query }}" placeholder="Filter by filename, description, topic..." class="form-control" style="font-size: 0.85rem; width: 100%;">
+      </div>
+
+      <div style="flex: 1; min-width: 160px;">
+        <label style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted, #4b5563); display: block; margin-bottom: 4px;">
+          Project
+        </label>
+        <select name="project_id" class="form-control" style="font-size: 0.85rem; width: 100%;">
+          <option value="">All Projects</option>
+          {% for p in projects %}
+            <option value="{{ p.id }}" {% if selected_project_id == p.id %}selected{% endif %}>{{ p.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div style="flex: 1; min-width: 130px;">
+        <label style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted, #4b5563); display: block; margin-bottom: 4px;">
+          Artifact Type
+        </label>
+        <select name="type" class="form-control" style="font-size: 0.85rem; width: 100%;">
+          <option value="">All Types</option>
+          {% for t in artifact_types %}
+            <option value="{{ t }}" {% if selected_type == t %}selected{% endif %}>{{ t|replace('_', ' ')|capitalize }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div style="flex: 1; min-width: 120px;">
+        <label style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted, #4b5563); display: block; margin-bottom: 4px;">
+          Status
+        </label>
+        <select name="status" class="form-control" style="font-size: 0.85rem; width: 100%;">
+          <option value="">All Statuses</option>
+          <option value="available" {% if selected_status == 'available' %}selected{% endif %}>Available</option>
+          <option value="accepted" {% if selected_status == 'accepted' %}selected{% endif %}>Accepted</option>
+          <option value="needs_review" {% if selected_status == 'needs_review' %}selected{% endif %}>Needs Review</option>
+          <option value="failed" {% if selected_status == 'failed' %}selected{% endif %}>Failed</option>
+          <option value="missing" {% if selected_status == 'missing' %}selected{% endif %}>Missing</option>
+        </select>
+      </div>
+
+      <div style="flex: 1; min-width: 110px;">
+        <label style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted, #4b5563); display: block; margin-bottom: 4px;">
+          Sort By
+        </label>
+        <select name="sort" class="form-control" style="font-size: 0.85rem; width: 100%;">
+          <option value="recent" {% if selected_sort == 'recent' %}selected{% endif %}>Newest</option>
+          <option value="oldest" {% if selected_sort == 'oldest' %}selected{% endif %}>Oldest</option>
+          <option value="name" {% if selected_sort == 'name' %}selected{% endif %}>Name (A-Z)</option>
+          <option value="size" {% if selected_sort == 'size' %}selected{% endif %}>File Size</option>
+        </select>
+      </div>
+
+      <div style="display: flex; gap: 8px;">
+        <button type="submit" class="btn btn-primary" style="font-size: 0.85rem; padding: 6px 16px;">Filter</button>
+        <a href="/deliverables" class="btn btn-secondary" style="font-size: 0.85rem; padding: 6px 12px;">Reset</a>
+      </div>
+
+    </form>
+  </div>
+
+  <!-- Artifacts Table -->
+  <div class="card" style="padding: 0; overflow: hidden;">
+    <div style="padding: 14px 18px; border-bottom: 1px solid var(--border-color, #e5e7eb); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.01);">
+      <div style="font-weight: 600; font-size: 0.95rem; color: var(--text-color, #111827);">
+        Authorized Deliverables &amp; Artifacts
+      </div>
+      <div style="font-size: 0.8rem; color: var(--text-muted, #6b7280);">
+        Showing {{ artifacts|length }} records
+      </div>
+    </div>
+
+    {% if artifacts %}
+    <div class="table-container" style="overflow-x: auto;">
+      <table class="data-table" style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+        <thead>
+          <tr style="border-bottom: 1px solid var(--border-color, #e5e7eb); background: rgba(0,0,0,0.02); text-align: left;">
+            <th style="padding: 10px 14px;">Artifact / Deliverable</th>
+            <th style="padding: 10px 14px;">Origin &amp; Provenance</th>
+            <th style="padding: 10px 14px;">Type &amp; Version</th>
+            <th style="padding: 10px 14px;">Size &amp; Checksum</th>
+            <th style="padding: 10px 14px;">Status &amp; Knowledge</th>
+            <th style="padding: 10px 14px; text-align: right;">One-Click Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for art in artifacts %}
+          <tr style="border-bottom: 1px solid var(--border-color, #f3f4f6); transition: background 0.15s ease;">
+            
+            <!-- Artifact Name & Link -->
+            <td style="padding: 12px 14px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="badge" style="font-size: 0.72rem; text-transform: uppercase; background: #e0e7ff; color: #3730a3; padding: 2px 6px; border-radius: 4px;">
+                  {{ art.artifact_type }}
+                </span>
+                <a href="/deliverables/{{ art.id }}" style="font-weight: 600; color: var(--color-primary, #4f46e5); text-decoration: none;">
+                  {{ art.display_name }}
+                </a>
+              </div>
+              <div style="font-size: 0.72rem; color: var(--text-muted, #6b7280); font-family: monospace; margin-top: 3px;">
+                {{ art.id }}
+              </div>
+              {% if art.description %}
+                <div style="font-size: 0.78rem; color: var(--text-muted, #4b5563); margin-top: 2px;">
+                  {{ art.description }}
+                </div>
+              {% endif %}
+            </td>
+
+            <!-- Origin & Project -->
+            <td style="padding: 12px 14px;">
+              {% if art.origin_project_id %}
+                <div>
+                  <a href="/projects/{{ art.origin_project_id }}" style="font-weight: 500; color: var(--text-color, #1f2937); text-decoration: none;">
+                    {{ art.origin_project_name or art.origin_project_id }}
+                  </a>
+                </div>
+              {% else %}
+                <span style="color: var(--text-muted, #9ca3af);">Global / Controller</span>
+              {% endif %}
+              <div style="font-size: 0.72rem; color: var(--text-muted, #6b7280); margin-top: 2px;">
+                Worker: {{ art.origin_worker_id or 'controller-local' }}
+                {% if art.origin_task_id %} · Task: {{ art.origin_task_id }}{% endif %}
+              </div>
+            </td>
+
+            <!-- Type & Version -->
+            <td style="padding: 12px 14px;">
+              <div>
+                <span class="badge" style="font-size: 0.72rem; background: #dbeafe; color: #1e40af; padding: 2px 6px; border-radius: 4px;">
+                  v{{ art.current_version_number }}
+                </span>
+                <span style="font-size: 0.75rem; color: var(--text-muted, #6b7280); margin-left: 4px;">
+                  {{ art.mime_type }}
+                </span>
+              </div>
+              {% if art.derivative_count > 0 %}
+                <div style="font-size: 0.72rem; color: #7c3aed; margin-top: 3px;">
+                  {{ art.derivative_count }} downstream derivative(s)
+                </div>
+              {% endif %}
+            </td>
+
+            <!-- Size & Checksum -->
+            <td style="padding: 12px 14px;">
+              <div>
+                {% if art.size_bytes < 1024 %}
+                  {{ art.size_bytes }} B
+                {% elif art.size_bytes < 1024 * 1024 %}
+                  {{ (art.size_bytes / 1024)|round(1) }} KB
+                {% else %}
+                  {{ (art.size_bytes / (1024 * 1024))|round(2) }} MB
+                {% endif %}
+              </div>
+              <div style="font-size: 0.7rem; color: var(--text-muted, #9ca3af); font-family: monospace; margin-top: 2px;" title="{{ art.checksum_sha256 }}">
+                SHA: {{ art.checksum_sha256[:12] }}...
+              </div>
+            </td>
+
+            <!-- Status & Knowledge -->
+            <td style="padding: 12px 14px;">
+              <div>
+                {% if art.status == 'accepted' %}
+                  <span class="badge" style="background: #d1fae5; color: #065f46; font-size: 0.72rem; padding: 2px 6px; border-radius: 4px;">Accepted</span>
+                {% elif art.status == 'needs_review' %}
+                  <span class="badge" style="background: #fef3c7; color: #92400e; font-size: 0.72rem; padding: 2px 6px; border-radius: 4px;">Needs Review</span>
+                {% elif art.status == 'available' %}
+                  <span class="badge" style="background: #e0f2fe; color: #0369a1; font-size: 0.72rem; padding: 2px 6px; border-radius: 4px;">Available</span>
+                {% elif art.status == 'failed' %}
+                  <span class="badge" style="background: #fee2e2; color: #991b1b; font-size: 0.72rem; padding: 2px 6px; border-radius: 4px;">Failed</span>
+                {% else %}
+                  <span class="badge" style="background: #f3f4f6; color: #374151; font-size: 0.72rem; padding: 2px 6px; border-radius: 4px;">{{ art.status }}</span>
+                {% endif %}
+
+                {% if not art.file_exists %}
+                  <span class="badge" style="background: #fee2e2; color: #b91c1c; font-size: 0.7rem; margin-left: 2px;">File Missing</span>
+                {% endif %}
+              </div>
+              
+              <div style="margin-top: 4px; font-size: 0.72rem;">
+                {% if art.knowledge_status == 'extracted' or art.knowledge_status == 'verified' %}
+                  <span style="color: #059669; font-weight: 500;">✓ In Knowledge Base</span>
+                {% else %}
+                  <span style="color: var(--text-muted, #9ca3af);">Unextracted</span>
+                {% endif %}
+              </div>
+            </td>
+
+            <!-- Actions -->
+            <td style="padding: 12px 14px; text-align: right; white-space: nowrap;">
+              <div style="display: flex; gap: 6px; justify-content: flex-end;">
+                
+                <!-- One-click Open/Preview -->
+                <a href="/deliverables/{{ art.id }}" class="btn btn-secondary btn-sm" style="font-size: 0.78rem; padding: 4px 10px;" title="Preview & Inspect">
+                  Open
+                </a>
+
+                <!-- One-click Download -->
+                {% if art.file_exists %}
+                  <a href="/api/v1/artifacts/{{ art.id }}/download" class="btn btn-primary btn-sm" style="font-size: 0.78rem; padding: 4px 10px;" title="Download exact file">
+                    Download
+                  </a>
+                {% else %}
+                  <button class="btn btn-secondary btn-sm" disabled style="font-size: 0.78rem; padding: 4px 10px; opacity: 0.5;">
+                    Download
+                  </button>
+                {% endif %}
+
+              </div>
+            </td>
+
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="padding: 40px; text-align: center; color: var(--text-muted, #6b7280);">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom: 12px; opacity: 0.5;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+      <div style="font-weight: 600; font-size: 1rem; margin-bottom: 4px;">No artifacts or deliverables found</div>
+      <div style="font-size: 0.85rem;">Adjust your search filters or generate project deliverables through orchestration tasks.</div>
+    </div>
+    {% endif %}
+
+  </div>
+
+</div>
+{% endblock %}

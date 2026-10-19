@@ -176,6 +176,12 @@ def get_research_observatory_api(request: Request):
     return analytics.get_research_and_knowledge_metrics()
 
 
+@router.get("/api/v1/observatory/artifacts")
+def get_artifacts_observatory_api(request: Request):
+    """Retrieve unified deliverables and artifacts management telemetry."""
+    return analytics.get_deliverables_and_artifacts_metrics()
+
+
 
 @router.get("/api/v1/observatory/export")
 def export_telemetry_csv(

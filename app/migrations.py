@@ -1753,6 +1753,288 @@ _M12: List[str] = [
     """,
 ]
 
+# Migration 13: Unified Deliverables & Artifact Management
+_M13 = [
+    # 1. Canonical Artifact Identity & Metadata Table
+    """
+    CREATE TABLE artifacts (
+        id TEXT PRIMARY KEY,
+        display_name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        artifact_type TEXT NOT NULL DEFAULT 'other' CHECK (artifact_type IN (
+            'document', 'dataset', 'report', 'code', 'image', 'chart',
+            'json', 'log', 'research_notes', 'presentation', 'archive', 'other'
+        )),
+        mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+        file_extension TEXT NOT NULL DEFAULT '',
+        size_bytes INTEGER NOT NULL DEFAULT 0,
+        checksum_sha256 TEXT NOT NULL,
+        storage_backend TEXT NOT NULL DEFAULT 'local_filesystem',
+        storage_key TEXT NOT NULL UNIQUE,
+        current_version_number INTEGER NOT NULL DEFAULT 1,
+        status TEXT NOT NULL DEFAULT 'available' CHECK (status IN (
+            'generating', 'uploading', 'validating', 'available',
+            'needs_review', 'accepted', 'failed', 'missing', 'archived'
+        )),
+        validation_status TEXT NOT NULL DEFAULT 'valid' CHECK (validation_status IN (
+            'pending', 'valid', 'invalid', 'unverified'
+        )),
+        validation_detail TEXT NOT NULL DEFAULT '',
+        knowledge_status TEXT NOT NULL DEFAULT 'not_processed' CHECK (knowledge_status IN (
+            'not_processed', 'processing', 'extracted', 'needs_verification',
+            'verified', 'promotion_eligible', 'promoted', 'rejected'
+        )),
+        visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN (
+            'private', 'shared', 'collective'
+        )),
+        retention_policy TEXT NOT NULL DEFAULT 'standard' CHECK (retention_policy IN (
+            'temporary', 'standard', 'indefinite', 'compliance_locked'
+        )),
+        origin_project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+        origin_stage_id TEXT,
+        origin_task_id TEXT,
+        origin_worker_id TEXT,
+        origin_model_id TEXT,
+        parent_artifact_id TEXT REFERENCES artifacts(id) ON DELETE SET NULL,
+        created_by TEXT NOT NULL DEFAULT 'system',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_artifacts_proj ON artifacts(origin_project_id, status)",
+    "CREATE INDEX idx_artifacts_type ON artifacts(artifact_type)",
+    "CREATE INDEX idx_artifacts_sha ON artifacts(checksum_sha256)",
+    "CREATE INDEX idx_artifacts_knowledge_status ON artifacts(knowledge_status)",
+
+    # 2. Immutable Artifact Version History
+    """
+    CREATE TABLE artifact_versions (
+        id TEXT PRIMARY KEY,
+        artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+        version_number INTEGER NOT NULL,
+        storage_backend TEXT NOT NULL DEFAULT 'local_filesystem',
+        storage_key TEXT NOT NULL,
+        size_bytes INTEGER NOT NULL,
+        checksum_sha256 TEXT NOT NULL,
+        change_description TEXT NOT NULL DEFAULT '',
+        producing_task_id TEXT,
+        producing_worker_id TEXT,
+        producing_model_id TEXT,
+        validation_status TEXT NOT NULL DEFAULT 'valid',
+        created_by TEXT NOT NULL DEFAULT 'system',
+        created_at TEXT NOT NULL,
+        UNIQUE(artifact_id, version_number)
+    )
+    """,
+    "CREATE INDEX idx_artifact_versions_art ON artifact_versions(artifact_id, version_number)",
+
+    # 3. Artifact Lineage Graph
+    """
+    CREATE TABLE artifact_lineage (
+        id TEXT PRIMARY KEY,
+        source_artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+        target_artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+        relationship_type TEXT NOT NULL CHECK (relationship_type IN (
+            'derived_from', 'revised_from', 'summarizes', 'transforms',
+            'analyzes', 'compares', 'cites', 'uses_as_input', 'incorporated_into'
+        )),
+        source_version_number INTEGER,
+        target_version_number INTEGER,
+        context_description TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_artifact_lineage_src ON artifact_lineage(source_artifact_id)",
+    "CREATE INDEX idx_artifact_lineage_tgt ON artifact_lineage(target_artifact_id)",
+
+    # 4. Project Associations (Direct, Shared, or Imported)
+    """
+    CREATE TABLE artifact_project_links (
+        id TEXT PRIMARY KEY,
+        artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        role TEXT NOT NULL DEFAULT 'output' CHECK (role IN (
+            'output', 'input', 'shared_reference', 'imported', 'deliverable_backing'
+        )),
+        added_at TEXT NOT NULL,
+        added_by TEXT NOT NULL DEFAULT 'system',
+        UNIQUE(artifact_id, project_id, role)
+    )
+    """,
+    "CREATE INDEX idx_art_proj_links_proj ON artifact_project_links(project_id)",
+
+    # 5. Task Input & Output Linkages
+    """
+    CREATE TABLE artifact_task_links (
+        id TEXT PRIMARY KEY,
+        artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+        version_number INTEGER NOT NULL DEFAULT 1,
+        task_id TEXT,
+        orch_task_id TEXT,
+        direction TEXT NOT NULL CHECK (direction IN ('input', 'output')),
+        role TEXT NOT NULL DEFAULT 'primary',
+        created_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_art_task_links_task ON artifact_task_links(task_id)",
+
+    # 6. Cross-Project Access Grants
+    """
+    CREATE TABLE artifact_access_grants (
+        id TEXT PRIMARY KEY,
+        artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+        source_project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        target_project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        granted_by TEXT NOT NULL,
+        granted_at TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'revoked')),
+        UNIQUE(artifact_id, target_project_id)
+    )
+    """,
+    "CREATE INDEX idx_art_grants_target ON artifact_access_grants(target_project_id, status)",
+
+    # 7. Artifact Knowledge Extraction Linkage
+    """
+    CREATE TABLE artifact_knowledge_links (
+        id TEXT PRIMARY KEY,
+        artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+        artifact_version_number INTEGER NOT NULL DEFAULT 1,
+        knowledge_record_id TEXT NOT NULL REFERENCES knowledge_records(id) ON DELETE CASCADE,
+        extraction_method TEXT NOT NULL DEFAULT 'automated_nlp',
+        extracted_claim TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_art_know_links_art ON artifact_knowledge_links(artifact_id)",
+    "CREATE INDEX idx_art_know_links_know ON artifact_knowledge_links(knowledge_record_id)",
+
+    # 8. Deliverable schema extension: Direct pointer to primary artifact & version
+    "ALTER TABLE deliverables ADD COLUMN primary_artifact_id TEXT REFERENCES artifacts(id) ON DELETE SET NULL",
+    "ALTER TABLE deliverables ADD COLUMN primary_artifact_version INTEGER DEFAULT 1",
+
+    # 9. SQLite FTS5 Full-Text Search Table for Artifacts
+    """
+    CREATE VIRTUAL TABLE artifacts_fts USING fts5(
+        artifact_id UNINDEXED,
+        display_name,
+        description,
+        content_summary,
+        tokenize='porter unicode61'
+    )
+    """,
+
+    # 10. FTS Triggers for Artifacts
+    """
+    CREATE TRIGGER trg_artifacts_fts_insert AFTER INSERT ON artifacts BEGIN
+        INSERT INTO artifacts_fts(artifact_id, display_name, description, content_summary)
+        VALUES (new.id, new.display_name, new.description, new.display_name || ' ' || new.description || ' ' || new.artifact_type);
+    END;
+    """,
+    """
+    CREATE TRIGGER trg_artifacts_fts_delete AFTER DELETE ON artifacts BEGIN
+        DELETE FROM artifacts_fts WHERE artifact_id = old.id;
+    END;
+    """,
+    """
+    CREATE TRIGGER trg_artifacts_fts_update AFTER UPDATE ON artifacts BEGIN
+        DELETE FROM artifacts_fts WHERE artifact_id = old.id;
+        INSERT INTO artifacts_fts(artifact_id, display_name, description, content_summary)
+        VALUES (new.id, new.display_name, new.description, new.display_name || ' ' || new.description || ' ' || new.artifact_type);
+    END;
+    """,
+
+    # 11. Historical Migration of Existing Artifact Metadata
+    """
+    INSERT OR IGNORE INTO artifacts (
+        id, display_name, description, artifact_type, mime_type, file_extension,
+        size_bytes, checksum_sha256, storage_backend, storage_key, current_version_number,
+        status, validation_status, validation_detail, knowledge_status, visibility,
+        retention_policy, origin_project_id, origin_task_id, origin_worker_id,
+        created_by, created_at, updated_at
+    )
+    SELECT
+        id,
+        filename,
+        'Historical artifact registered from prior task execution',
+        CASE
+            WHEN filename LIKE '%.json' THEN 'json'
+            WHEN filename LIKE '%.md' THEN 'document'
+            WHEN filename LIKE '%.txt' THEN 'document'
+            WHEN filename LIKE '%.csv' THEN 'dataset'
+            WHEN filename LIKE '%.py' OR filename LIKE '%.sh' THEN 'code'
+            WHEN filename LIKE '%.png' OR filename LIKE '%.jpg' THEN 'image'
+            ELSE 'other'
+        END,
+        mime_type,
+        CASE WHEN instr(filename, '.') > 0 THEN substr(filename, instr(filename, '.')) ELSE '' END,
+        size_bytes,
+        sha256,
+        'local_filesystem',
+        storage_path,
+        1,
+        'available',
+        validation_state,
+        validation_detail,
+        'not_processed',
+        'private',
+        'standard',
+        project_id,
+        task_id,
+        worker_id,
+        'migration',
+        created_at,
+        created_at
+    FROM artifact_metadata;
+    """,
+    """
+    INSERT OR IGNORE INTO artifact_versions (
+        id, artifact_id, version_number, storage_backend, storage_key,
+        size_bytes, checksum_sha256, change_description,
+        producing_task_id, producing_worker_id, validation_status,
+        created_by, created_at
+    )
+    SELECT
+        'artver-' || substr(id, 5),
+        id,
+        1,
+        'local_filesystem',
+        storage_path,
+        size_bytes,
+        sha256,
+        'Initial historical version from migration',
+        task_id,
+        worker_id,
+        validation_state,
+        'migration',
+        created_at
+    FROM artifact_metadata;
+    """,
+    """
+    INSERT OR IGNORE INTO artifact_project_links (
+        id, artifact_id, project_id, role, added_at, added_by
+    )
+    SELECT
+        'apl-' || substr(id, 5),
+        id,
+        project_id,
+        'output',
+        created_at,
+        'migration'
+    FROM artifact_metadata
+    WHERE project_id IS NOT NULL;
+    """,
+    """
+    UPDATE deliverables
+    SET primary_artifact_id = (
+        SELECT a.id FROM artifacts a
+        WHERE a.origin_project_id = deliverables.project_id
+          AND instr(deliverables.artifact_references, a.id) > 0
+        LIMIT 1
+    )
+    WHERE primary_artifact_id IS NULL AND artifact_references != '';
+    """,
+]
+
 MIGRATIONS: List[Migration] = [
     (1, "project intelligence foundation", _M1),
     (2, "execution and evidence", _M2),
@@ -1766,6 +2048,7 @@ MIGRATIONS: List[Migration] = [
     (10, "system observatory telemetry, rollups, inference accounting, and alerting", _M10),
     (11, "autonomous web research and browsing engine", _M11),
     (12, "continuous research and persistent knowledge integration", _M12),
+    (13, "unified deliverables and artifact management refactor", _M13),
 ]
 
 

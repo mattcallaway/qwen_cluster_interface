@@ -512,6 +512,64 @@ def upload_task_artifact(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(ex))
 
 
+@router.get("/tasks/{task_id}/artifacts/{artifact_id}")
+def download_task_artifact(
+    task_id: str,
+    artifact_id: str,
+    version: Optional[int] = None,
+    worker: Dict[str, Any] = Depends(get_authenticated_worker),
+):
+    """
+    Allow an authenticated worker to materialize an authorized input/project artifact for its assigned task.
+    Enforces least privilege: worker must be assigned/leased to task_id, and artifact must belong or be granted to the task's project.
+    """
+    from fastapi.responses import FileResponse
+    from app.services.artifacts import artifact_service
+    from app.database import get_db_connection
+
+    conn = get_db_connection()
+    try:
+        trow = conn.execute("SELECT id, project_id, assigned_worker FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        if not trow:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
+
+        # Verify worker lease or assignment
+        active_lease = conn.execute(
+            "SELECT 1 FROM worker_task_leases WHERE task_id = ? AND worker_id = ? AND status IN ('leased', 'active')",
+            (task_id, worker["node_id"]),
+        ).fetchone()
+        if trow["assigned_worker"] != worker["node_id"] and not active_lease:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Worker '{worker['node_id']}' is not assigned or leased to task '{task_id}'.",
+            )
+
+        proj_id = trow["project_id"]
+        # Check project access to artifact
+        if not artifact_service.check_project_access(artifact_id, proj_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Task project '{proj_id}' is not authorized to access artifact '{artifact_id}'.",
+            )
+    finally:
+        conn.close()
+
+    try:
+        dl = artifact_service.resolve_download(artifact_id, version_number=version, project_id=proj_id)
+        return FileResponse(
+            path=str(dl["file_path"]),
+            media_type=dl["mime_type"],
+            filename=dl["display_name"],
+            headers={
+                "X-Artifact-Id": dl["artifact_id"],
+                "X-Artifact-Version": str(dl["version_number"]),
+                "X-Artifact-Checksum-SHA256": dl["checksum_sha256"],
+            },
+        )
+    except Exception as ex:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(ex))
+
+
 @router.get("/executions")
 def list_executions(
     worker_id: Optional[str] = None,

@@ -53,6 +53,7 @@ def knowledge_index(
         return RedirectResponse(url="/auth/login", status_code=status.HTTP_302_FOUND)
 
     records: List[Dict[str, Any]] = []
+    search_results: List[Dict[str, Any]] = []
     if q and q.strip():
         records = search_knowledge_records(
             q.strip(),
@@ -61,6 +62,8 @@ def knowledge_index(
             include_collective=True,
             limit=50
         )
+        from app.services.knowledge import search_knowledge
+        search_results = search_knowledge(q.strip())
     else:
         records = list_knowledge_records(
             scope=scope,
@@ -102,6 +105,7 @@ def knowledge_index(
         "csrf_token": get_csrf_token(request),
         "view": view,
         "query": q or "",
+        "search_results": search_results,
         "selected_scope": scope or "",
         "selected_type": knowledge_type or "",
         "selected_status": verification_status or "",
