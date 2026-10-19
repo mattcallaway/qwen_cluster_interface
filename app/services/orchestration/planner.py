@@ -15,7 +15,7 @@ from app.services.orchestration.common import (
 logger = logging.getLogger("qc.orchestrator.planner")
 
 MAX_REPAIRS = 2
-PLANNER_MAX_TOKENS = 800
+PLANNER_MAX_TOKENS = 2048
 PLANNER_TIMEOUT_S = 290
 TEMPLATE_GOALS = re.compile(r"(system|cluster|node|distributed)\s+health|health\s+(report|check|snapshot)|diagnostics?\s+report", re.I)
 PREFERRED_PLANNER_MODELS = ["qwen2.5:1.5b", "llama3.2:1b"]
@@ -380,16 +380,64 @@ def build_repair_prompt(original: str, bad_text: str, errors: List[str]) -> str:
             + "\nReturn ONLY the corrected JSON object.")
 
 
-def extract_json_object(text: str) -> Optional[Dict[str, Any]]:
-    """Pull the first balanced top-level JSON object out of model text (string-aware)."""
+def try_repair_truncated_json(text: str) -> Optional[Dict[str, Any]]:
+    """Attempt bounded repair of JSON cut off by token limits by closing open containers."""
     if not text:
         return None
-    text = re.sub(r"```(?:json)?", "", text)
+    text = re.sub(r"```(?:json)?", "", text).strip()
     start = text.find("{")
+    if start == -1:
+        return None
+    s = text[start:]
+
+    for trim_len in range(0, min(800, len(s))):
+        sub = s[:len(s) - trim_len].rstrip()
+        sub = re.sub(r",\s*$", "", sub)
+        sub = re.sub(r':\s*"?$', ': ""', sub)
+
+        in_str, esc = False, False
+        stack: List[str] = []
+        for ch in sub:
+            if in_str:
+                if esc:
+                    esc = False
+                elif ch == "\\":
+                    esc = True
+                elif ch == '"':
+                    in_str = False
+            elif ch == '"':
+                in_str = True
+            elif ch in ("{", "["):
+                stack.append("}" if ch == "{" else "]")
+            elif ch in ("}", "]"):
+                if stack and stack[-1] == ch:
+                    stack.pop()
+
+        if not in_str:
+            closing = "".join(reversed(stack))
+            candidate = sub + closing
+            try:
+                obj = json.loads(candidate)
+                if isinstance(obj, dict) and ("tasks" in obj or "paths" in obj or "overview" in obj or "schema" in obj):
+                    return obj
+            except Exception:
+                pass
+    return None
+
+
+def extract_json_object(text: str) -> Optional[Dict[str, Any]]:
+    """Pull the first balanced top-level JSON object out of model text (string-aware).
+    If truncated at token limit, recovers the partial plan structure.
+    """
+    if not text:
+        return None
+    clean = re.sub(r"```(?:json)?", "", text)
+    start = clean.find("{")
+    first_start = start
     while start != -1:
         depth, in_str, esc = 0, False, False
-        for i in range(start, len(text)):
-            ch = text[i]
+        for i in range(start, len(clean)):
+            ch = clean[i]
             if in_str:
                 if esc:
                     esc = False
@@ -405,13 +453,22 @@ def extract_json_object(text: str) -> Optional[Dict[str, Any]]:
                 depth -= 1
                 if depth == 0:
                     try:
-                        obj = json.loads(text[start:i + 1])
+                        obj = json.loads(clean[start:i + 1])
                         if isinstance(obj, dict):
-                            return obj
+                            # Ensure we don't grab a shallow nested object (e.g. overview) when looking for a plan
+                            if "schema" in obj or "tasks" in obj or "paths" in obj or "overview" in obj:
+                                return obj
                     except ValueError:
                         pass
                     break
-        start = text.find("{", start + 1)
+        start = clean.find("{", start + 1)
+
+    # If no balanced top-level object was closed, attempt to recover truncated JSON
+    if first_start != -1:
+        repaired = try_repair_truncated_json(clean[first_start:])
+        if repaired is not None:
+            return repaired
+
     return None
 
 
