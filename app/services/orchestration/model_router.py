@@ -70,7 +70,8 @@ def _model_matches(requested: str, available: List[str]) -> Optional[str]:
 
 
 def eligible_nodes(task: Dict[str, Any], nodes: List[Dict[str, Any]],
-                   require_fresh: bool = True) -> Dict[str, Any]:
+                   require_fresh: bool = True,
+                   enforce_verified: bool = True) -> Dict[str, Any]:
     """Return ``{"eligible": [(node, model|None)...], "reasons": [...]}`` for a plan/orchestration task."""
     action = task.get("action") if "action" in task else jload(task.get("action_json"))
     typ = action.get("type")
@@ -120,8 +121,24 @@ def eligible_nodes(task: Dict[str, Any], nodes: List[Dict[str, Any]],
                             break
                     if not model:
                         why = f"model not available (wants {cands}, has {n['models']})"
-                    elif n["available_ram_mb"] is not None and n["available_ram_mb"] < MIN_FREE_RAM_FOR_INFERENCE_MB:
-                        why = f"insufficient free RAM ({n['available_ram_mb']} MiB)"
+                    elif n.get("available_ram_mb") is not None and n.get("available_ram_mb") < MIN_FREE_RAM_FOR_INFERENCE_MB:
+                        why = f"insufficient free RAM ({n.get('available_ram_mb')} MiB)"
+                    elif enforce_verified:
+                        # Finding F-18: Verify persistent capability probe in database
+                        conn = get_db_connection()
+                        try:
+                            verif = conn.execute(
+                                """SELECT result_status FROM infrastructure_verifications
+                                   WHERE node_id = ? AND verification_test = 'model_inference_probe'
+                                   ORDER BY verified_at DESC LIMIT 1""",
+                                (n["id"],)
+                            ).fetchone()
+                            if not verif or verif["result_status"] != "passed":
+                                status_str = verif["result_status"] if verif else "probe_missing"
+                                why = (f"unverified model capability on node '{n['id']}' for model '{model}': "
+                                       f"status={status_str} (run verify_node_model_capability to verify)")
+                        finally:
+                            conn.close()
             else:
                 why = "unsupported action type"
         if why:
@@ -131,10 +148,71 @@ def eligible_nodes(task: Dict[str, Any], nodes: List[Dict[str, Any]],
     return {"eligible": eligible, "reasons": reasons}
 
 
+def verify_node_model_capability(
+    node_id: str,
+    model: str,
+    verified_by: str = "cluster_health_probe",
+    passed: bool = True,
+    details: str = "",
+) -> Dict[str, Any]:
+    """Verify and audit a node's model inference capability in persistent storage (Finding F-18)."""
+    conn = get_db_connection()
+    try:
+        node = conn.execute("SELECT * FROM infrastructure_nodes WHERE id = ?", (node_id,)).fetchone()
+        if not node:
+            raise ValueError(f"Node '{node_id}' not found.")
+    finally:
+        conn.close()
+
+    now = now_iso()
+    cap_id = f"cap-{node_id}-inference"
+    verif_id = new_id("ver")
+
+    with db_transaction() as conn:
+        conn.execute(
+            """INSERT INTO infrastructure_capabilities (
+                id, node_id, name, category, required_software, discovery_status,
+                discovery_method, verification_status, verification_method, last_verified_at,
+                verification_error, created_at, updated_at
+            ) VALUES (?, ?, 'model_inference', 'ai_inference', 'ollama', 'discovered', 'agent_probe',
+                      ?, 'health_check', ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                verification_status = excluded.verification_status,
+                last_verified_at = excluded.last_verified_at,
+                verification_error = excluded.verification_error,
+                updated_at = excluded.updated_at""",
+            (
+                cap_id, node_id, "verified" if passed else "failed", now,
+                details if not passed else "", now, now
+            )
+        )
+        conn.execute(
+            """INSERT INTO infrastructure_verifications (
+                id, capability_id, node_id, verification_test, result_status, details, verified_at, verified_by
+            ) VALUES (?, ?, ?, 'model_inference_probe', ?, ?, ?, ?)""",
+            (
+                verif_id, cap_id, node_id, "passed" if passed else "failed",
+                f"Model '{model}': {details or ('Probe passed successfully' if passed else 'Probe failed')}",
+                now, verified_by
+            )
+        )
+
+    logger.info("Node %s model inference capability probe for %s recorded: passed=%s", node_id, model, passed)
+    return {
+        "verification_id": verif_id,
+        "node_id": node_id,
+        "model": model,
+        "verified": passed,
+        "verified_at": now,
+        "verified_by": verified_by,
+        "details": details
+    }
+
+
 def select_node(task: Dict[str, Any], nodes: List[Dict[str, Any]],
                 busy: Optional[Dict[str, int]] = None) -> Tuple[Optional[Dict[str, Any]], Optional[str], List[str]]:
     """Choose the least-loaded eligible node (one in-flight work item per node to protect small hosts)."""
-    res = eligible_nodes(task, nodes)
+    res = eligible_nodes(task, nodes, enforce_verified=True)
     busy = busy or {}
     free = [(n, m) for n, m in res["eligible"] if busy.get(n["id"], 0) + n.get("load", 0) < 1
             or n.get("role") == "controller"]

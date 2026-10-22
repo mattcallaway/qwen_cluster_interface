@@ -2035,6 +2035,162 @@ _M13 = [
     """,
 ]
 
+# ---------------------------------------------------------------------------
+# Migration 14 — Research Run Scope Isolation & Source Provenance
+# ---------------------------------------------------------------------------
+_M14: List[str] = [
+    "ALTER TABLE research_sources ADD COLUMN research_run_id TEXT;",
+    "CREATE INDEX IF NOT EXISTS idx_research_sources_run ON research_sources(research_run_id);",
+]
+
+# ---------------------------------------------------------------------------
+# Migration 15 — Research Source Reuse Lineage & Session Evidence Tracking
+# ---------------------------------------------------------------------------
+_M15: List[str] = [
+    "ALTER TABLE research_sources ADD COLUMN session_id TEXT;",
+    "ALTER TABLE research_source_versions ADD COLUMN session_id TEXT;",
+    "ALTER TABLE research_source_versions ADD COLUMN research_run_id TEXT;",
+    "CREATE INDEX IF NOT EXISTS idx_research_source_versions_sess ON research_source_versions(session_id);",
+    "ALTER TABLE research_evidence ADD COLUMN orchestration_run_id TEXT;",
+    "ALTER TABLE research_evidence ADD COLUMN research_session_id TEXT;",
+    "ALTER TABLE research_evidence ADD COLUMN source_version_id TEXT;",
+    "ALTER TABLE research_evidence ADD COLUMN is_heuristic INTEGER NOT NULL DEFAULT 1;",
+    "ALTER TABLE research_evidence ADD COLUMN heuristic_label TEXT NOT NULL DEFAULT 'HEURISTIC_ESTIMATE';",
+    "ALTER TABLE research_evidence ADD COLUMN informed_tasks_json TEXT NOT NULL DEFAULT '[]';",
+    "ALTER TABLE research_evidence ADD COLUMN informed_requirements_json TEXT NOT NULL DEFAULT '[]';",
+    "ALTER TABLE research_evidence ADD COLUMN contradiction_status TEXT NOT NULL DEFAULT 'NONE';",
+    "CREATE INDEX IF NOT EXISTS idx_research_evidence_sess ON research_evidence(research_session_id);",
+    "CREATE INDEX IF NOT EXISTS idx_research_evidence_orch ON research_evidence(orchestration_run_id);",
+    """
+    CREATE TABLE IF NOT EXISTS research_source_reuses (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        orchestration_run_id TEXT REFERENCES orchestration_runs(id) ON DELETE CASCADE,
+        research_session_id TEXT NOT NULL DEFAULT '',
+        source_id TEXT NOT NULL REFERENCES research_sources(id) ON DELETE CASCADE,
+        source_version_id TEXT,
+        target_task_id TEXT,
+        target_stage_phase TEXT,
+        reuse_reason TEXT NOT NULL DEFAULT '',
+        verified_fresh INTEGER NOT NULL DEFAULT 1 CHECK (verified_fresh IN (0, 1)),
+        reused_at TEXT NOT NULL,
+        target_run_id TEXT,
+        origin_run_id TEXT,
+        authorized_by TEXT NOT NULL DEFAULT 'operator',
+        authorization_note TEXT NOT NULL DEFAULT '',
+        authorized_at TEXT
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_research_reuses_proj ON research_source_reuses(project_id);",
+    "CREATE INDEX IF NOT EXISTS idx_research_reuses_run ON research_source_reuses(orchestration_run_id);",
+    "CREATE INDEX IF NOT EXISTS idx_research_reuses_src ON research_source_reuses(source_id);",
+]
+
+# ---------------------------------------------------------------------------
+# Migration 16 — Canonical Content-Addressed Storage & Explicit Artifact Reuse
+# ---------------------------------------------------------------------------
+_M16: List[str] = [
+    # 1. CAS Hash, Producer Attempt, and Run Lineage on artifacts
+    "ALTER TABLE artifacts ADD COLUMN origin_run_id TEXT REFERENCES orchestration_runs(id) ON DELETE SET NULL;",
+    "ALTER TABLE artifacts ADD COLUMN producer_attempt INTEGER NOT NULL DEFAULT 1;",
+    "ALTER TABLE artifacts ADD COLUMN cas_hash TEXT;",
+    "CREATE INDEX IF NOT EXISTS idx_artifacts_cas ON artifacts(cas_hash);",
+    "CREATE INDEX IF NOT EXISTS idx_artifacts_run ON artifacts(origin_run_id);",
+
+    # 2. CAS Hash, Producer Attempt, and Run Lineage on artifact_versions
+    "ALTER TABLE artifact_versions ADD COLUMN producing_run_id TEXT REFERENCES orchestration_runs(id) ON DELETE SET NULL;",
+    "ALTER TABLE artifact_versions ADD COLUMN producer_attempt INTEGER NOT NULL DEFAULT 1;",
+    "ALTER TABLE artifact_versions ADD COLUMN cas_hash TEXT;",
+    "CREATE INDEX IF NOT EXISTS idx_artifact_versions_cas ON artifact_versions(cas_hash);",
+    "CREATE INDEX IF NOT EXISTS idx_artifact_versions_run ON artifact_versions(producing_run_id);",
+
+    # 3. CAS Hash and Producer Attempt on legacy artifact_metadata
+    "ALTER TABLE artifact_metadata ADD COLUMN cas_hash TEXT;",
+    "ALTER TABLE artifact_metadata ADD COLUMN producer_attempt INTEGER NOT NULL DEFAULT 1;",
+    "CREATE INDEX IF NOT EXISTS idx_artifact_metadata_cas ON artifact_metadata(cas_hash);",
+
+    # 4. Canonical Cross-Project Artifact Reuse Ledger
+    """
+    CREATE TABLE IF NOT EXISTS artifact_reuses (
+        id TEXT PRIMARY KEY,
+        artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+        version_number INTEGER NOT NULL DEFAULT 1,
+        source_project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        target_project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        target_run_id TEXT,
+        target_task_id TEXT,
+        authorized_by TEXT NOT NULL,
+        authorization_note TEXT NOT NULL DEFAULT '',
+        authorized_at TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'revoked'))
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_art_reuses_tgt ON artifact_reuses(target_project_id, status);",
+    "CREATE INDEX IF NOT EXISTS idx_art_reuses_art ON artifact_reuses(artifact_id, version_number);",
+]
+
+# ---------------------------------------------------------------------------
+# Migration 17 — Artifact Packages, Lineage Actions, and Link Types
+# ---------------------------------------------------------------------------
+_M17: List[str] = [
+    """
+    CREATE TABLE IF NOT EXISTS artifact_packages (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        package_name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        manifest_json TEXT NOT NULL DEFAULT '{}',
+        created_by TEXT NOT NULL DEFAULT 'system',
+        created_at TEXT NOT NULL
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_art_packages_proj ON artifact_packages(project_id);",
+    """
+    CREATE TABLE IF NOT EXISTS artifact_package_components (
+        id TEXT PRIMARY KEY,
+        package_id TEXT NOT NULL REFERENCES artifact_packages(id) ON DELETE CASCADE,
+        artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+        version_number INTEGER NOT NULL DEFAULT 1,
+        role TEXT NOT NULL DEFAULT 'component',
+        created_at TEXT NOT NULL
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_art_pkg_comps ON artifact_package_components(package_id);",
+    "ALTER TABLE artifact_reuses ADD COLUMN action_type TEXT NOT NULL DEFAULT 'reuse';",
+    "ALTER TABLE artifact_project_links ADD COLUMN link_type TEXT NOT NULL DEFAULT 'shared';",
+    "ALTER TABLE artifacts ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}';",
+]
+
+# ---------------------------------------------------------------------------
+# Migration 18 — Knowledge Vault trust tiers, review governance, and conflict ledger (Stage 7)
+# ---------------------------------------------------------------------------
+_M18: List[str] = [
+    "ALTER TABLE knowledge_records ADD COLUMN trust_tier TEXT NOT NULL DEFAULT 'captured';",
+    "ALTER TABLE knowledge_records ADD COLUMN review_notes TEXT NOT NULL DEFAULT '';",
+    "ALTER TABLE knowledge_records ADD COLUMN reviewed_by TEXT;",
+    "ALTER TABLE knowledge_records ADD COLUMN reviewed_at TEXT;",
+    "ALTER TABLE knowledge_records ADD COLUMN vault_note_path TEXT;",
+    "ALTER TABLE knowledge_records ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'synced';",
+    "CREATE INDEX IF NOT EXISTS idx_knowledge_records_tier ON knowledge_records(trust_tier);",
+    "ALTER TABLE knowledge_promotions ADD COLUMN target_tier TEXT NOT NULL DEFAULT 'reusable';",
+    """
+    CREATE TABLE IF NOT EXISTS knowledge_conflicts (
+        id TEXT PRIMARY KEY,
+        record_a_id TEXT NOT NULL REFERENCES knowledge_records(id) ON DELETE CASCADE,
+        record_b_id TEXT NOT NULL REFERENCES knowledge_records(id) ON DELETE CASCADE,
+        conflict_type TEXT NOT NULL DEFAULT 'direct_contradiction',
+        status TEXT NOT NULL DEFAULT 'unresolved',
+        details TEXT NOT NULL DEFAULT '',
+        resolution_notes TEXT NOT NULL DEFAULT '',
+        resolved_by TEXT,
+        resolved_at TEXT,
+        created_at TEXT NOT NULL
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_knowledge_conflicts_status ON knowledge_conflicts(status);",
+    "CREATE INDEX IF NOT EXISTS idx_knowledge_conflicts_records ON knowledge_conflicts(record_a_id, record_b_id);",
+]
+
 MIGRATIONS: List[Migration] = [
     (1, "project intelligence foundation", _M1),
     (2, "execution and evidence", _M2),
@@ -2049,7 +2205,13 @@ MIGRATIONS: List[Migration] = [
     (11, "autonomous web research and browsing engine", _M11),
     (12, "continuous research and persistent knowledge integration", _M12),
     (13, "unified deliverables and artifact management refactor", _M13),
+    (14, "research run scope isolation and source provenance", _M14),
+    (15, "research source reuse lineage and session evidence tracking", _M15),
+    (16, "canonical content-addressed storage and explicit artifact reuse", _M16),
+    (17, "artifact packaging, lineage actions, and link typing", _M17),
+    (18, "knowledge vault trust tiers, review governance, and conflict ledger", _M18),
 ]
+
 
 
 

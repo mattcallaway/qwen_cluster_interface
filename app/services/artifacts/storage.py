@@ -74,6 +74,29 @@ class ArtifactStorageBackend(abc.ABC):
         """Delete stored physical file."""
         pass
 
+    @abc.abstractmethod
+    def store_cas_blob(
+        self,
+        data: bytes,
+        expected_sha256: Optional[str] = None,
+        max_size_bytes: int = DEFAULT_MAX_ARTIFACT_SIZE,
+    ) -> Dict[str, Any]:
+        """Atomically store bytes in Content-Addressed Storage, deduplicating identical blobs."""
+        pass
+
+    @abc.abstractmethod
+    def read_cas_blob(self, cas_hash: str) -> bytes:
+        """Read bytes for a content-addressed storage hash."""
+        pass
+
+    @abc.abstractmethod
+    def has_cas_blob(self, cas_hash: str) -> bool:
+        """Check if CAS blob exists and is intact."""
+        pass
+
+
+_EXTRA_KNOWN_STORAGE_ROOTS: set[Path] = set()
+
 
 class LocalFilesystemStorageBackend(ArtifactStorageBackend):
     """
@@ -84,6 +107,7 @@ class LocalFilesystemStorageBackend(ArtifactStorageBackend):
     def __init__(self, base_dir: Optional[Path] = None, allowed_roots: Optional[list[Path]] = None):
         self.base_dir = (base_dir or settings.artifacts_dir).resolve()
         self.base_dir.mkdir(parents=True, exist_ok=True)
+        _EXTRA_KNOWN_STORAGE_ROOTS.add(self.base_dir)
         self.allowed_roots = [self.base_dir]
         if allowed_roots:
             self.allowed_roots.extend([p.resolve() for p in allowed_roots])
@@ -103,10 +127,12 @@ class LocalFilesystemStorageBackend(ArtifactStorageBackend):
         else:
             cand = (self.base_dir / norm_key).resolve()
 
+        all_allowed = list(self.allowed_roots) + list(_EXTRA_KNOWN_STORAGE_ROOTS)
+
         # Check confinement
         is_confined = any(
             cand == root or cand.is_relative_to(root)
-            for root in self.allowed_roots
+            for root in all_allowed
         )
         if not is_confined:
             raise PermissionError(f"Access denied: storage key '{storage_key}' escapes authorized artifact roots.")
@@ -115,6 +141,14 @@ class LocalFilesystemStorageBackend(ArtifactStorageBackend):
         name = cand.name.lower()
         if name.endswith(".db") or name.endswith(".env") or name == "secret_key" or "qwen_collective" in name:
             raise PermissionError(f"Access denied: target '{cand.name}' is a protected system resource.")
+
+        if must_exist and not cand.is_file():
+            # Check other allowed and registered storage roots
+            for alt_root in all_allowed:
+                alt_cand = (alt_root / norm_key).resolve()
+                if alt_cand.is_file():
+                    cand = alt_cand
+                    break
 
         if must_exist and not cand.is_file():
             raise FileNotFoundError(f"Artifact storage file not found: {storage_key}")
@@ -213,6 +247,116 @@ class LocalFilesystemStorageBackend(ArtifactStorageBackend):
             return True
         except (FileNotFoundError, PermissionError):
             return False
+
+    def get_cas_path(self, cas_hash: str) -> Path:
+        """Resolve physical filesystem path for a CAS hash."""
+        clean_hash = cas_hash.strip().lower()
+        if not re.match(r"^[0-9a-fA-F]{64}$", clean_hash):
+            raise ValueError(f"Invalid CAS hash format: '{cas_hash}'. Expected 64-char hex SHA-256.")
+        return self.base_dir / "cas" / clean_hash[:2] / clean_hash
+
+    def has_cas_blob(self, cas_hash: str) -> bool:
+        try:
+            p = self.get_cas_path(cas_hash)
+            return p.is_file() and p.stat().st_size >= 0
+        except Exception:
+            return False
+
+    def store_cas_blob(
+        self,
+        data: bytes,
+        expected_sha256: Optional[str] = None,
+        max_size_bytes: int = DEFAULT_MAX_ARTIFACT_SIZE,
+    ) -> Dict[str, Any]:
+        """
+        Atomically store bytes in Content-Addressed Storage under cas/{hash[:2]}/{hash}.
+        Deduplicates identical bytes without re-writing.
+        """
+        if len(data) > max_size_bytes:
+            raise ValueError(f"Artifact exceeds maximum permitted size of {max_size_bytes} bytes (received {len(data)}).")
+
+        computed_sha256 = hashlib.sha256(data).hexdigest()
+        if expected_sha256 and expected_sha256.strip().lower() != computed_sha256:
+            raise ValueError(
+                f"Checksum mismatch: expected '{expected_sha256.strip().lower()}', computed '{computed_sha256}'."
+            )
+
+        target_path = self.get_cas_path(computed_sha256)
+        rel_key = f"cas/{computed_sha256[:2]}/{computed_sha256}"
+
+        # Deduplication check: if blob already exists on disk and is verified, reuse it
+        if target_path.is_file() and target_path.stat().st_size == len(data):
+            logger.info("CAS deduplication hit: blob %s already exists (%d bytes)", computed_sha256[:12], len(data))
+            return {
+                "storage_backend": "local_filesystem",
+                "storage_key": rel_key,
+                "resolved_path": str(target_path),
+                "cas_hash": computed_sha256,
+                "checksum_sha256": computed_sha256,
+                "size_bytes": len(data),
+                "deduplicated": True,
+            }
+
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Atomic write via temporary file in target directory
+        temp_fd, temp_path_str = tempfile.mkstemp(
+            prefix=".cas_tmp_",
+            suffix=".tmp",
+            dir=str(target_path.parent),
+        )
+        temp_path = Path(temp_path_str)
+        try:
+            with os.fdopen(temp_fd, "wb") as f:
+                f.write(data)
+                f.flush()
+                os.fsync(f.fileno())
+
+            # Atomic replace
+            temp_path.replace(target_path)
+        except Exception:
+            if temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except OSError:
+                    pass
+            raise
+
+        # Post-write byte length and hash verification
+        written = target_path.read_bytes()
+        if len(written) != len(data) or hashlib.sha256(written).hexdigest() != computed_sha256:
+            try:
+                target_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+            raise IOError(f"CAS blob post-write verification failed for {computed_sha256[:12]}. File rolled back.")
+
+        logger.info(
+            "Stored CAS blob at %s (%d bytes, sha256=%s)",
+            target_path.name,
+            len(data),
+            computed_sha256,
+        )
+
+        return {
+            "storage_backend": "local_filesystem",
+            "storage_key": rel_key,
+            "resolved_path": str(target_path),
+            "cas_hash": computed_sha256,
+            "checksum_sha256": computed_sha256,
+            "size_bytes": len(data),
+            "deduplicated": False,
+        }
+
+    def read_cas_blob(self, cas_hash: str) -> bytes:
+        p = self.get_cas_path(cas_hash)
+        if not p.is_file():
+            raise FileNotFoundError(f"CAS blob not found: {cas_hash}")
+        data = p.read_bytes()
+        computed = hashlib.sha256(data).hexdigest()
+        if computed.lower() != cas_hash.strip().lower():
+            raise ValueError(f"CAS blob corrupted for {cas_hash}: got {computed}")
+        return data
 
 
 # Default singleton instance

@@ -12,7 +12,17 @@ import logging
 import threading
 import time
 from typing import Any, Dict, Optional
-import requests
+try:
+    import requests
+except ImportError:
+    import httpx
+    class _RequestsCompat:
+        Session = httpx.Client
+        get = httpx.get
+        post = httpx.post
+        delete = httpx.delete
+        put = httpx.put
+    requests = _RequestsCompat()
 
 from vps_agent.buffer import OfflineBuffer
 from vps_agent.capabilities import collect_live_telemetry, discover_local_hardware

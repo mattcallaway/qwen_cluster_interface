@@ -3,6 +3,8 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
+from app.version import __version__
+
 # Automatically load production or user config if present
 _custom_config = os.getenv("QC_CONFIG_FILE")
 if _custom_config and Path(_custom_config).exists():
@@ -15,7 +17,7 @@ load_dotenv()
 
 class Settings(BaseModel):
     app_name: str = "Qwen Collective"
-    app_version: str = "0.1.0"
+    app_version: str = Field(default_factory=lambda: os.getenv("QC_APP_VERSION", __version__))
     host: str = os.getenv("QC_HOST", "127.0.0.1")
     port: int = int(os.getenv("QC_PORT", "8000"))
     

@@ -69,3 +69,105 @@ def test_benchmark_recorder_and_durability():
     assert recent["model_name"] == "Qwen2.5-7B-Instruct"
     assert recent["gen_tokens_sec"] == 4.1
     assert recent["prompt_tokens_sec"] == 16.8
+
+@pytest.mark.anyio
+async def test_multi_tier_ordering_and_cascading_fallback(monkeypatch):
+    from unittest.mock import AsyncMock
+    from app.services.inference import (
+        get_ordered_backends,
+        update_backend_tier_priority,
+        send_chat_completion,
+    )
+
+    # 1. Register test backends in distinct tiers
+    b_primary = register_inference_backend(
+        name="Tier 1 Test Primary",
+        backend_type="ollama",
+        endpoint_url="http://127.0.0.1:11434",
+        tier="tier_1_primary",
+        priority=1,
+    )
+    update_backend_status(b_primary["id"], "ready", model_name="qwen2.5:3b")
+
+    b_secondary = register_inference_backend(
+        name="Tier 2 Test Secondary",
+        backend_type="ollama",
+        endpoint_url="http://100.101.187.115:11434",
+        tier="tier_2_secondary",
+        priority=2,
+    )
+    update_backend_status(b_secondary["id"], "ready", model_name="qwen2.5:1.5b")
+
+    b_edge = register_inference_backend(
+        name="Tier 3 Test Edge",
+        backend_type="ollama",
+        endpoint_url="http://100.111.178.12:11434",
+        tier="tier_3_edge",
+        priority=3,
+    )
+    update_backend_status(b_edge["id"], "ready", model_name="qwen2.5:0.5b")
+
+    # Verify priority ordering
+    ordered = get_ordered_backends()
+    test_ids = [b["id"] for b in ordered if b["id"] in (b_primary["id"], b_secondary["id"], b_edge["id"])]
+    assert test_ids == [b_primary["id"], b_secondary["id"], b_edge["id"]]
+
+    # 2. Test Cascade: Primary fails -> Fallback to Secondary succeeds
+    call_log = []
+
+    class MockResponse:
+        def __init__(self, status_code, json_data):
+            self.status_code = status_code
+            self._json = json_data
+            self.text = str(json_data)
+        def json(self):
+            return self._json
+
+    async def mock_post(self, url, *args, **kwargs):
+        call_log.append(url)
+        url_str = str(url)
+        if "127.0.0.1:11434" in url_str:
+            # Primary fails with 500 error
+            return MockResponse(500, {"error": "GPU memory full"})
+        elif "100.101.187.115" in url_str:
+            # Secondary succeeds!
+            return MockResponse(200, {"message": {"content": "Hello from Tier 2 Secondary"}})
+        return MockResponse(200, {"message": {"content": "Hello from Tier 3 Edge"}})
+
+    import httpx
+    monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
+
+    result = await send_chat_completion([{"role": "user", "content": "hi"}])
+    assert result["success"] is True
+    assert result["backend"] == "Tier 2 Test Secondary"
+    assert result["fallback_occurred"] is True
+    assert result["content"] == "Hello from Tier 2 Secondary"
+    assert len(result["attempts"]) == 1
+    assert "GPU memory full" in result["attempts"][0]["error"]
+
+    # 3. Test Double Cascade: Both Primary and Secondary fail -> Tier 3 Edge succeeds
+    async def mock_post_double_fail(self, url, *args, **kwargs):
+        url_str = str(url)
+        if "127.0.0.1:11434" in url_str:
+            raise httpx.ConnectError("Connection refused on 127.0.0.1")
+        elif "100.101.187.115" in url_str:
+            raise httpx.TimeoutException("Timeout on laptop")
+        return MockResponse(200, {"message": {"content": "Hello from Pi-Brain Edge"}})
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", mock_post_double_fail)
+
+    res2 = await send_chat_completion([{"role": "user", "content": "hi"}])
+    assert res2["success"] is True
+    assert res2["backend"] == "Tier 3 Test Edge"
+    assert res2["fallback_occurred"] is True
+    assert res2["content"] == "Hello from Pi-Brain Edge"
+    assert len(res2["attempts"]) == 2
+    assert "Connection refused" in res2["attempts"][0]["error"]
+    assert "Timed out" in res2["attempts"][1]["error"]
+
+    # 4. Test strict tier targeting without fallback
+    res3 = await send_chat_completion([{"role": "user", "content": "hi"}], target_tier="tier_1_primary", enable_fallback=False)
+    assert res3["success"] is False
+    assert "failed" in res3["error"]
+
+

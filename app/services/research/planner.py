@@ -122,15 +122,16 @@ class ResearchPlanner:
         subqs = self._generate_subquestions(objective, instructions)
 
         # Generate targeted initial search queries
-        queries = self._generate_queries(main_q, subqs)
+        queries = self._generate_queries(main_q, subqs, objective=objective, instructions=instructions)
 
         # Cap queries to budget
         queries = queries[:budget.max_search_queries]
 
+        anchor = self._topic_anchor(objective, instructions)
         required_evidence = [
-            f"Official documentation or primary sources for {main_q}",
-            "Recent comparative metrics, benchmarks, or statistics",
-            "Authoritative independent analysis or evaluations",
+            f"Official documentation or primary sources for {anchor}",
+            f"Recent quantitative data or statistics about {anchor}",
+            f"Authoritative independent analysis or evaluations of {anchor}",
         ]
 
         return ResearchStrategy(
@@ -183,30 +184,129 @@ class ResearchPlanner:
             clean = f"What are the key facts, developments, and findings regarding {clean}?"
         return clean
 
+    # Words that carry no topical signal for search engines.
+    _FILLER_WORDS = {
+        "a", "an", "the", "and", "or", "of", "for", "to", "in", "on", "at", "by", "with", "from",
+        "into", "about", "as", "is", "are", "was", "were", "be", "been", "being", "it", "its",
+        "this", "that", "these", "those", "what", "which", "who", "whom", "how", "why", "when",
+        "where", "key", "facts", "regarding", "findings", "developments", "latest", "current",
+        "major", "principal", "please", "research", "investigate", "produce", "create", "write",
+        "prepare", "generate", "deliver", "provide", "detailed", "comprehensive", "report",
+        "reports", "citations", "cited", "sources", "reputable", "identify", "compare",
+        "including", "include", "should", "must", "will", "would", "could", "can", "also",
+        "using", "use", "based", "each", "all", "any", "our", "their", "my", "your", "we",
+        "brief", "memo", "summary", "analysis", "document", "deliverable", "deliverables",
+        "following", "set", "list", "plan", "draft", "final", "overview", "find", "out",
+        "gather", "evidence", "state", "art", "new", "recent", "other", "such", "than", "then",
+        "assess", "evaluate", "analyze", "analyse", "examine", "review", "summarize", "explore",
+        "under", "over", "between", "across", "within", "without", "via", "per", "among",
+        "executive", "register", "stakeholder", "map", "memo", "need", "needs", "want", "help",
+    }
+    # Leading capitalized words that are not proper nouns.
+    _NON_ENTITY_CAPS = {
+        "Research", "Investigate", "Produce", "Create", "Write", "Prepare", "Please", "Compare",
+        "Identify", "Provide", "Deliver", "Generate", "Analyze", "Analyse", "Evaluate", "Assess",
+        "Review", "Summarize", "Find", "Gather", "Build", "Develop", "Draft", "What", "How",
+        "Why", "When", "Where", "Which", "Who", "The", "A", "An", "Include", "Using", "Each",
+        "Deliverables", "Deliverable", "Objective", "Instructions", "Context", "Report",
+    }
+
+    def _extract_entities_and_topics(self, text: str) -> Dict[str, List[str]]:
+        """Extract named entities (multi-word proper nouns) and content keywords, in order."""
+        text = text or ""
+        entities: List[str] = []
+        # Multi-word capitalized phrases, optionally joined by "of"/"and"/"de" (e.g. "Sonoma County Water Agency").
+        for m in re.finditer(r"\b([A-Z][a-zA-Z0-9\-]+(?:\s+(?:of|and|de|the)?\s*[A-Z][a-zA-Z0-9\-]+)*)", text):
+            phrase = m.group(1).strip()
+            tokens = phrase.split()
+            while tokens and tokens[0] in self._NON_ENTITY_CAPS:
+                tokens = tokens[1:]
+            while tokens and tokens[-1].lower() in {"of", "and", "de", "the"}:
+                tokens = tokens[:-1]
+            if not tokens:
+                continue
+            phrase = " ".join(tokens)
+            # Single capitalized word at sentence start is weak; keep only if acronym/long or repeated.
+            if len(tokens) == 1 and not (tokens[0].isupper() and len(tokens[0]) >= 2) and text.count(tokens[0]) < 2:
+                # Still keep if not at sentence start
+                start = m.start(1)
+                prefix = text[max(0, start - 2):start]
+                if start == 0 or prefix.strip().endswith((".", "!", "?", ":")) or prefix.endswith("\n"):
+                    continue
+            if phrase not in entities:
+                entities.append(phrase)
+
+        entity_tokens = {t.lower() for e in entities for t in e.split()}
+        keywords: List[str] = []
+        for w in re.findall(r"[A-Za-z][A-Za-z0-9\-]{2,}", text):
+            lw = w.lower()
+            if lw in self._FILLER_WORDS or lw in entity_tokens:
+                continue
+            if lw not in keywords:
+                keywords.append(lw)
+        return {"entities": entities, "keywords": keywords}
+
+    def _topic_anchor(self, objective: str, instructions: str = "") -> str:
+        info = self._extract_entities_and_topics(f"{objective}\n{instructions}")
+        parts: List[str] = []
+        for e in info["entities"][:2]:
+            parts.append(e)
+        for k in info["keywords"][:4]:
+            parts.append(k)
+        anchor = " ".join(parts).strip()
+        if not anchor:
+            anchor = " ".join(re.findall(r"\w+", objective)[:6])
+        return anchor
+
     def _generate_subquestions(self, objective: str, instructions: str) -> List[str]:
+        info = self._extract_entities_and_topics(f"{objective}\n{instructions}")
+        anchor = self._topic_anchor(objective, instructions)
+        entity = info["entities"][0] if info["entities"] else anchor
+        topic = " ".join(info["keywords"][:3]) or anchor
         subqs = [
-            f"What is the current technical or industry state regarding {objective[:60].strip()}?",
-            "What are the major competing technologies, approaches, or key figures?",
-            "What quantitative benchmarks, costs, or verified statistics exist?",
-            "What are the principal limitations, criticisms, or conflicting perspectives?",
+            f"What is the current state of {topic} in {entity}?" if entity != topic else f"What is the current state of {topic}?",
+            f"What official data, statistics, or measurements exist for {anchor}?",
+            f"What risks, constraints, or challenges affect {anchor}?",
+            f"What policies, plans, projects, or recommended actions address {anchor}?",
+            f"What costs, funding sources, or economic impacts are associated with {anchor}?",
         ]
-        return subqs
+        return list(dict.fromkeys(subqs))
 
-    def _generate_queries(self, main_question: str, subquestions: List[str]) -> List[str]:
-        # Formulate concise search queries from questions
-        queries = []
-        # Main query
-        words = [w for w in re.findall(r"\w+", main_question) if w.lower() not in {"what", "are", "the", "key", "facts", "regarding", "and", "for", "with"}]
-        if words:
-            queries.append(" ".join(words[:7]))
+    def _generate_queries(self, main_question: str, subquestions: List[str], objective: str = "", instructions: str = "") -> List[str]:
+        source_text = f"{objective}\n{instructions}" if objective else main_question
+        info = self._extract_entities_and_topics(source_text)
+        entities = info["entities"]
+        keywords = info["keywords"]
+        anchor = self._topic_anchor(objective or main_question, instructions)
+        primary_entity = entities[0] if entities else ""
 
-        for subq in subquestions:
-            sw = [w for w in re.findall(r"\w+", subq) if w.lower() not in {"what", "is", "are", "the", "current", "major", "principal", "or", "regarding"}]
-            if sw:
-                queries.append(" ".join(sw[:6]))
+        queries: List[str] = [anchor]
+        facets = [
+            "official data statistics",
+            "risks challenges",
+            "plan policy recommendations",
+            "funding costs",
+            "report pdf",
+        ]
+        core_topic = " ".join(keywords[:3])
+        for facet in facets:
+            q = " ".join(p for p in (primary_entity, core_topic, facet) if p).strip()
+            queries.append(q)
+        # Additional entity-specific queries
+        for ent in entities[1:4]:
+            queries.append(" ".join(p for p in (ent, core_topic) if p))
+        # Keyword-pair queries to broaden coverage while staying on-topic
+        for i in range(3, min(len(keywords), 9), 2):
+            pair = " ".join(keywords[i:i + 2])
+            queries.append(" ".join(p for p in (primary_entity, pair) if p))
 
-        # Add an official / documentation / benchmark modifier
-        if words:
-            queries.append(f"{' '.join(words[:4])} official documentation report")
-
-        return list(dict.fromkeys(queries))
+        cleaned = []
+        for q in queries:
+            seen_tokens: List[str] = []
+            for tok in re.sub(r"\s+", " ", q).strip().split(" "):
+                if tok and tok.lower() not in [t.lower() for t in seen_tokens]:
+                    seen_tokens.append(tok)
+            q = " ".join(seen_tokens)
+            if q and len(q.split()) >= 2 and q not in cleaned:
+                cleaned.append(q)
+        return cleaned

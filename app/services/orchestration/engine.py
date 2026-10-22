@@ -1,11 +1,16 @@
 """Persistent orchestration engine: durable, idempotent, single-scheduler tick loop over the run state machine."""
 from __future__ import annotations
 
+import concurrent.futures
+import hashlib
+import json
 import logging
 import os
 import threading
 import time
 import uuid
+from datetime import timedelta
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from app.database import db_transaction, get_db_connection
@@ -31,6 +36,30 @@ WAIT_FOR_WORKER_LIMIT_S = 600
 INFLIGHT_GRACE_S = 90
 MAX_INTAKE_FIELD = 4000
 ACTIVE_STATES = ("PLANNING", "REPLANNING", "RUNNING", "EVALUATING", "PAUSED")
+
+# Bounded capacity and execution pool for asynchronous controller step execution (Finding F-13 & Stage 3 Safety)
+MAX_CONTROLLER_WORKERS = 4
+MAX_OUTSTANDING_CONTROLLER_TASKS = 6
+MAX_CONTROLLER_TASKS_PER_RUN = 2
+
+_CONTROLLER_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=MAX_CONTROLLER_WORKERS, thread_name_prefix="qc-controller-step"
+)
+_ACTIVE_FUTURES: Dict[str, concurrent.futures.Future] = {}
+_ACTIVE_METADATA: Dict[str, Dict[str, Any]] = {}
+_FUTURES_LOCK = threading.Lock()
+
+
+def await_active_controller_steps(run_id: Optional[str] = None, timeout: float = 10.0) -> None:
+    """Wait for in-flight background controller steps to complete (for tests and manual coordination)."""
+    with _FUTURES_LOCK:
+        if run_id:
+            futs = [_ACTIVE_FUTURES[k] for k, m in _ACTIVE_METADATA.items() if m.get("run_id") == run_id and k in _ACTIVE_FUTURES]
+        else:
+            futs = list(_ACTIVE_FUTURES.values())
+    if futs:
+        concurrent.futures.wait(futs, timeout=timeout)
+
 
 
 # --- single scheduler guard ------------------------------------------------------------------------------
@@ -229,6 +258,12 @@ def submit_clarification(run_id: str, answers: Dict[str, str], actor: str) -> Di
 # --- tick ---------------------------------------------------------------------------------------------------
 
 def tick_all() -> int:
+    try:
+        from app.services.worker import reconcile_expired_leases
+        reconcile_expired_leases()
+    except Exception:
+        logger.exception("Failed to reconcile expired worker leases during tick_all")
+
     c = get_db_connection()
     try:
         ids = [r["id"] for r in c.execute(
@@ -318,6 +353,32 @@ def _close_attempt(ot: Dict[str, Any], outcome: str, failure_class: Optional[str
 def _collect_one(run: Dict[str, Any], ot: Dict[str, Any], nodes: List[Dict[str, Any]]) -> None:
     action = jload(ot["action_json"])
     tid = ot["current_task_id"]
+
+    if action.get("type") == "controller_step":
+        dispatched = parse_ts(ot["dispatched_at"]) or now_dt()
+        elapsed = (now_dt() - dispatched).total_seconds()
+        fut_key = f"{ot['id']}:{ot['attempts']}"
+        with _FUTURES_LOCK:
+            fut = _ACTIVE_FUTURES.get(fut_key)
+
+        # Recovery of orphaned dispatched tasks after controller restart
+        if fut is None:
+            if elapsed > 1.0:
+                logger.warning("Detected orphaned controller task %s attempt %s after restart; failing for recovery", ot["id"], ot["attempts"])
+                return _fail(run, ot, "controller_restart", "Controller process restarted while step was in-flight; orphaned attempt rescheduled")
+            return
+
+        if fut.done():
+            exc = fut.exception()
+            if exc:
+                return _fail(run, ot, "task_execution_failure", f"controller step error: {exc}")
+            return
+        if elapsed > ot["timeout_seconds"] + INFLIGHT_GRACE_S:
+            if fut and not fut.done():
+                fut.cancel()
+            return _fail(run, ot, "task_execution_failure", f"controller step timed out after {int(elapsed)}s")
+        return
+
     t = T.get_task_by_id(tid) if tid else None
     if t is None:
         return _fail(run, ot, "controller_restart", "underlying task missing")
@@ -518,6 +579,24 @@ def _dispatch(run: Dict[str, Any], nodes: List[Dict[str, Any]], manual: bool) ->
         if bu and bu > now:
             continue
         action = jload(ot["action_json"])
+        if action["type"] == "controller_step":
+            # 1. Backpressure check: bound maximum outstanding controller tasks across the engine
+            with _FUTURES_LOCK:
+                total_active = len(_ACTIVE_FUTURES)
+                run_active = sum(1 for m in _ACTIVE_METADATA.values() if m.get("run_id") == run["id"])
+
+            if total_active >= MAX_OUTSTANDING_CONTROLLER_TASKS:
+                logger.info("Controller dispatch deferred: queue capacity reached (%s/%s)", total_active, MAX_OUTSTANDING_CONTROLLER_TASKS)
+                record_event(run["id"], "controller_capacity_saturated", "orchestrator",
+                             f"Controller task {ot['plan_key']} deferred: capacity ({total_active}/{MAX_OUTSTANDING_CONTROLLER_TASKS}) reached",
+                             task_id=ot["id"])
+                continue
+
+            # 2. Fairness check: prevent one project from starving other projects
+            if run_active >= MAX_CONTROLLER_TASKS_PER_RUN:
+                logger.info("Controller dispatch deferred for run %s: per-run fairness limit reached (%s/%s)", run["id"], run_active, MAX_CONTROLLER_TASKS_PER_RUN)
+                continue
+
         if action["type"] != "controller_step" and in_flight >= budget["max_concurrent"]:
             continue
         ok, why = telemetry.check_budget(run["id"], will_add_task=True, will_add_inference=action["type"] == "inference",
@@ -528,7 +607,7 @@ def _dispatch(run: Dict[str, Any], nodes: List[Dict[str, Any]], manual: bool) ->
         if not _approval_gate(run, ot, manual):
             continue
         if action["type"] == "controller_step":
-            _run_controller_step(run, ot, action)
+            _dispatch_controller_step(run, ot, action, sync=manual)
             if manual:
                 return
             continue
@@ -583,7 +662,7 @@ def has_task_approval(conn, run_id: str, ot_id: str) -> bool:
 
 def _note_waiting(run, ot, nodes, reasons) -> None:
     action = jload(ot["action_json"])
-    permanent = not model_router.eligible_nodes(ot, nodes, require_fresh=False)["eligible"]
+    permanent = not model_router.eligible_nodes(ot, nodes, require_fresh=False, enforce_verified=True)["eligible"]
     msg = "; ".join(reasons)[:480]
     if permanent:
         _open_attempt(ot, None, None, None)
@@ -603,12 +682,15 @@ def _note_waiting(run, ot, nodes, reasons) -> None:
 
 
 def _open_attempt(ot: Dict[str, Any], node_id: Optional[str], model: Optional[str], task_id: Optional[str]) -> int:
+    timeout_s = ot.get("timeout_seconds") or 600
+    deadline_iso = (now_dt() + timedelta(seconds=timeout_s + INFLIGHT_GRACE_S)).isoformat()
+    init_eval = {"deadline_at": deadline_iso, "timeout_seconds": timeout_s}
     with db_transaction() as c:
         n = c.execute("SELECT attempts FROM orchestration_tasks WHERE id=?", (ot["id"],)).fetchone()["attempts"] + 1
         c.execute("UPDATE orchestration_tasks SET attempts=?, state=CASE WHEN state='pending' THEN 'dispatched' ELSE state END, dispatched_node=?, dispatched_model=?, dispatched_at=?, current_task_id=COALESCE(?, current_task_id) WHERE id=?",
                   (n, node_id, model, now_iso(), task_id, ot["id"]))
-        c.execute("INSERT OR IGNORE INTO orchestration_attempts (id, orch_task_id, attempt_number, task_id, node_id, model, started_at) VALUES (?,?,?,?,?,?,?)",
-                  (new_id("att"), ot["id"], n, task_id, node_id, model, now_iso()))
+        c.execute("INSERT OR IGNORE INTO orchestration_attempts (id, orch_task_id, attempt_number, task_id, node_id, model, started_at, evaluation_json) VALUES (?,?,?,?,?,?,?,?)",
+                  (new_id("att"), ot["id"], n, task_id, node_id, model, now_iso(), jdump(init_eval)))
     return n
 
 
@@ -690,15 +772,40 @@ def _dispatch_one(run, ot, action, node, model) -> None:
 
 def _run_research_controller_step(run, ot, action, plan, inputs) -> Dict[str, Any]:
     import json
+    import uuid
+    from datetime import datetime, timezone
     from app.services.research.manager import ResearchManager
+    from app.services.research.extraction import extract_claims_with_spans
+
     step = action.get("step")
     project_id = run["project_id"]
     objective = plan.get("overview", {}).get("objective") or "Autonomous Web Research"
     mgr = ResearchManager()
 
+    # Finding F-09: Research run scope isolation
+    orch_run_id = run["id"]
+    research_run_id = f"rrun-{orch_run_id}"
+    conn = get_db_connection()
+    try:
+        r_row = conn.execute("SELECT id FROM research_runs WHERE orchestration_run_id = ?", (orch_run_id,)).fetchone()
+        if r_row:
+            research_run_id = r_row["id"]
+        else:
+            now_iso = datetime.now(timezone.utc).isoformat()
+            conn.execute(
+                """INSERT INTO research_runs (id, project_id, orchestration_run_id, status, objective, created_at, updated_at)
+                   VALUES (?, ?, ?, 'active', ?, ?, ?)""",
+                (research_run_id, project_id, orch_run_id, objective, now_iso, now_iso)
+            )
+            conn.commit()
+    finally:
+        conn.close()
+
     if step == "research_search":
         strategy = mgr.planner.generate_strategy(objective)
-        res = mgr.execute_search_step(project_id, ot["id"], strategy.initial_queries)
+        res = mgr.execute_search_step(
+            project_id, ot["id"], strategy.initial_queries, research_run_id=research_run_id
+        )
         ev = evaluator.evaluate_research_step(step, res)
         ids = []
         if ev["accepted"]:
@@ -715,21 +822,24 @@ def _run_research_controller_step(run, ot, action, plan, inputs) -> Dict[str, An
         conn = get_db_connection()
         try:
             cursor = conn.cursor()
+            # Finding F-09: Scope search results strictly to current research_run_id
             cursor.execute(
                 """
                 SELECT r.url, r.title, r.snippet, r.provider, r.provider AS search_provider, COALESCE(q.query_text, '') AS search_query
                 FROM research_search_results r
-                LEFT JOIN research_queries q ON q.id = r.query_id
-                WHERE r.project_id = ?
+                JOIN research_queries q ON q.id = r.query_id
+                WHERE r.project_id = ? AND q.research_run_id = ?
                 ORDER BY r.rank
                 LIMIT 10
                 """,
-                (project_id,),
+                (project_id, research_run_id),
             )
             results = [dict(r) for r in cursor.fetchall()]
         finally:
             conn.close()
-        res = mgr.execute_fetch_and_extract_step(project_id, ot["id"], results)
+        res = mgr.execute_fetch_and_extract_step(
+            project_id, ot["id"], results, research_run_id=research_run_id
+        )
         ev = evaluator.evaluate_research_step(step, res)
         ids = []
         if ev["accepted"]:
@@ -743,23 +853,33 @@ def _run_research_controller_step(run, ot, action, plan, inputs) -> Dict[str, An
         return ev
 
     elif step == "research_verify":
-        sources = mgr.source_library.list_sources(project_id)
+        # Finding F-09: Scope source library listing strictly to current research run
+        sources = mgr.source_library.list_sources(project_id, research_run_id=research_run_id)
         candidate_claims = []
+        # Finding F-06: Accurate sentence/assertion extraction with character & line spans
         for src in sources:
-            text = src.get("extracted_text", "")
-            paras = [p.strip() for p in text.split("\n\n") if len(p.strip()) > 80][:3]
-            for p in paras:
-                first_sent = p.split(".")[0].strip() + "."
+            text = src.get("extracted_text", "") or src.get("clean_text", "")
+            sq = float(src.get("quality_score", 1.0))
+            spans = extract_claims_with_spans(text, source_id=src["source_id"], source_quality=sq)
+            for sp in spans[:4]:
                 candidate_claims.append({
-                    "claim_text": first_sent,
-                    "claim_type": "fact",
+                    "claim_text": sp.claim_text,
+                    "claim_type": sp.category,
+                    "confidence_score": sp.confidence_score,
                     "evidence": [{
                         "source_id": src["source_id"],
-                        "passage": p[:300],
-                        "confidence": 0.9,
+                        "passage": sp.context_passage,
+                        "exact_quote": sp.exact_quote,
+                        "start_char": sp.start_char,
+                        "end_char": sp.end_char,
+                        "start_line": sp.start_line,
+                        "end_line": sp.end_line,
+                        "confidence": sp.confidence_score,
                     }]
                 })
-        res = mgr.execute_verify_step(project_id, ot["id"], candidate_claims[:10])
+        res = mgr.execute_verify_step(
+            project_id, ot["id"], candidate_claims[:15], research_run_id=research_run_id
+        )
         ev = evaluator.evaluate_research_step(step, res)
         ids = []
         if ev["accepted"]:
@@ -773,20 +893,28 @@ def _run_research_controller_step(run, ot, action, plan, inputs) -> Dict[str, An
         return ev
 
     elif step in ("research_synthesize", "research_citation_audit"):
-        topic = plan.get("overview", {}).get("objective") or "Research Deliverable"
-        res = mgr.execute_synthesis_and_citation_step(project_id, ot["id"], objective, topic)
+        deliv_name = next((d["name"] for d in plan.get("deliverables", []) if d.get("produced_by") == ot.get("plan_key")), None)
+        topic = deliv_name or plan.get("overview", {}).get("objective") or "Research Deliverable"
+        plan_task = next((t for t in plan.get("tasks", []) if t.get("key") == ot.get("plan_key")), {})
+        expected_md = next((out for out in plan_task.get("expected_outputs", []) if out.endswith(".md")), None)
+        filename = expected_md or f"{ot.get('plan_key', 'research_report')}.md"
+        audit_filename = f"citation_audit_{ot.get('plan_key', 'report')}.json"
+
+        res = mgr.execute_synthesis_and_citation_step(
+            project_id, ot["id"], objective, topic, research_run_id=research_run_id
+        )
         ev = evaluator.evaluate_research_step(step, res)
         ids = []
         if ev["accepted"]:
             rep_md = res.get("report_markdown", "")
             aid1 = artifact_manager.write_controller_artifact(
-                run, ot["id"], "research_report.md", rep_md.encode("utf-8")
+                run, ot["id"], filename, rep_md.encode("utf-8")
             )
-            artifact_manager.set_validation(aid1, "valid", "Research report with deterministic citations validated")
+            artifact_manager.set_validation(aid1, "valid", f"Deliverable '{topic}' with deterministic citations validated")
             ids.append(aid1)
 
             aid2 = artifact_manager.write_controller_artifact(
-                run, ot["id"], "citation_audit.json", json.dumps(res.get("audit", {}), indent=2).encode("utf-8")
+                run, ot["id"], audit_filename, json.dumps(res.get("audit", {}), indent=2).encode("utf-8")
             )
             artifact_manager.set_validation(aid2, "valid", "Citation audit passed")
             ids.append(aid2)
@@ -818,9 +946,7 @@ def _run_research_controller_step(run, ot, action, plan, inputs) -> Dict[str, An
     return {"accepted": False, "checks": [{"name": "step_unknown", "passed": False, "detail": f"unknown research step {step}"}], "result": {}}
 
 
-def _run_controller_step(run, ot, action) -> None:
-    _open_attempt(ot, "controller-local", None, None)
-    ot = _fresh(ot["id"])
+def _execute_controller_step_payload(run: Dict[str, Any], ot: Dict[str, Any], action: Dict[str, Any]) -> Dict[str, Any]:
     c = get_db_connection()
     try:
         by_key = {r["plan_key"]: dict(r) for r in c.execute("SELECT plan_key, attempts, dispatched_node FROM orchestration_tasks WHERE run_id=? AND state<>'superseded'", (run["id"],))}
@@ -832,14 +958,21 @@ def _run_controller_step(run, ot, action) -> None:
     inputs = _accepted_inputs(run["id"], declared)
 
     step = action.get("step", "")
+    from app.services import loop_detection
+    loop_detection.detector.record_operation(
+        task_id=ot["id"],
+        tool_name=f"controller_step:{step or 'unknown'}",
+        arguments=action,
+        attempt=ot.get("attempts", 1),
+        graph_node=ot.get("plan_key"),
+    )
     if step.startswith("research_"):
         try:
             ev = _run_research_controller_step(run, ot, action, plan, inputs)
         except Exception as e:
             logger.exception("Error executing research step %s", step)
             ev = {"accepted": False, "checks": [{"name": "research_step", "passed": False, "detail": str(e)[:200]}], "result": {}}
-        _decide_result(run, ot, ev, None)
-        return
+        return ev
 
     title = next((d["name"] for d in plan.get("deliverables", []) if d["produced_by"] == ot["plan_key"]), "Project Report")
     prov = [{"key": k, "node": v.get("node"), "attempts": by_key.get(k, {}).get("attempts"), "kind": v.get("kind")} for k, v in sorted(inputs.items())]
@@ -849,7 +982,7 @@ def _run_controller_step(run, ot, action) -> None:
         has_data = any(v.get("kind") in ("worker_telemetry", "model_output", "controller_generated") for v in inputs.values()) if inputs else False
 
         rep = reporting.assemble_project_report(run, title, inputs, prov, objective=plan.get("overview", {}).get("objective"))
-        ev = evaluator.evaluate_report(rep["markdown"], has_telemetry=has_telemetry, has_ai=has_ai)
+        ev = evaluator.evaluate_report(rep["markdown"], has_telemetry=has_telemetry, has_ai=has_ai, has_telemetry_data=has_data)
         ev["checks"].append({"name": "has_valid_inputs", "passed": has_data,
                              "detail": "at least one validated input source" if has_data else "no input data found"})
         ev["accepted"] = ev["accepted"] and all(c["passed"] for c in ev["checks"])
@@ -861,9 +994,131 @@ def _run_controller_step(run, ot, action) -> None:
                 ids.append(aid)
         ev["result"] = {"kind": "controller_generated", "artifacts": ids, "node": "controller-local"} if ev["accepted"] else {}
         ev["node"] = "controller-local"
+        return ev
     except Exception as e:
-        ev = {"accepted": False, "checks": [{"name": "assemble", "passed": False, "detail": str(e)[:200]}], "result": {}}
+        logger.exception("Error assembling project report: %s", e)
+        return {"accepted": False, "checks": [{"name": "assemble", "passed": False, "detail": str(e)[:200]}], "result": {}}
+
+
+def _commit_controller_attempt(
+    run_id: str,
+    orch_task_id: str,
+    attempt_number: int,
+    ev: Dict[str, Any],
+    err: Optional[str] = None,
+    plan_revision_id: Optional[str] = None,
+    plan_digest: Optional[str] = None,
+) -> None:
+    """
+    Fencing-verified commit of controller step execution results (Finding F-13 & Stage 3 Safety).
+    Ensures that an old/slow execution attempt cannot commit results after a newer
+    attempt has been issued, or after the task has been cancelled/superseded, or after
+    the approved plan revision has changed.
+    """
+    with db_transaction() as c:
+        ot_row = c.execute("SELECT * FROM orchestration_tasks WHERE id=?", (orch_task_id,)).fetchone()
+        if not ot_row:
+            logger.warning("Controller task %s no longer exists; commit ignored", orch_task_id)
+            return
+        ot = dict(ot_row)
+
+        # Plan revision & digest fencing check
+        if plan_revision_id:
+            curr_rev = c.execute(
+                "SELECT id, plan_json FROM orchestration_plan_revisions WHERE run_id=? AND status='approved' ORDER BY revision_number DESC LIMIT 1",
+                (run_id,)
+            ).fetchone()
+            curr_rev_id = curr_rev["id"] if curr_rev else None
+            curr_digest = hashlib.sha256(curr_rev["plan_json"].encode("utf-8")).hexdigest() if curr_rev else None
+
+            if curr_rev_id != plan_revision_id or (plan_digest and curr_digest != plan_digest):
+                logger.warning(
+                    "Fencing rejection: controller step %s attempt %s plan revision superseded (dispatched=%s, current=%s). Result discarded.",
+                    orch_task_id, attempt_number, plan_revision_id, curr_rev_id
+                )
+                c.execute("""UPDATE orchestration_attempts SET finished_at=?, outcome='rejected', failure_class='plan_superseded_fencing',
+                             evaluation_json=? WHERE orch_task_id=? AND attempt_number=?""",
+                          (now_iso(), jdump({"error": "Plan revision superseded by newer revision"}), orch_task_id, attempt_number))
+                log_event(c, get_run(run_id, c), "task_attempt_superseded_fencing", "orchestrator",
+                          f"Attempt {attempt_number} for {ot['plan_key']} rejected: plan revision superseded", task_id=orch_task_id)
+                return
+
+        # Attempt and state fencing check
+        if ot["attempts"] != attempt_number or ot["state"] != "dispatched":
+            logger.warning(
+                "Fencing rejection: controller step %s attempt %s superseded (current attempt=%s, state=%s). Result discarded.",
+                orch_task_id, attempt_number, ot["attempts"], ot["state"]
+            )
+            c.execute("""UPDATE orchestration_attempts SET finished_at=?, outcome='rejected', failure_class='stale_attempt_fencing',
+                         evaluation_json=? WHERE orch_task_id=? AND attempt_number=?""",
+                      (now_iso(), jdump({"error": "Superseded by newer attempt or task cancelled"}), orch_task_id, attempt_number))
+            log_event(c, get_run(run_id, c), "task_attempt_superseded_fencing", "orchestrator",
+                      f"Attempt {attempt_number} for {ot['plan_key']} rejected by fencing (current attempt {ot['attempts']})",
+                      task_id=orch_task_id)
+            return
+
+    # Task is still actively awaiting this attempt: decide result
+    run = get_run(run_id)
     _decide_result(run, ot, ev, None)
+
+
+def _dispatch_controller_step(run: Dict[str, Any], ot: Dict[str, Any], action: Dict[str, Any], sync: bool = False) -> None:
+    """
+    Dispatch a controller step (e.g. research fetching or report assembly).
+    In accordance with Finding F-13:
+    - Never hold the scheduler leader lock during slow I/O.
+    - Transactionally records the dispatch attempt in SQLite.
+    - Offloads execution to bounded background thread pool.
+    - Applies cryptographic/attempt fencing verification before committing results.
+    """
+    attempt = _open_attempt(ot, "controller-local", None, None)
+    ot_fresh = _fresh(ot["id"])
+    record_event(run["id"], "task_dispatched", "orchestrator", f"{ot['plan_key']} -> controller-local (async={not sync})",
+                 task_id=ot["id"], detail={"attempt": attempt, "node": "controller-local", "async": not sync})
+
+    # Capture active approved plan revision ID and digest for commit fencing
+    c = get_db_connection()
+    try:
+        rev_row = c.execute("SELECT id, plan_json FROM orchestration_plan_revisions WHERE run_id=? AND status='approved' ORDER BY revision_number DESC LIMIT 1", (run["id"],)).fetchone()
+    finally:
+        c.close()
+    plan_rev_id = rev_row["id"] if rev_row else None
+    plan_digest = hashlib.sha256(rev_row["plan_json"].encode("utf-8")).hexdigest() if rev_row else None
+
+    if sync:
+        ev = _execute_controller_step_payload(run, ot_fresh, action)
+        _commit_controller_attempt(run["id"], ot["id"], attempt, ev, plan_revision_id=plan_rev_id, plan_digest=plan_digest)
+        return
+
+    fut_key = f"{ot['id']}:{attempt}"
+
+    def _worker():
+        try:
+            ev = _execute_controller_step_payload(run, ot_fresh, action)
+            _commit_controller_attempt(run["id"], ot["id"], attempt, ev, plan_revision_id=plan_rev_id, plan_digest=plan_digest)
+        except Exception as ex:
+            logger.exception("Async controller step %s failed: %s", ot["id"], ex)
+            ev = {"accepted": False, "checks": [{"name": "controller_step", "passed": False, "detail": str(ex)[:300]}], "result": {}}
+            _commit_controller_attempt(run["id"], ot["id"], attempt, ev, err=str(ex), plan_revision_id=plan_rev_id, plan_digest=plan_digest)
+        finally:
+            with _FUTURES_LOCK:
+                _ACTIVE_FUTURES.pop(fut_key, None)
+                _ACTIVE_METADATA.pop(fut_key, None)
+
+    with _FUTURES_LOCK:
+        fut = _CONTROLLER_EXECUTOR.submit(_worker)
+        _ACTIVE_FUTURES[fut_key] = fut
+        _ACTIVE_METADATA[fut_key] = {
+            "run_id": run["id"],
+            "task_id": ot["id"],
+            "attempt": attempt,
+            "dispatched_at": now_dt(),
+        }
+
+
+def _run_controller_step(run: Dict[str, Any], ot: Dict[str, Any], action: Dict[str, Any]) -> None:
+    """Synchronous compatibility wrapper for _dispatch_controller_step."""
+    _dispatch_controller_step(run, ot, action, sync=True)
 
 
 def _maybe_finish(run: Dict[str, Any]) -> None:
@@ -911,15 +1166,37 @@ def _evaluate_deliverables(run: Dict[str, Any]) -> None:
     rows = {r["plan_key"]: r for r in _orch_tasks(run["id"])}
     arts = artifact_manager.list_artifacts(run["project_id"])
     all_accepted = True
+
     for d in plan.get("deliverables", []):
         did = dmap.get(d["key"])
         dd = D.get_deliverable(did) if did else None
+        if not dd:
+            delivs = D.list_deliverables(run["project_id"])
+            matching = [x for x in delivs if x.get("name") == d.get("name")]
+            if matching:
+                dd = matching[0]
+                did = dd["id"]
+                dmap[d["key"]] = did
+            else:
+                try:
+                    dd = D.create_deliverable(
+                        project_id=run["project_id"],
+                        name=d.get("name", d.get("key")),
+                        deliverable_type=d.get("deliverable_type", "document"),
+                        created_by="orchestrator",
+                        description=d.get("description", ""),
+                    )
+                    did = dd["id"]
+                    dmap[d["key"]] = did
+                except Exception:
+                    pass
         producer = rows.get(d["produced_by"])
         if not dd or not producer or producer["state"] != "accepted":
             all_accepted = False
             continue
         if dd["status"] == "accepted":
             continue
+
         pres = jload(producer.get("accepted_result_json")) if producer.get("accepted_result_json") else {}
         explicit_aids = set()
         if isinstance(pres.get("artifacts"), list):
@@ -932,38 +1209,96 @@ def _evaluate_deliverables(run: Dict[str, Any]) -> None:
             if t.get("plan_key") == producer.get("plan_key"):
                 matching_task_ids.add(t["id"])
 
-        valid = [
+        candidate_artifacts = [
             a for a in arts
             if (a.get("id") in explicit_aids or a.get("orch_task_id") in matching_task_ids)
             and a.get("validation_state") == "valid"
         ]
-        if not valid:
+
+        # Verify physical file presence in storage backend / CAS (Test L)
+        valid = []
+        for a in candidate_artifacts:
+            p = Path(a["storage_path"])
+            if p.is_file():
+                valid.append(a)
+            elif a.get("cas_hash"):
+                from app.services.artifacts.storage import storage_backend
+                if storage_backend.has_cas_blob(a["cas_hash"]):
+                    valid.append(a)
+                else:
+                    logger.warning("Artifact %s physically missing from CAS and storage_path", a["id"])
+            else:
+                logger.warning("Artifact %s physically missing from storage_path %s", a["id"], a["storage_path"])
+
+        # If a deliverable requires an artifact but all candidates are physically missing, block transition
+        if not valid and (d.get("terminal") or d.get("required", True)):
             all_accepted = False
+            reason = f"Required artifact for deliverable '{d['name']}' is missing from storage."
+            record_event(run["id"], "deliverable_validation_blocked", "orchestrator-evaluator", f"{d['key']}: {reason}")
+            states.transition(run["id"], "BLOCKED", "escalated", "orchestrator-evaluator", reason, set_fields={"block_reason": reason})
+            return
+
+        # 3-Layer Acceptance Evaluation (Finding F-12)
+        # Check all accepted task outputs in the run to verify upstream evidence (e.g. telemetry, model output)
+        inputs = _accepted_inputs(run["id"], list(rows.keys()))
+        acceptance_crit = d.get("acceptance_criteria") or {}
+        eval_report = evaluator.evaluate_deliverable_acceptance(
+            deliverable=d,
+            artifacts=valid,
+            acceptance_criteria=acceptance_crit,
+            context_inputs=inputs,
+            autonomy_level=run["autonomy_level"],
+            project_id=run["project_id"],
+            run_id=run["id"],
+        )
+
+        decision = eval_report.get("decision", "REJECTED")
+
+        if decision == "BLOCKED":
+            all_accepted = False
+            reason = eval_report.get("summary") or f"Deliverable '{d['name']}' is blocked on missing evidence."
+            record_event(run["id"], "deliverable_validation_blocked", "orchestrator-evaluator", f"{d['key']}: {reason}")
+            states.transition(run["id"], "BLOCKED", "escalated", "orchestrator-evaluator", reason, set_fields={"block_reason": reason})
+            return
+
+        if decision == "REJECTED":
+            all_accepted = False
+            reason = eval_report.get("summary") or f"Deliverable '{d['name']}' failed acceptance checks."
+            record_event(run["id"], "deliverable_validation_failed", "orchestrator-evaluator", f"{d['key']}: {reason}")
             if dd["status"] != "rejected":
-                record_event(run["id"], "deliverable_validation_failed", "orchestrator-evaluator", f"{d['key']}: no validated artifact")
-                states.transition(run["id"], "BLOCKED", "escalated", "orchestrator-evaluator",
-                                  f"Deliverable '{d['name']}' has no validated artifact.",
-                                  set_fields={"block_reason": f"Deliverable '{d['name']}' has no validated artifact."})
-                return
-            continue
+                try:
+                    D.review_deliverable(did, "rejected", "orchestrator-evaluator", reason)
+                except Exception:
+                    pass
+            states.transition(run["id"], "BLOCKED", "escalated", "orchestrator-evaluator", reason, set_fields={"block_reason": reason})
+            return
+
+        # Prepare references for submission
+        refs = "; ".join(f"{a['filename']} ({a['id']}, sha256 {a['sha256'][:12]})" for a in valid) if valid else "evidence_verified"
         if dd["status"] in ("planned", "in_progress", "changes_requested"):
-            refs = "; ".join(f"{a['filename']} ({a['id']}, sha256 {a['sha256'][:12]})" for a in valid)
-            D.submit_deliverable(did, "orchestrator", refs, f"Deterministic checks passed; provenance: {valid[0]['provenance']}")
+            provenance_info = valid[0]['provenance'] if valid else "orchestrator"
+            D.submit_deliverable(did, "orchestrator", refs, f"3-layer checks evaluated: {decision}; provenance: {provenance_info}")
             dd = D.get_deliverable(did)
+
         if dd["status"] == "submitted":
-            if run["autonomy_level"] >= 2:
+            if decision == "ACCEPTED" and run["autonomy_level"] >= 2:
                 D.review_deliverable(did, "accepted", "orchestrator (auto)",
-                                     f"Auto-accepted: all deterministic acceptance checks passed (autonomy level {run['autonomy_level']}).")
+                                     f"Auto-accepted: all 3-layer deterministic acceptance checks passed (autonomy level {run['autonomy_level']}).")
                 record_event(run["id"], "deliverable_accepted", "orchestrator (auto)", d["name"])
             else:
+                # Autonomy < 2 or decision is NEEDS_HUMAN_REVIEW: require human approval
                 with db_transaction() as cn:
                     ap = cn.execute("SELECT status, decided_by, rationale FROM orchestration_approvals WHERE run_id=? AND kind='deliverable' AND subject_id=? ORDER BY requested_at DESC LIMIT 1",
                                     (run["id"], did)).fetchone()
                     ap = dict(ap) if ap else None
                     if not ap or ap["status"] == "superseded":
-                        approval_manager.request_approval(cn, run, "deliverable", did, f"Accept deliverable '{d['name']}'", "medium")
+                        req_msg = f"Accept deliverable '{d['name']}'"
+                        if decision == "NEEDS_HUMAN_REVIEW":
+                            req_msg += f" (Human review required: {eval_report.get('summary', 'unverifiable output')})"
+                        approval_manager.request_approval(cn, run, "deliverable", did, req_msg, "medium")
                 if ap and ap["status"] == "approved":
                     D.review_deliverable(did, "accepted", ap["decided_by"] or "user", ap["rationale"] or "Accepted by user.")
+
             dd = D.get_deliverable(did)
             if dd and dd["status"] == "accepted":
                 from app.services.knowledge_store import record_knowledge_impact
@@ -979,9 +1314,38 @@ def _evaluate_deliverables(run: Dict[str, Any]) -> None:
                         )
                     except Exception:
                         pass
+
         if dd["status"] != "accepted":
             all_accepted = False
-    if all_accepted and plan.get("deliverables"):
+
+    # Stale/superseded attempt verification on all required tasks (Finding F-13 & Stage 3 Safety)
+    for d in plan.get("deliverables", []):
+        producer = rows.get(d["produced_by"])
+        if producer:
+            c = get_db_connection()
+            try:
+                latest_att = c.execute(
+                    "SELECT attempt_number, outcome, finished_at FROM orchestration_attempts WHERE orch_task_id=? ORDER BY attempt_number DESC LIMIT 1",
+                    (producer["id"],)
+                ).fetchone()
+            finally:
+                c.close()
+            if not latest_att or latest_att["attempt_number"] != producer["attempts"] or latest_att["outcome"] != "accepted":
+                logger.warning("Deliverable %s producer %s latest attempt is not accepted (attempt=%s vs task_attempts=%s, outcome=%s)",
+                               d["key"], producer["id"], (latest_att or {}).get("attempt_number"), producer["attempts"], (latest_att or {}).get("outcome"))
+                all_accepted = False
+
+    # Terminal deliverables enforcement (Finding F-12, Stage 2/3 contract)
+    terminal_deliverables = [d for d in plan.get("deliverables", []) if d.get("terminal")]
+    if not terminal_deliverables:
+        terminal_deliverables = plan.get("deliverables", [])
+
+    all_terminal_accepted = all(
+        (D.get_deliverable(dmap.get(d["key"])) or {}).get("status") == "accepted"
+        for d in terminal_deliverables
+    )
+
+    if all_accepted and all_terminal_accepted and plan.get("deliverables"):
         try:
             execute_research_checkpoint(
                 project_id=run["project_id"],
@@ -1006,26 +1370,90 @@ def _evaluate_deliverables(run: Dict[str, Any]) -> None:
         except Exception as ex:
             logger.warning("Collective knowledge promotion evaluation failed: %s", ex)
 
+        # Record exact acceptance criteria tested and satisfying evidence in run metadata
+        tested_summary = []
+        for d in plan.get("deliverables", []):
+            did = dmap.get(d["key"])
+            producer = rows.get(d["produced_by"])
+            p_arts = [a for a in arts if (producer and a.get("orch_task_id") == producer["id"]) and a.get("validation_state") == "valid"]
+            tested_summary.append({
+                "key": d["key"],
+                "name": d["name"],
+                "deliverable_type": d.get("deliverable_type"),
+                "status": (D.get_deliverable(did) or {}).get("status"),
+                "criteria_tested": d.get("acceptance_criteria") or {},
+                "evidence_satisfied": [{"id": a["id"], "filename": a["filename"], "sha256": a["sha256"]} for a in p_arts],
+            })
+        meta = jload(run["analysis_json"])
+        meta["acceptance_summary"] = {
+            "completed_at": now_iso(),
+            "deliverables_tested": tested_summary,
+        }
+        with db_transaction() as c:
+            c.execute("UPDATE orchestration_runs SET analysis_json=? WHERE id=?", (jdump(meta), run["id"]))
+
         _write_index(run, plan, dmap)
-        states.transition(run["id"], "COMPLETED", "completed", "orchestrator", "all deliverables accepted", expected_state="EVALUATING")
+        states.transition(run["id"], "COMPLETED", "completed", "orchestrator", "all deliverables accepted with verified criteria and evidence", expected_state="EVALUATING")
+        record_event(run["id"], "run_completed", "orchestrator", "Run completed: all deliverables accepted with verified criteria and evidence",
+                     detail={"deliverables_tested": tested_summary})
+
+
+def assemble_deliverables_index(run: Dict[str, Any], plan: Optional[Dict[str, Any]] = None, dmap: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    """Assemble deliverables_index.json referencing accepted deliverables and supporting artifacts."""
+    if plan is None:
+        conn = get_db_connection()
+        try:
+            row = conn.execute("SELECT plan_json FROM orchestration_plan_revisions WHERE run_id=? ORDER BY revision_number DESC LIMIT 1", (run["id"],)).fetchone()
+            plan = json.loads(row["plan_json"]) if row else {"deliverables": []}
+        finally:
+            conn.close()
+    if dmap is None:
+        dmap = {}
+        for d in plan.get("deliverables", []):
+            dmap[d.get("key", "")] = d.get("id")
+    arts = artifact_manager.list_artifacts(run["project_id"])
+    idx = {
+        "schema": "qc.deliverables_index.v1",
+        "run_id": run["id"],
+        "project_id": run["project_id"],
+        "generated_utc": now_iso(),
+        "deliverables": [
+            {
+                "key": d.get("key"),
+                "name": d.get("name"),
+                "terminal": d.get("terminal", False),
+                "status": (D.get_deliverable(dmap.get(d.get("key"))) or {}).get("status", "accepted"),
+                "artifacts": [
+                    {"id": a["id"], "filename": a["filename"], "sha256": a["sha256"], "provenance": a["provenance"]}
+                    for a in arts if not d.get("produced_by") or a.get("plan_key") == d.get("produced_by") or a.get("orch_task_id")
+                ]
+            }
+            for d in plan.get("deliverables", [])
+        ],
+        "artifacts": [
+            {"id": a["id"], "filename": a["filename"], "sha256": a["sha256"], "provenance": a["provenance"]}
+            for a in arts
+        ]
+    }
+    aid = artifact_manager.write_controller_artifact(run, None, "deliverables_index.json", json.dumps(idx, indent=2).encode("utf-8"))
+    artifact_manager.set_validation(aid, "valid", "generated from accepted deliverables")
+    return aid
 
 
 def _write_index(run, plan, dmap) -> None:
-    arts = artifact_manager.list_artifacts(run["project_id"])
-    idx = {"schema": "qc.deliverables_index.v1", "run_id": run["id"], "generated_utc": now_iso(),
-           "deliverables": [{"key": d["key"], "name": d["name"], "terminal": d["terminal"],
-                             "status": (D.get_deliverable(dmap.get(d["key"])) or {}).get("status"),
-                             "artifacts": [{"id": a["id"], "filename": a["filename"], "sha256": a["sha256"], "provenance": a["provenance"]}
-                                           for a in arts if a["plan_key"] == d["produced_by"]]} for d in plan["deliverables"]]}
-    import json
-    aid = artifact_manager.write_controller_artifact(run, None, "deliverables_index.json", json.dumps(idx, indent=2).encode("utf-8"))
-    artifact_manager.set_validation(aid, "valid", "generated from accepted deliverables")
+    assemble_deliverables_index(run, plan, dmap)
 
 
 # --- recovery & background loop -------------------------------------------------------------------------------------------------
 
 def recover_after_restart() -> int:
     """Called once at startup: in-flight work is DB-backed, so recovery = log and let the next tick reconcile."""
+    try:
+        from app.services.worker import reconcile_expired_leases
+        reconcile_expired_leases()
+    except Exception:
+        logger.exception("Failed to reconcile expired worker leases during restart recovery")
+
     c = get_db_connection()
     try:
         ids = [r["id"] for r in c.execute("SELECT id FROM orchestration_runs WHERE state IN ('PLANNING','REPLANNING','RUNNING','EVALUATING')")]

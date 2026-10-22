@@ -26,6 +26,7 @@ from app.services.knowledge_store import (
     list_promotions,
     approve_promotion,
     reject_promotion,
+    create_operator_authority_from_session,
     list_affected_impacts,
     supersede_knowledge_record,
     VALID_KNOWLEDGE_TYPES,
@@ -170,7 +171,8 @@ def approve_promotion_submit(
         return RedirectResponse(url="/knowledge?view=promotions", status_code=status.HTTP_302_FOUND)
 
     try:
-        approve_promotion(promotion_id, reviewer=user.get("username", "admin"), rationale=rationale)
+        auth = create_operator_authority_from_session(request=request, audit_reason=rationale)
+        approve_promotion(promotion_id, authority=auth, rationale=rationale)
     except Exception:
         pass
     return RedirectResponse(url="/knowledge?view=promotions", status_code=status.HTTP_302_FOUND)
@@ -188,7 +190,8 @@ def reject_promotion_submit(
         return RedirectResponse(url="/knowledge?view=promotions", status_code=status.HTTP_302_FOUND)
 
     try:
-        reject_promotion(promotion_id, reviewer=user.get("username", "admin"), rationale=rationale)
+        auth = create_operator_authority_from_session(request=request, audit_reason=rationale)
+        reject_promotion(promotion_id, authority=auth, rationale=rationale)
     except Exception:
         pass
     return RedirectResponse(url="/knowledge?view=promotions", status_code=status.HTTP_302_FOUND)

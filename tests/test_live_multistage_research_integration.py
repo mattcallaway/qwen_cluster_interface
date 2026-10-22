@@ -171,14 +171,29 @@ def test_live_multistage_research_lifecycle():
     )
     assert promo["status"] == "proposed"
 
-    # Approve promotion
-    approved_promo = approve_promotion(promo["id"], reviewer="chief_data_architect")
+    # Security negative check: Plain unauthenticated string reviewer is rejected
+    with pytest.raises(PermissionError, match="cannot provide operator authority"):
+        approve_promotion(promo["id"], reviewer="chief_data_architect")
+
+    from app.auth import create_session_token, ensure_default_admin
+    from datetime import datetime, timezone
+    from app.database import get_db_connection
+    ensure_default_admin()
+    admin_token = create_session_token("admin")
+    with get_db_connection() as conn:
+        conn.execute(
+            "UPDATE knowledge_records SET reviewed_by = 'admin', reviewed_at = ? WHERE id = ?",
+            (datetime.now(timezone.utc).isoformat(), rec_polars["id"])
+        )
+        conn.commit()
+
+    approved_promo = approve_promotion(promo["id"], session_token=admin_token, rationale="Authorized polars memory model finding")
     assert approved_promo["status"] == "approved"
 
     # Verify record elevated to collective scope
     elevated_rec = get_knowledge_record(rec_polars["id"])
     assert elevated_rec["scope"] == "collective"
-    assert elevated_rec["promoted_by"] == "chief_data_architect"
+    assert elevated_rec["promoted_by"] == "admin"
 
     # -------------------------------------------------------------------------
     # STAGE F — SUBSEQUENT UNRELATED PROJECT REUSE & ISOLATION

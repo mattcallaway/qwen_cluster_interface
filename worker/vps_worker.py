@@ -66,7 +66,7 @@ IMPLEMENTED_CAPABILITIES: List[str] = [
     "network_probe"
 ]
 
-app = FastAPI(title="Qwen Collective VPS Companion Worker", version="0.1.0")
+app = FastAPI(title="Qwen Collective VPS Companion Worker", version=os.getenv("QC_APP_VERSION", "1.0.0-rc.2"))
 
 def verify_token(authorization: Optional[str] = Header(None)):
     if not authorization:
@@ -130,11 +130,59 @@ def execute_task(req: TaskRequest, token: str = Depends(verify_token)):
             detail=f"Unsupported or unauthorized task type: '{req.task_type}'. Shell execution is strictly prohibited."
         )
 
+from pathlib import Path
+import atexit
+
+def _is_pid_running(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(0x1000, False, pid)
+        if handle:
+            kernel32.CloseHandle(handle)
+            return True
+        return False
+    else:
+        try:
+            os.kill(pid, 0)
+            return True
+        except Exception:
+            return False
+
+def acquire_pid_lock() -> Optional[Path]:
+    data_dir = Path(os.getenv("QC_DATA_DIR", "."))
+    lock_file = data_dir / "vps_worker.pid"
+    if lock_file.exists():
+        try:
+            old_pid = int(lock_file.read_text(encoding="utf-8").strip())
+            if old_pid != os.getpid() and _is_pid_running(old_pid):
+                logger.error("Another VPS companion worker is already running (PID %d). Aborting startup.", old_pid)
+                return None
+        except Exception:
+            pass
+    try:
+        data_dir.mkdir(parents=True, exist_ok=True)
+        lock_file.write_text(str(os.getpid()), encoding="utf-8")
+        atexit.register(lambda: lock_file.unlink(missing_ok=True))
+        return lock_file
+    except Exception as e:
+        logger.warning("Could not write worker PID lock file %s: %s", lock_file, e)
+        return lock_file
+
 def main():
     token = validate_auth_token(os.getenv("QC_AUTH_TOKEN"))
     host = validate_host_binding(HOST, allow_public=ALLOW_PUBLIC_BIND)
-    logger.info(f"Starting Qwen Collective VPS Companion Worker on {host}:{PORT}")
-    uvicorn.run(app, host=host, port=PORT)
+    lock = acquire_pid_lock()
+    if lock is None:
+        sys.exit(1)
+    logger.info(f"Starting Qwen Collective VPS Companion Worker on {host}:{PORT} (PID {os.getpid()})")
+    try:
+        uvicorn.run(app, host=host, port=PORT)
+    finally:
+        if lock and lock.exists():
+            lock.unlink(missing_ok=True)
 
 if __name__ == "__main__":
     main()

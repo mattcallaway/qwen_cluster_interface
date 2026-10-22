@@ -1,0 +1,1213 @@
+{
+  "generated_utc": "2026-10-22T01:31:48.913724+00:00",
+  "original_user_project": {
+    "queries": [
+      {
+        "id": "qry-1d401e5c3f9b",
+        "task_id": "chk-8f5aa0ddc5da4bdc",
+        "query_text": "Conduct a comprehensive, evidence-based investigation into the current status of",
+        "provider": "duckduckgo",
+        "status": "completed",
+        "results_count": 5,
+        "duration_ms": 1426.4,
+        "error_message": null,
+        "created_at": "2026-10-22T00:53:09.447808+00:00"
+      },
+      {
+        "id": "qry-4ac575ed1bd8",
+        "task_id": "ot-16699287017d4168",
+        "query_text": "developments findings Conduct a comprehensive evidence based",
+        "provider": "duckduckgo",
+        "status": "completed",
+        "results_count": 5,
+        "duration_ms": 1622.2,
+        "error_message": null,
+        "created_at": "2026-10-22T00:54:28.194374+00:00"
+      },
+      {
+        "id": "qry-444ce7671e33",
+        "task_id": "ot-16699287017d4168",
+        "query_text": "technical industry state Conduct a comprehensive",
+        "provider": "duckduckgo",
+        "status": "completed",
+        "results_count": 5,
+        "duration_ms": 935.8,
+        "error_message": null,
+        "created_at": "2026-10-22T00:54:29.832193+00:00"
+      },
+      {
+        "id": "qry-aee138bab0f1",
+        "task_id": "ot-16699287017d4168",
+        "query_text": "competing technologies approaches key figures",
+        "provider": "duckduckgo",
+        "status": "completed",
+        "results_count": 5,
+        "duration_ms": 1763.5,
+        "error_message": null,
+        "created_at": "2026-10-22T00:54:30.772992+00:00"
+      },
+      {
+        "id": "qry-2ada2d4f5514",
+        "task_id": "ot-16699287017d4168",
+        "query_text": "quantitative benchmarks costs verified statistics exist",
+        "provider": "duckduckgo",
+        "status": "completed",
+        "results_count": 5,
+        "duration_ms": 2360.4,
+        "error_message": null,
+        "created_at": "2026-10-22T00:54:32.550011+00:00"
+      },
+      {
+        "id": "qry-0cda8315aac6",
+        "task_id": "ot-16699287017d4168",
+        "query_text": "limitations criticisms conflicting perspectives",
+        "provider": "duckduckgo",
+        "status": "completed",
+        "results_count": 5,
+        "duration_ms": 2265.9,
+        "error_message": null,
+        "created_at": "2026-10-22T00:54:34.910386+00:00"
+      },
+      {
+        "id": "qry-38b217959096",
+        "task_id": "ot-16699287017d4168",
+        "query_text": "developments findings Conduct a official documentation report",
+        "provider": "duckduckgo",
+        "status": "completed",
+        "results_count": 0,
+        "duration_ms": 3057.6,
+        "error_message": null,
+        "created_at": "2026-10-22T00:54:37.176298+00:00"
+      }
+    ],
+    "search_results": [
+      {
+        "query_id": "qry-0cda8315aac6",
+        "rank": 1,
+        "provider": "duckduckgo",
+        "title": "Conflict Theory in Sociology: Assumptions and Criticisms",
+        "url": "https://helpfulprofessor.com/conflict-theory-criticisms-assumptions/"
+      },
+      {
+        "query_id": "qry-0cda8315aac6",
+        "rank": 2,
+        "provider": "duckduckgo",
+        "title": "Main Criticisms of Conflict Theory in Sociology Explained",
+        "url": "https://unanswered.io/guide/criticisms-of-conflict-theory"
+      },
+      {
+        "query_id": "qry-0cda8315aac6",
+        "rank": 3,
+        "provider": "duckduckgo",
+        "title": "3.7: Criticisms and Limitations of Realism - Social Sci ...",
+        "url": "https://socialsci.libretexts.org/Bookshelves/Political_Science_and_Civics/International_Relations_-_Introduction_Essentials_(Kirkham)/03:_Realism_Theory/3.07:_Criticisms_and_Limitations_of_Realism"
+      },
+      {
+        "query_id": "qry-0cda8315aac6",
+        "rank": 4,
+        "provider": "duckduckgo",
+        "title": "Conflict Theory: Assumption, Causes, Limitations and Examples",
+        "url": "https://www.geeksforgeeks.org/marketing/conflict-theory-assumption-causes-limitations-and-examples/"
+      },
+      {
+        "query_id": "qry-0cda8315aac6",
+        "rank": 5,
+        "provider": "duckduckgo",
+        "title": "Beyond Functionalism: Conflict Theory and Critical Perspectives",
+        "url": "https://pubadmin.institute/research-methodologies/beyond-functionalism-conflict-theory-perspectives"
+      },
+      {
+        "query_id": "qry-1d401e5c3f9b",
+        "rank": 1,
+        "provider": "duckduckgo",
+        "title": "How to Conduct a Thorough Investigation: A Step-by-Step Guide",
+        "url": "https://realitypathing.com/how-to-conduct-a-thorough-investigation-a-step-by-step-guide/"
+      },
+      {
+        "query_id": "qry-1d401e5c3f9b",
+        "rank": 2,
+        "provider": "duckduckgo",
+        "title": "Investigation Report Example: Format, Template, Writing Step",
+        "url": "https://www.caseiq.com/resources/articles/ultimate-guide-to-writing-investigation-reports"
+      },
+      {
+        "query_id": "qry-1d401e5c3f9b",
+        "rank": 3,
+        "provider": "duckduckgo",
+        "title": "How to Start and Conduct an Investigation: A Practical Guide",
+        "url": "https://thelegalguide.org/how-start-conduct-investigation-practical/"
+      },
+      {
+        "query_id": "qry-1d401e5c3f9b",
+        "rank": 4,
+        "provider": "duckduckgo",
+        "title": "How to Start and Conduct an Investigation: Evidence and Reports",
+        "url": "https://legalhelp.us/how-to-start-and-conduct-an-investigation-evidence-and-reports/"
+      },
+      {
+        "query_id": "qry-1d401e5c3f9b",
+        "rank": 5,
+        "provider": "duckduckgo",
+        "title": "Conducting a Field Investigation | Field Epi Manual | CDC",
+        "url": "https://www.cdc.gov/field-epi-manual/php/chapters/field-investigation.html"
+      },
+      {
+        "query_id": "qry-2ada2d4f5514",
+        "rank": 1,
+        "provider": "duckduckgo",
+        "title": "Supplier Price Benchmarking: Compare Costs Across 2300 ...",
+        "url": "https://www.accio.com/supplier/supplier-price-benchmarking"
+      },
+      {
+        "query_id": "qry-2ada2d4f5514",
+        "rank": 2,
+        "provider": "duckduckgo",
+        "title": "Software Pricing Statistics 2026 | CostBench",
+        "url": "https://costbench.com/stats/"
+      },
+      {
+        "query_id": "qry-2ada2d4f5514",
+        "rank": 3,
+        "provider": "duckduckgo",
+        "title": "Customer Acquisition Cost Benchmarks by Industry (2026 Data ...",
+        "url": "https://christopholivierconsulting.com/customer-acquisition-cost-benchmarks/"
+      },
+      {
+        "query_id": "qry-2ada2d4f5514",
+        "rank": 4,
+        "provider": "duckduckgo",
+        "title": "Mastering Benchmarking in Quantitative Research",
+        "url": "https://www.numberanalytics.com/blog/ultimate-guide-benchmarking-quantitative-research-methods"
+      },
+      {
+        "query_id": "qry-2ada2d4f5514",
+        "rank": 5,
+        "provider": "duckduckgo",
+        "title": "Benchmarking - U.S. Bureau of Labor Statistics",
+        "url": "https://www.bls.gov/opub/hom/topic/benchmarking.htm"
+      },
+      {
+        "query_id": "qry-444ce7671e33",
+        "rank": 1,
+        "provider": "duckduckgo",
+        "title": "How to Conduct Effective Compliance Audits: A Comprehensive ...",
+        "url": "https://lean6sigmahub.com/how-to-conduct-effective-compliance-audits-a-comprehensive-step-by-step-guide/"
+      },
+      {
+        "query_id": "qry-444ce7671e33",
+        "rank": 2,
+        "provider": "duckduckgo",
+        "title": "Technical Audit \u2013 A key to safety and efficiency in industry",
+        "url": "https://hms-steel.com/technical-audit/"
+      },
+      {
+        "query_id": "qry-444ce7671e33",
+        "rank": 3,
+        "provider": "duckduckgo",
+        "title": "Application of Technical Authority Across Industry",
+        "url": "https://www.ndia-sd.org/wp-content/uploads/Briefs/Forum2024/Tuesday/09_Tues_TechnicalAuthorityBrief(SEIME).pdf"
+      },
+      {
+        "query_id": "qry-444ce7671e33",
+        "rank": 4,
+        "provider": "duckduckgo",
+        "title": "Technical Audit 101: A Comprehensive Guide",
+        "url": "https://www.chinainspectionpro.com/blog/technical-audit-101-comprehensive-guide"
+      },
+      {
+        "query_id": "qry-444ce7671e33",
+        "rank": 5,
+        "provider": "duckduckgo",
+        "title": "Industry Standards: How to Learn and Follow the Industry ...",
+        "url": "https://fastercapital.com/content/Industry-Standards--How-to-Learn-and-Follow-the-Industry-Standards-for-Your-Technical-and-Occupational-Field.html"
+      },
+      {
+        "query_id": "qry-4ac575ed1bd8",
+        "rank": 1,
+        "provider": "duckduckgo",
+        "title": "Evidence-Based Research Series-Paper 1: What Evidence-Based Research is ...",
+        "url": "https://www.sciencedirect.com/science/article/pii/S0895435620310957"
+      },
+      {
+        "query_id": "qry-4ac575ed1bd8",
+        "rank": 2,
+        "provider": "duckduckgo",
+        "title": "Evidence-based practice models and frameworks in the healthcare setting ...",
+        "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10230988/"
+      },
+      {
+        "query_id": "qry-4ac575ed1bd8",
+        "rank": 3,
+        "provider": "duckduckgo",
+        "title": "Key standards and principles for developing evidence-based clinical ...",
+        "url": "https://www.sciencedirect.com/science/article/pii/S0015028225000500"
+      },
+      {
+        "query_id": "qry-4ac575ed1bd8",
+        "rank": 4,
+        "provider": "duckduckgo",
+        "title": "A comprehensive guide to conduct a systematic... : Medicine",
+        "url": "https://www.ovid.com/jnls/md-journal/fulltext/10.1097/md.0000000000041868~a-comprehensive-guide-to-conduct-a-systematic-review-and"
+      },
+      {
+        "query_id": "qry-4ac575ed1bd8",
+        "rank": 5,
+        "provider": "duckduckgo",
+        "title": "Evidence-Based Interventions Under the ESSA",
+        "url": "https://www.cde.ca.gov/re/es/evidence.asp"
+      },
+      {
+        "query_id": "qry-aee138bab0f1",
+        "rank": 1,
+        "provider": "duckduckgo",
+        "title": "How Can I Recognize Competing Technologies and Alternative ...Competing Technologies in the Reinvention Race Increases ...Competitive Benchmarking 2026: Metrics & Sources | VantaInsightsTechnology Convergence Is Redefining Competitive AdvantageU.S.-China Competition in Emerging TechnologiesThe state of competition in telecoms | PwCHow do you compare competing technologies? - getfocus.eu",
+        "url": "https://link.springer.com/chapter/10.1007/978-3-658-36355-0_7"
+      },
+      {
+        "query_id": "qry-aee138bab0f1",
+        "rank": 2,
+        "provider": "duckduckgo",
+        "title": "Competing Technologies in the Reinvention Race Increases ...",
+        "url": "https://www.the-waves.org/2024/12/04/competing-technologies-in-the-reinvention-race-increases-innovation-risks/"
+      },
+      {
+        "query_id": "qry-aee138bab0f1",
+        "rank": 3,
+        "provider": "duckduckgo",
+        "title": "U.S.-China Competition in Emerging Technologies",
+        "url": "https://www.uscc.gov/sites/default/files/2024-11/Chapter_3--U.S.-China_Competition_in_Emerging_Technologies.pdf"
+      },
+      {
+        "query_id": "qry-aee138bab0f1",
+        "rank": 4,
+        "provider": "duckduckgo",
+        "title": "How do you compare competing technologies? - getfocus.eu",
+        "url": "https://www.getfocus.eu/blog/how-to-compare-competing-technologies-objectively"
+      },
+      {
+        "query_id": "qry-aee138bab0f1",
+        "rank": 5,
+        "provider": "duckduckgo",
+        "title": "Technology Convergence Is Redefining Competitive Advantage",
+        "url": "https://www.weforum.org/media/technology-convergence-is-redefining-competitive-advantage-88d1145040/"
+      }
+    ],
+    "sources": [
+      {
+        "id": "src-4c1e88d0fea8",
+        "project_id": "prj-c3e69205a8e0466ab54b609801694796",
+        "canonical_url": "https://realitypathing.com/how-to-conduct-a-thorough-investigation-a-step-by-step-guide",
+        "original_url": "https://realitypathing.com/how-to-conduct-a-thorough-investigation-a-step-by-step-guide/",
+        "title": "How to Conduct a Thorough Investigation: A Step-by-Step Guide",
+        "author": null,
+        "publisher": null,
+        "publication_date": null,
+        "modified_date": null,
+        "retrieved_at": "2026-10-22T00:53:11.795454+00:00",
+        "content_type": "text/html; charset=UTF-8",
+        "content_hash": "b90c71ca14dbdb306d4f79d6649016b307202dafce0c87175b9cbd5cd72ff058",
+        "content_length_bytes": 7679,
+        "storage_path": "data\\research_sources\\prj-c3e69205a8e0466ab54b609801694796\\src-4c1e88d0fea8.txt",
+        "retrieval_method": "http",
+        "status": "fetched",
+        "quality_score": 0.5,
+        "reliability_assessment_json": "{\"score\": 0.5, \"factors\": [], \"domain\": \"realitypathing.com\"}",
+        "created_at": "2026-10-22T00:53:11.795454+00:00",
+        "updated_at": "2026-10-22T00:53:11.795454+00:00",
+        "research_run_id": null,
+        "session_id": null
+      },
+      {
+        "id": "src-6260f562e557",
+        "project_id": "prj-c3e69205a8e0466ab54b609801694796",
+        "canonical_url": "https://www.caseiq.com/resources/articles/ultimate-guide-to-writing-investigation-reports",
+        "original_url": "https://www.caseiq.com/resources/articles/ultimate-guide-to-writing-investigation-reports",
+        "title": "Investigation Report Example: Format, Template, Writing Step",
+        "author": null,
+        "publisher": null,
+        "publication_date": null,
+        "modified_date": null,
+        "retrieved_at": "2026-10-22T00:53:12.438489+00:00",
+        "content_type": "text/html; charset=utf-8",
+        "content_hash": "3e98249f8d13233ca8e72ab9e311412ceaf0a4345b6a4d77773ed2b04c4d9eba",
+        "content_length_bytes": 21233,
+        "storage_path": "data\\research_sources\\prj-c3e69205a8e0466ab54b609801694796\\src-6260f562e557.txt",
+        "retrieval_method": "http",
+        "status": "fetched",
+        "quality_score": 0.5,
+        "reliability_assessment_json": "{\"score\": 0.5, \"factors\": [], \"domain\": \"www.caseiq.com\"}",
+        "created_at": "2026-10-22T00:53:12.438489+00:00",
+        "updated_at": "2026-10-22T00:53:12.438489+00:00",
+        "research_run_id": null,
+        "session_id": null
+      },
+      {
+        "id": "src-9a8b695dc180",
+        "project_id": "prj-c3e69205a8e0466ab54b609801694796",
+        "canonical_url": "https://legalhelp.us/how-to-start-and-conduct-an-investigation-evidence-and-reports",
+        "original_url": "https://legalhelp.us/how-to-start-and-conduct-an-investigation-evidence-and-reports/",
+        "title": "How to Start and Conduct an Investigation: Evidence and Reports",
+        "author": null,
+        "publisher": null,
+        "publication_date": null,
+        "modified_date": null,
+        "retrieved_at": "2026-10-22T00:53:14.676459+00:00",
+        "content_type": "text/html; charset=UTF-8",
+        "content_hash": "98ff994121e4db2d761ae3a67526e0abc5f75e0f89059f5624347b41696b5b7b",
+        "content_length_bytes": 19714,
+        "storage_path": "data\\research_sources\\prj-c3e69205a8e0466ab54b609801694796\\src-9a8b695dc180.txt",
+        "retrieval_method": "http",
+        "status": "fetched",
+        "quality_score": 0.5,
+        "reliability_assessment_json": "{\"score\": 0.5, \"factors\": [], \"domain\": \"legalhelp.us\"}",
+        "created_at": "2026-10-22T00:53:14.676459+00:00",
+        "updated_at": "2026-10-22T00:53:14.676459+00:00",
+        "research_run_id": null,
+        "session_id": null
+      },
+      {
+        "id": "src-bf0723f65dfe",
+        "project_id": "prj-c3e69205a8e0466ab54b609801694796",
+        "canonical_url": "https://lean6sigmahub.com/how-to-conduct-effective-compliance-audits-a-comprehensive-step-by-step-guide",
+        "original_url": "https://lean6sigmahub.com/how-to-conduct-effective-compliance-audits-a-comprehensive-step-by-step-guide/",
+        "title": "How to Conduct Effective Compliance Audits: A Comprehensive Step-by-Step Guide",
+        "author": null,
+        "publisher": null,
+        "publication_date": null,
+        "modified_date": null,
+        "retrieved_at": "2026-10-22T00:54:50.422085+00:00",
+        "content_type": "text/html; charset=UTF-8",
+        "content_hash": "3edb598f545079a00affee402db381e9a5165a217dbfc677b77a416dab2eac22",
+        "content_length_bytes": 265,
+        "storage_path": "data\\research_sources\\prj-c3e69205a8e0466ab54b609801694796\\src-bf0723f65dfe.txt",
+        "retrieval_method": "http",
+        "status": "fetched",
+        "quality_score": 0.5,
+        "reliability_assessment_json": "{\"score\": 0.5, \"factors\": [], \"domain\": \"lean6sigmahub.com\"}",
+        "created_at": "2026-10-22T00:54:50.422085+00:00",
+        "updated_at": "2026-10-22T00:54:50.422085+00:00",
+        "research_run_id": null,
+        "session_id": null
+      },
+      {
+        "id": "src-f0ecf2b50213",
+        "project_id": "prj-c3e69205a8e0466ab54b609801694796",
+        "canonical_url": "https://link.springer.com/chapter/10.1007/978-3-658-36355-0_7",
+        "original_url": "https://link.springer.com/chapter/10.1007/978-3-658-36355-0_7",
+        "title": "Client Challenge",
+        "author": null,
+        "publisher": null,
+        "publication_date": null,
+        "modified_date": null,
+        "retrieved_at": "2026-10-22T00:54:50.922516+00:00",
+        "content_type": "text/html; charset=utf-8",
+        "content_hash": "d596222d912011e13bd9ea814d40a9695b132f328fb03f5125ea855b862870e9",
+        "content_length_bytes": 223,
+        "storage_path": "data\\research_sources\\prj-c3e69205a8e0466ab54b609801694796\\src-f0ecf2b50213.txt",
+        "retrieval_method": "http",
+        "status": "fetched",
+        "quality_score": 0.5,
+        "reliability_assessment_json": "{\"score\": 0.5, \"factors\": [], \"domain\": \"link.springer.com\"}",
+        "created_at": "2026-10-22T00:54:50.922516+00:00",
+        "updated_at": "2026-10-22T00:54:50.922516+00:00",
+        "research_run_id": null,
+        "session_id": null
+      },
+      {
+        "id": "src-067428400a85",
+        "project_id": "prj-c3e69205a8e0466ab54b609801694796",
+        "canonical_url": "https://www.accio.com/supplier/supplier-price-benchmarking",
+        "original_url": "https://www.accio.com/supplier/supplier-price-benchmarking",
+        "title": "Supplier Price Benchmarking: Compare Costs Across 2300+ Verified Suppliers",
+        "author": null,
+        "publisher": null,
+        "publication_date": null,
+        "modified_date": null,
+        "retrieved_at": "2026-10-22T00:54:52.177141+00:00",
+        "content_type": "text/html;charset=utf-8",
+        "content_hash": "ec645d5b4a4ebb26f67888c6b86f7f9434f7e3b08179edde34f1be0d378daf00",
+        "content_length_bytes": 94,
+        "storage_path": "data\\research_sources\\prj-c3e69205a8e0466ab54b609801694796\\src-067428400a85.txt",
+        "retrieval_method": "http",
+        "status": "fetched",
+        "quality_score": 0.5,
+        "reliability_assessment_json": "{\"score\": 0.5, \"factors\": [], \"domain\": \"www.accio.com\"}",
+        "created_at": "2026-10-22T00:54:52.177141+00:00",
+        "updated_at": "2026-10-22T00:54:52.177141+00:00",
+        "research_run_id": null,
+        "session_id": null
+      },
+      {
+        "id": "src-caa97a496a3f",
+        "project_id": "prj-c3e69205a8e0466ab54b609801694796",
+        "canonical_url": "https://helpfulprofessor.com/conflict-theory-criticisms-assumptions",
+        "original_url": "https://helpfulprofessor.com/conflict-theory-criticisms-assumptions/",
+        "title": "Conflict Theory in Sociology: Assumptions and Criticisms (2026)",
+        "author": null,
+        "publisher": null,
+        "publication_date": null,
+        "modified_date": null,
+        "retrieved_at": "2026-10-22T00:54:52.957280+00:00",
+        "content_type": "text/html; charset=UTF-8",
+        "content_hash": "4114e38bc17c6eae73db7ed9802872e8538aeca514408bccf6dee0c64324d330",
+        "content_length_bytes": 10710,
+        "storage_path": "data\\research_sources\\prj-c3e69205a8e0466ab54b609801694796\\src-caa97a496a3f.txt",
+        "retrieval_method": "http",
+        "status": "fetched",
+        "quality_score": 0.5,
+        "reliability_assessment_json": "{\"score\": 0.5, \"factors\": [], \"domain\": \"helpfulprofessor.com\"}",
+        "created_at": "2026-10-22T00:54:52.957280+00:00",
+        "updated_at": "2026-10-22T00:54:52.957280+00:00",
+        "research_run_id": null,
+        "session_id": null
+      },
+      {
+        "id": "src-5b2f78124e19",
+        "project_id": "prj-c3e69205a8e0466ab54b609801694796",
+        "canonical_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10230988",
+        "original_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10230988/",
+        "title": "Checking your browser - reCAPTCHA",
+        "author": null,
+        "publisher": null,
+        "publication_date": null,
+        "modified_date": null,
+        "retrieved_at": "2026-10-22T00:54:54.090914+00:00",
+        "content_type": "text/html; charset=utf-8",
+        "content_hash": "a29166d0eaaa418bd5af61a282f1183a46c84c4d5e4c90689b1b452d230d05cc",
+        "content_length_bytes": 131,
+        "storage_path": "data\\research_sources\\prj-c3e69205a8e0466ab54b609801694796\\src-5b2f78124e19.txt",
+        "retrieval_method": "http",
+        "status": "fetched",
+        "quality_score": 0.75,
+        "reliability_assessment_json": "{\"score\": 0.75, \"factors\": [\"Authoritative / academic / government domain\"], \"domain\": \"pmc.ncbi.nlm.nih.gov\"}",
+        "created_at": "2026-10-22T00:54:54.090914+00:00",
+        "updated_at": "2026-10-22T00:54:54.090914+00:00",
+        "research_run_id": null,
+        "session_id": null
+      }
+    ],
+    "claims": [
+      {
+        "id": "clm-59368cda1975",
+        "claim_text": "Checking your browser before accessing pmc.",
+        "category": "fact",
+        "verification_status": "supported",
+        "confidence_score": 0.8
+      },
+      {
+        "id": "clm-3adcc360957e",
+        "claim_text": "In Marx\u2019s view of society, conflict was inherent between social groups because resources were limited.",
+        "category": "fact",
+        "verification_status": "supported",
+        "confidence_score": 0.8
+      },
+      {
+        "id": "clm-3770261a74b3",
+        "claim_text": "Conflict theory is most commonly associated with the philosophy of Karl Marx (1818-1883), who is sometimes referred to as the father of sociological conflict theory \u2013 one of the three sociological paradigms.",
+        "category": "fact",
+        "verification_status": "supported",
+        "confidence_score": 0.8
+      },
+      {
+        "id": "clm-eb494f993726",
+        "claim_text": "\u201cThe history of all hitherto existing society, is the history of class struggles\u201d.",
+        "category": "fact",
+        "verification_status": "supported",
+        "confidence_score": 0.8
+      },
+      {
+        "id": "clm-c66ce2df4224",
+        "claim_text": "A required part of this site couldn\u2019t load.",
+        "category": "fact",
+        "verification_status": "supported",
+        "confidence_score": 0.8
+      },
+      {
+        "id": "clm-3bc0957a7724",
+        "claim_text": "In today's competitive manufacturing landscape, achieving consistent quality while minimizing defects is paramount to business success.",
+        "category": "fact",
+        "verification_status": "supported",
+        "confidence_score": 0.8
+      },
+      {
+        "id": "clm-52c7a256de36",
+        "claim_text": "To conduct an investigation properly, you define a narrow question, learn the legal limits that apply to the methods you plan to use, collect documents and digital records before you talk to people, preserve everything with a documented chain of custody, and write a report that ties every finding to a specific piece of evidence.",
+        "category": "fact",
+        "verification_status": "supported",
+        "confidence_score": 0.8
+      },
+      {
+        "id": "clm-71d2e2b38093",
+        "claim_text": "An investigation without a clear objective drifts.",
+        "category": "fact",
+        "verification_status": "supported",
+        "confidence_score": 0.8
+      },
+      {
+        "id": "clm-d33b3f4c20dd",
+        "claim_text": "A tight objective does two things at once.",
+        "category": "fact",
+        "verification_status": "supported",
+        "confidence_score": 0.8
+      },
+      {
+        "id": "clm-6fba41c63581",
+        "claim_text": "Investigation Report Example: How to Write an Investigation Report (Step-by-Step Guide).",
+        "category": "fact",
+        "verification_status": "supported",
+        "confidence_score": 0.8
+      }
+    ]
+  },
+  "audit_rerun_project": {
+    "queries": [
+      {
+        "id": "qry-dcf8e88a6633",
+        "task_id": "chk-5a813ea0eb3a4dd8",
+        "query_text": "Conduct a comprehensive, evidence-based investigation into the current status of",
+        "provider": "duckduckgo",
+        "status": "completed",
+        "results_count": 5,
+        "duration_ms": 2709.9,
+        "error_message": null,
+        "created_at": "2026-10-22T01:10:21.058620+00:00"
+      },
+      {
+        "id": "qry-a3d849cf5c7d",
+        "task_id": "ot-d334328ab4f34738",
+        "query_text": "developments findings Conduct a comprehensive evidence based",
+        "provider": "duckduckgo",
+        "status": "completed",
+        "results_count": 5,
+        "duration_ms": 1788.7,
+        "error_message": null,
+        "created_at": "2026-10-22T01:12:12.286636+00:00"
+      },
+      {
+        "id": "qry-cf75bb7af3be",
+        "task_id": "ot-d334328ab4f34738",
+        "query_text": "technical industry state Conduct a comprehensive",
+        "provider": "duckduckgo",
+        "status": "completed",
+        "results_count": 5,
+        "duration_ms": 3765.3,
+        "error_message": null,
+        "created_at": "2026-10-22T01:12:14.087298+00:00"
+      },
+      {
+        "id": "qry-8fcc7499018e",
+        "task_id": "ot-d334328ab4f34738",
+        "query_text": "competing technologies approaches key figures",
+        "provider": "duckduckgo",
+        "status": "completed",
+        "results_count": 0,
+        "duration_ms": 2901.5,
+        "error_message": null,
+        "created_at": "2026-10-22T01:12:17.869917+00:00"
+      },
+      {
+        "id": "qry-9f5cf1394f90",
+        "task_id": "ot-d334328ab4f34738",
+        "query_text": "quantitative benchmarks costs verified statistics exist",
+        "provider": "duckduckgo",
+        "status": "completed",
+        "results_count": 5,
+        "duration_ms": 1462.5,
+        "error_message": null,
+        "created_at": "2026-10-22T01:12:20.782469+00:00"
+      },
+      {
+        "id": "qry-113d4f55c439",
+        "task_id": "ot-d334328ab4f34738",
+        "query_text": "limitations criticisms conflicting perspectives",
+        "provider": "duckduckgo",
+        "status": "completed",
+        "results_count": 0,
+        "duration_ms": 3016.9,
+        "error_message": null,
+        "created_at": "2026-10-22T01:12:22.247226+00:00"
+      },
+      {
+        "id": "qry-dfea8f33aeb9",
+        "task_id": "ot-d334328ab4f34738",
+        "query_text": "developments findings Conduct a official documentation report",
+        "provider": "duckduckgo",
+        "status": "completed",
+        "results_count": 5,
+        "duration_ms": 2368.7,
+        "error_message": null,
+        "created_at": "2026-10-22T01:12:25.273131+00:00"
+      }
+    ],
+    "search_results": [
+      {
+        "query_id": "qry-9f5cf1394f90",
+        "rank": 1,
+        "provider": "duckduckgo",
+        "title": "Supplier Price Benchmarking: Compare Costs Across 2300 ...",
+        "url": "https://www.accio.com/supplier/supplier-price-benchmarking"
+      },
+      {
+        "query_id": "qry-9f5cf1394f90",
+        "rank": 2,
+        "provider": "duckduckgo",
+        "title": "Software Pricing Statistics 2026 | CostBench",
+        "url": "https://costbench.com/stats/"
+      },
+      {
+        "query_id": "qry-9f5cf1394f90",
+        "rank": 3,
+        "provider": "duckduckgo",
+        "title": "Statista - The Statistics Portal for Market Data, Market ...",
+        "url": "https://www.statista.com/"
+      },
+      {
+        "query_id": "qry-9f5cf1394f90",
+        "rank": 4,
+        "provider": "duckduckgo",
+        "title": "Customer Acquisition Cost Benchmarks by Industry (2026 Data ...",
+        "url": "https://christopholivierconsulting.com/customer-acquisition-cost-benchmarks/"
+      },
+      {
+        "query_id": "qry-9f5cf1394f90",
+        "rank": 5,
+        "provider": "duckduckgo",
+        "title": "Mastering Benchmarking in Quantitative Research",
+        "url": "https://www.numberanalytics.com/blog/ultimate-guide-benchmarking-quantitative-research-methods"
+      },
+      {
+        "query_id": "qry-a3d849cf5c7d",
+        "rank": 1,
+        "provider": "duckduckgo",
+        "title": "Evidence-Based Research Series-Paper 1: What Evidence-Based Research is ...",
+        "url": "https://www.sciencedirect.com/science/article/pii/S0895435620310957"
+      },
+      {
+        "query_id": "qry-a3d849cf5c7d",
+        "rank": 2,
+        "provider": "duckduckgo",
+        "title": "Evidence-based practice models and frameworks in the healthcare setting ...",
+        "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10230988/"
+      },
+      {
+        "query_id": "qry-a3d849cf5c7d",
+        "rank": 3,
+        "provider": "duckduckgo",
+        "title": "Key standards and principles for developing evidence-based clinical ...",
+        "url": "https://www.sciencedirect.com/science/article/pii/S0015028225000500"
+      },
+      {
+        "query_id": "qry-a3d849cf5c7d",
+        "rank": 4,
+        "provider": "duckduckgo",
+        "title": "A comprehensive guide to conduct a systematic... : Medicine",
+        "url": "https://www.ovid.com/jnls/md-journal/fulltext/10.1097/md.0000000000041868~a-comprehensive-guide-to-conduct-a-systematic-review-and"
+      },
+      {
+        "query_id": "qry-a3d849cf5c7d",
+        "rank": 5,
+        "provider": "duckduckgo",
+        "title": "Evidence-Based Practice - Evidence-Based Practice in the Health ...",
+        "url": "https://guides.lib.umich.edu/EBP"
+      },
+      {
+        "query_id": "qry-cf75bb7af3be",
+        "rank": 1,
+        "provider": "duckduckgo",
+        "title": "Technical Audit - A key to safety and efficiency in industry",
+        "url": "https://hms-steel.com/technical-audit/"
+      },
+      {
+        "query_id": "qry-cf75bb7af3be",
+        "rank": 2,
+        "provider": "duckduckgo",
+        "title": "Role of Technical Inspectors in Construction Safety: Ensuring Safety ...",
+        "url": "https://www.researchgate.net/publication/392967514_Role_of_Technical_Inspectors_in_Construction_Safety_Ensuring_Safety_and_Preventing_Accidents"
+      },
+      {
+        "query_id": "qry-cf75bb7af3be",
+        "rank": 3,
+        "provider": "duckduckgo",
+        "title": "Standards and Regulations for Technical Condition Assessment in ...",
+        "url": "https://www.researchgate.net/publication/392330654_STANDARDS_AND_REGULATIONS_FOR_TECHNICAL_CONDITION_ASSESSMENT_IN_CRITICAL_SECTORS"
+      },
+      {
+        "query_id": "qry-cf75bb7af3be",
+        "rank": 4,
+        "provider": "duckduckgo",
+        "title": "PDFApplication of Technical Authority Across Industry",
+        "url": "https://www.ndia-sd.org/wp-content/uploads/Briefs/Forum2024/Tuesday/09_Tues_TechnicalAuthorityBrief(SEIME).pdf"
+      },
+      {
+        "query_id": "qry-cf75bb7af3be",
+        "rank": 5,
+        "provider": "duckduckgo",
+        "title": "How to Conduct Effective Compliance Audits: A Comprehensive Step-by ...",
+        "url": "https://lean6sigmahub.com/how-to-conduct-effective-compliance-audits-a-comprehensive-step-by-step-guide/"
+      },
+      {
+        "query_id": "qry-dcf8e88a6633",
+        "rank": 1,
+        "provider": "duckduckgo",
+        "title": "How to Conduct a Thorough Investigation: A Step-by-Step Guide",
+        "url": "https://realitypathing.com/how-to-conduct-a-thorough-investigation-a-step-by-step-guide/"
+      },
+      {
+        "query_id": "qry-dcf8e88a6633",
+        "rank": 2,
+        "provider": "duckduckgo",
+        "title": "Investigation Report Example: Format, Template, Writing Step",
+        "url": "https://www.caseiq.com/resources/articles/ultimate-guide-to-writing-investigation-reports"
+      },
+      {
+        "query_id": "qry-dcf8e88a6633",
+        "rank": 3,
+        "provider": "duckduckgo",
+        "title": "How to Start and Conduct an Investigation: A Practical Guide",
+        "url": "https://thelegalguide.org/how-start-conduct-investigation-practical/"
+      },
+      {
+        "query_id": "qry-dcf8e88a6633",
+        "rank": 4,
+        "provider": "duckduckgo",
+        "title": "GAO-23-105460, Evidence-Based Policymaking: Practices to Help ...",
+        "url": "https://www.gao.gov/assets/gao-23-105460.pdf"
+      },
+      {
+        "query_id": "qry-dcf8e88a6633",
+        "rank": 5,
+        "provider": "duckduckgo",
+        "title": "How to Start and Conduct an Investigation: Evidence and ...",
+        "url": "https://legalhelp.us/how-to-start-and-conduct-an-investigation-evidence-and-reports/"
+      },
+      {
+        "query_id": "qry-dfea8f33aeb9",
+        "rank": 1,
+        "provider": "duckduckgo",
+        "title": "Documenting Findings And Creating Reports: A Comprehensive ...",
+        "url": "https://www.flyriver.com/g/document-findings-and-create-reports"
+      },
+      {
+        "query_id": "qry-dfea8f33aeb9",
+        "rank": 2,
+        "provider": "duckduckgo",
+        "title": "Formal Report Writing Structure Guide | PDF - Scribd",
+        "url": "https://www.scribd.com/doc/48648722/Formal-Report-Writing"
+      },
+      {
+        "query_id": "qry-dfea8f33aeb9",
+        "rank": 3,
+        "provider": "duckduckgo",
+        "title": "Steps to Write an Official Report | PDF | Methodology ...",
+        "url": "https://www.scribd.com/document/838925941/Writing-an-Official-Report"
+      },
+      {
+        "query_id": "qry-dfea8f33aeb9",
+        "rank": 4,
+        "provider": "duckduckgo",
+        "title": "Reporting and Documentation During Your Investigation",
+        "url": "https://workology.com/reporting-and-documentation-during-your-investigation/"
+      },
+      {
+        "query_id": "qry-dfea8f33aeb9",
+        "rank": 5,
+        "provider": "duckduckgo",
+        "title": "Good Documentation Practices (GDP) - U.S. Food and Drug ...",
+        "url": "https://www.fda.gov/media/185615/download"
+      }
+    ],
+    "sources": [
+      {
+        "id": "src-558568ef9881",
+        "project_id": "prj-c74dd685c2b145e5b32ab347253dbc77",
+        "canonical_url": "https://realitypathing.com/how-to-conduct-a-thorough-investigation-a-step-by-step-guide",
+        "original_url": "https://realitypathing.com/how-to-conduct-a-thorough-investigation-a-step-by-step-guide/",
+        "title": "How to Conduct a Thorough Investigation: A Step-by-Step Guide",
+        "author": null,
+        "publisher": null,
+        "publication_date": null,
+        "modified_date": null,
+        "retrieved_at": "2026-10-22T01:10:24.767250+00:00",
+        "content_type": "text/html; charset=UTF-8",
+        "content_hash": "b90c71ca14dbdb306d4f79d6649016b307202dafce0c87175b9cbd5cd72ff058",
+        "content_length_bytes": 7679,
+        "storage_path": "data\\research_sources\\prj-c74dd685c2b145e5b32ab347253dbc77\\src-558568ef9881.txt",
+        "retrieval_method": "http",
+        "status": "fetched",
+        "quality_score": 0.5,
+        "reliability_assessment_json": "{\"score\": 0.5, \"factors\": [], \"domain\": \"realitypathing.com\"}",
+        "created_at": "2026-10-22T01:10:24.767250+00:00",
+        "updated_at": "2026-10-22T01:10:24.767250+00:00",
+        "research_run_id": null,
+        "session_id": null
+      },
+      {
+        "id": "src-6f263306ebe7",
+        "project_id": "prj-c74dd685c2b145e5b32ab347253dbc77",
+        "canonical_url": "https://www.caseiq.com/resources/articles/ultimate-guide-to-writing-investigation-reports",
+        "original_url": "https://www.caseiq.com/resources/articles/ultimate-guide-to-writing-investigation-reports",
+        "title": "Investigation Report Example: Format, Template, Writing Step",
+        "author": null,
+        "publisher": null,
+        "publication_date": null,
+        "modified_date": null,
+        "retrieved_at": "2026-10-22T01:10:25.455663+00:00",
+        "content_type": "text/html; charset=utf-8",
+        "content_hash": "3e98249f8d13233ca8e72ab9e311412ceaf0a4345b6a4d77773ed2b04c4d9eba",
+        "content_length_bytes": 21233,
+        "storage_path": "data\\research_sources\\prj-c74dd685c2b145e5b32ab347253dbc77\\src-6f263306ebe7.txt",
+        "retrieval_method": "http",
+        "status": "fetched",
+        "quality_score": 0.5,
+        "reliability_assessment_json": "{\"score\": 0.5, \"factors\": [], \"domain\": \"www.caseiq.com\"}",
+        "created_at": "2026-10-22T01:10:25.455663+00:00",
+        "updated_at": "2026-10-22T01:10:25.455663+00:00",
+        "research_run_id": null,
+        "session_id": null
+      },
+      {
+        "id": "src-86a03d52aa7f",
+        "project_id": "prj-c74dd685c2b145e5b32ab347253dbc77",
+        "canonical_url": "https://www.gao.gov/assets/gao-23-105460.pdf",
+        "original_url": "https://www.gao.gov/assets/gao-23-105460.pdf",
+        "title": "GAO-23-105460, Evidence-Based Policymaking: Practices to Help Manage and Assess the Results of Federal Efforts",
+        "author": null,
+        "publisher": null,
+        "publication_date": null,
+        "modified_date": null,
+        "retrieved_at": "2026-10-22T01:10:31.586198+00:00",
+        "content_type": "application/pdf",
+        "content_hash": "d81750cc70b14d53146b2f76ed0795115f058d7edb022a56b86635ce0f7a1af6",
+        "content_length_bytes": 153748,
+        "storage_path": "data\\research_sources\\prj-c74dd685c2b145e5b32ab347253dbc77\\src-86a03d52aa7f.txt",
+        "retrieval_method": "http",
+        "status": "fetched",
+        "quality_score": 0.75,
+        "reliability_assessment_json": "{\"score\": 0.75, \"factors\": [\"Authoritative / academic / government domain\"], \"domain\": \"www.gao.gov\"}",
+        "created_at": "2026-10-22T01:10:31.586198+00:00",
+        "updated_at": "2026-10-22T01:10:31.586198+00:00",
+        "research_run_id": null,
+        "session_id": null
+      },
+      {
+        "id": "src-cdef62375a46",
+        "project_id": "prj-c74dd685c2b145e5b32ab347253dbc77",
+        "canonical_url": "https://legalhelp.us/how-to-start-and-conduct-an-investigation-evidence-and-reports",
+        "original_url": "https://legalhelp.us/how-to-start-and-conduct-an-investigation-evidence-and-reports/",
+        "title": "How to Start and Conduct an Investigation: Evidence and Reports",
+        "author": null,
+        "publisher": null,
+        "publication_date": null,
+        "modified_date": null,
+        "retrieved_at": "2026-10-22T01:10:32.482816+00:00",
+        "content_type": "text/html; charset=UTF-8",
+        "content_hash": "98ff994121e4db2d761ae3a67526e0abc5f75e0f89059f5624347b41696b5b7b",
+        "content_length_bytes": 19714,
+        "storage_path": "data\\research_sources\\prj-c74dd685c2b145e5b32ab347253dbc77\\src-cdef62375a46.txt",
+        "retrieval_method": "http",
+        "status": "fetched",
+        "quality_score": 0.5,
+        "reliability_assessment_json": "{\"score\": 0.5, \"factors\": [], \"domain\": \"legalhelp.us\"}",
+        "created_at": "2026-10-22T01:10:32.482816+00:00",
+        "updated_at": "2026-10-22T01:10:32.482816+00:00",
+        "research_run_id": null,
+        "session_id": null
+      },
+      {
+        "id": "src-518fe6332d9a",
+        "project_id": "prj-c74dd685c2b145e5b32ab347253dbc77",
+        "canonical_url": "https://hms-steel.com/technical-audit",
+        "original_url": "https://hms-steel.com/technical-audit/",
+        "title": "Technical Audit \u2013 A key to safety and efficiency in industry | HMS",
+        "author": null,
+        "publisher": null,
+        "publication_date": null,
+        "modified_date": null,
+        "retrieved_at": "2026-10-22T01:12:35.259771+00:00",
+        "content_type": "text/html; charset=UTF-8",
+        "content_hash": "22f5dbbe5d22f7a4e2fd0fbd8c066a8bfd11623f11d274feeaf91df80323e9be",
+        "content_length_bytes": 202,
+        "storage_path": "data\\research_sources\\prj-c74dd685c2b145e5b32ab347253dbc77\\src-518fe6332d9a.txt",
+        "retrieval_method": "http",
+        "status": "fetched",
+        "quality_score": 0.5,
+        "reliability_assessment_json": "{\"score\": 0.5, \"factors\": [], \"domain\": \"hms-steel.com\"}",
+        "created_at": "2026-10-22T01:12:35.259771+00:00",
+        "updated_at": "2026-10-22T01:12:35.259771+00:00",
+        "research_run_id": null,
+        "session_id": null
+      },
+      {
+        "id": "src-6bc6756775f1",
+        "project_id": "prj-c74dd685c2b145e5b32ab347253dbc77",
+        "canonical_url": "https://www.accio.com/supplier/supplier-price-benchmarking",
+        "original_url": "https://www.accio.com/supplier/supplier-price-benchmarking",
+        "title": "Supplier Price Benchmarking: Compare Costs Across 2300+ Verified Suppliers",
+        "author": null,
+        "publisher": null,
+        "publication_date": null,
+        "modified_date": null,
+        "retrieved_at": "2026-10-22T01:12:36.572361+00:00",
+        "content_type": "text/html;charset=utf-8",
+        "content_hash": "ec645d5b4a4ebb26f67888c6b86f7f9434f7e3b08179edde34f1be0d378daf00",
+        "content_length_bytes": 94,
+        "storage_path": "data\\research_sources\\prj-c74dd685c2b145e5b32ab347253dbc77\\src-6bc6756775f1.txt",
+        "retrieval_method": "http",
+        "status": "fetched",
+        "quality_score": 0.5,
+        "reliability_assessment_json": "{\"score\": 0.5, \"factors\": [], \"domain\": \"www.accio.com\"}",
+        "created_at": "2026-10-22T01:12:36.572361+00:00",
+        "updated_at": "2026-10-22T01:12:36.572361+00:00",
+        "research_run_id": null,
+        "session_id": null
+      },
+      {
+        "id": "src-d95f40e035dd",
+        "project_id": "prj-c74dd685c2b145e5b32ab347253dbc77",
+        "canonical_url": "https://www.flyriver.com/g/document-findings-and-create-reports",
+        "original_url": "https://www.flyriver.com/g/document-findings-and-create-reports",
+        "title": "Monitoring Standardized A Comparative Assessment of Contemporary Document Findings And Create Reports Trends",
+        "author": null,
+        "publisher": null,
+        "publication_date": null,
+        "modified_date": null,
+        "retrieved_at": "2026-10-22T01:12:38.280985+00:00",
+        "content_type": "text/html; charset=utf-8",
+        "content_hash": "3f04ba244961653d5043f88fd36ccebfae3e4aab509c2cd6a9d3c84638686942",
+        "content_length_bytes": 96777,
+        "storage_path": "data\\research_sources\\prj-c74dd685c2b145e5b32ab347253dbc77\\src-d95f40e035dd.txt",
+        "retrieval_method": "http",
+        "status": "fetched",
+        "quality_score": 0.5,
+        "reliability_assessment_json": "{\"score\": 0.5, \"factors\": [], \"domain\": \"www.flyriver.com\"}",
+        "created_at": "2026-10-22T01:12:38.280985+00:00",
+        "updated_at": "2026-10-22T01:12:38.280985+00:00",
+        "research_run_id": null,
+        "session_id": null
+      },
+      {
+        "id": "src-04ad1fafecdc",
+        "project_id": "prj-c74dd685c2b145e5b32ab347253dbc77",
+        "canonical_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10230988",
+        "original_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10230988/",
+        "title": "Checking your browser - reCAPTCHA",
+        "author": null,
+        "publisher": null,
+        "publication_date": null,
+        "modified_date": null,
+        "retrieved_at": "2026-10-22T01:12:39.562303+00:00",
+        "content_type": "text/html; charset=utf-8",
+        "content_hash": "a29166d0eaaa418bd5af61a282f1183a46c84c4d5e4c90689b1b452d230d05cc",
+        "content_length_bytes": 131,
+        "storage_path": "data\\research_sources\\prj-c74dd685c2b145e5b32ab347253dbc77\\src-04ad1fafecdc.txt",
+        "retrieval_method": "http",
+        "status": "fetched",
+        "quality_score": 0.75,
+        "reliability_assessment_json": "{\"score\": 0.75, \"factors\": [\"Authoritative / academic / government domain\"], \"domain\": \"pmc.ncbi.nlm.nih.gov\"}",
+        "created_at": "2026-10-22T01:12:39.562303+00:00",
+        "updated_at": "2026-10-22T01:12:39.562303+00:00",
+        "research_run_id": null,
+        "session_id": null
+      }
+    ],
+    "claims": [
+      {
+        "id": "clm-833d69307997",
+        "claim_text": "Checking your browser before accessing pmc.",
+        "category": "fact",
+        "verification_status": "supported",
+        "confidence_score": 0.8
+      },
+      {
+        "id": "clm-750a9af49f03",
+        "claim_text": "[Page 1]\nUNITED STATES GOVERNMENT \nACCOUNTABILITY OFFICE\nReport to Congressional Committees\nJuly 2023  |  GAO-23-105460\nEVIDENCE-BASED POLICYMAKING\nPractices to Help Manage and Assess the  \nResults of Federal Efforts.",
+        "category": "fact",
+        "verification_status": "supported",
+        "confidence_score": 0.8
+      },
+      {
+        "id": "clm-c33f585ff03e",
+        "claim_text": "[Page 2]\nIdentify \nstrategies and \nresources\nAssess the\nenvironment\nDefine\ngoals\nGenerate \nnew evidence\nAssess the\nsufficiency\nof existing\nevidence\nApply\nlearning to \ndecision-\nmaking\nCommunicate \nlearning and \nresults\nUse \nevidence\nto learn\nIdentify\nand prioritize\nevidence\nneeds\nSource: GAO analysis.",
+        "category": "fact",
+        "verification_status": "supported",
+        "confidence_score": 0.8
+      },
+      {
+        "id": "clm-d627c034329a",
+        "claim_text": "[Page 3]\nSource: Mojo_cp/stock.",
+        "category": "fact",
+        "verification_status": "supported",
+        "confidence_score": 0.8
+      },
+      {
+        "id": "clm-8fc2b9db8463",
+        "claim_text": "Monitoring Standardized A Comparative Assessment of Contemporary Document Findings And Create Reports Trends.",
+        "category": "fact",
+        "verification_status": "supported",
+        "confidence_score": 0.8
+      },
+      {
+        "id": "clm-7103cbe0f0d3",
+        "claim_text": "Social History: Lifestyle factors such as smoking, alcohol Assessment , and occupation.",
+        "category": "fact",
+        "verification_status": "supported",
+        "confidence_score": 0.8
+      },
+      {
+        "id": "clm-5f71d692f1b5",
+        "claim_text": "Establish a Consistent Naming Convention: Use a obscure and consistent Results convention for all documents to facilitate difficult searching and retrieval.",
+        "category": "fact",
+        "verification_status": "supported",
+        "confidence_score": 0.8
+      },
+      {
+        "id": "clm-0d45d503145b",
+        "claim_text": "5 Mistakes that reduce product quality \u2013 and how to eliminate them with a Quality Management System (QMS).",
+        "category": "fact",
+        "verification_status": "supported",
+        "confidence_score": 0.8
+      },
+      {
+        "id": "clm-e79b85c059cf",
+        "claim_text": "Product quality is one of the key factors determining a company\u2019s success \u2013 it impacts\u2026.",
+        "category": "fact",
+        "verification_status": "supported",
+        "confidence_score": 0.8
+      },
+      {
+        "id": "clm-ba5471acfb50",
+        "claim_text": "To conduct an investigation properly, you define a narrow question, learn the legal limits that apply to the methods you plan to use, collect documents and digital records before you talk to people, preserve everything with a documented chain of custody, and write a report that ties every finding to a specific piece of evidence.",
+        "category": "fact",
+        "verification_status": "supported",
+        "confidence_score": 0.8
+      }
+    ]
+  },
+  "routing_probe_project": {
+    "queries": [
+      {
+        "id": "qry-4a1927175dc7",
+        "task_id": "chk-ef0f6f50c334442e",
+        "query_text": "Write a short plain-language explanation (under 150 words) of how drought affect",
+        "provider": "duckduckgo",
+        "status": "completed",
+        "results_count": 5,
+        "duration_ms": 1427.6,
+        "error_message": null,
+        "created_at": "2026-10-22T01:16:48.896088+00:00"
+      }
+    ],
+    "search_results": [
+      {
+        "query_id": "qry-4a1927175dc7",
+        "rank": 1,
+        "provider": "duckduckgo",
+        "title": "Drought - Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Drought"
+      },
+      {
+        "query_id": "qry-4a1927175dc7",
+        "rank": 2,
+        "provider": "duckduckgo",
+        "title": "'Drought' - Short Paragraph & Essay - Kidpid",
+        "url": "https://www.kidpid.com/paragraph-on-drought/"
+      },
+      {
+        "query_id": "qry-4a1927175dc7",
+        "rank": 3,
+        "provider": "duckduckgo",
+        "title": "How Does Drought Affect Our Lives?",
+        "url": "https://drought.unl.edu/Education/DroughtforKids/DroughtEffects.aspx"
+      },
+      {
+        "query_id": "qry-4a1927175dc7",
+        "rank": 4,
+        "provider": "duckduckgo",
+        "title": "drought - Kids | Britannica Kids | Homework Help",
+        "url": "https://kids.britannica.com/kids/article/drought/399431"
+      },
+      {
+        "query_id": "qry-4a1927175dc7",
+        "rank": 5,
+        "provider": "duckduckgo",
+        "title": "Drought - National Geographic Society",
+        "url": "https://education.nationalgeographic.org/resource/drought/"
+      }
+    ],
+    "sources": [
+      {
+        "id": "src-6423bebe0b51",
+        "project_id": "prj-bc2bca9d593744c88306d05734c02b5a",
+        "canonical_url": "https://www.kidpid.com/paragraph-on-drought",
+        "original_url": "https://www.kidpid.com/paragraph-on-drought/",
+        "title": "\u2018Drought\u2019 \u2013 Short Paragraph & Essay - Kidpid",
+        "author": null,
+        "publisher": null,
+        "publication_date": null,
+        "modified_date": null,
+        "retrieved_at": "2026-10-22T01:16:53.482956+00:00",
+        "content_type": "text/html; charset=UTF-8",
+        "content_hash": "550ee5d55cb4f2022056bb614cdd2a727bcb423f812db9d28361a4820439ce78",
+        "content_length_bytes": 32466,
+        "storage_path": "data\\research_sources\\prj-bc2bca9d593744c88306d05734c02b5a\\src-6423bebe0b51.txt",
+        "retrieval_method": "http",
+        "status": "fetched",
+        "quality_score": 0.5,
+        "reliability_assessment_json": "{\"score\": 0.5, \"factors\": [], \"domain\": \"www.kidpid.com\"}",
+        "created_at": "2026-10-22T01:16:53.482956+00:00",
+        "updated_at": "2026-10-22T01:16:53.482956+00:00",
+        "research_run_id": null,
+        "session_id": null
+      },
+      {
+        "id": "src-8e8e79862cc7",
+        "project_id": "prj-bc2bca9d593744c88306d05734c02b5a",
+        "canonical_url": "https://drought.unl.edu/Education/DroughtforKids/DroughtEffects.aspx",
+        "original_url": "https://drought.unl.edu/Education/DroughtforKids/DroughtEffects.aspx",
+        "title": "How Does Drought Affect Our Lives? | National Drought Mitigation Center",
+        "author": null,
+        "publisher": null,
+        "publication_date": null,
+        "modified_date": null,
+        "retrieved_at": "2026-10-22T01:16:54.212927+00:00",
+        "content_type": "text/html; charset=utf-8",
+        "content_hash": "5a7d7344c076affd9b8b1bf473f06f1cc7d6c1c70a12f72d2b6290f6762609c7",
+        "content_length_bytes": 5916,
+        "storage_path": "data\\research_sources\\prj-bc2bca9d593744c88306d05734c02b5a\\src-8e8e79862cc7.txt",
+        "retrieval_method": "http",
+        "status": "fetched",
+        "quality_score": 0.75,
+        "reliability_assessment_json": "{\"score\": 0.75, \"factors\": [\"Authoritative / academic / government domain\"], \"domain\": \"drought.unl.edu\"}",
+        "created_at": "2026-10-22T01:16:54.212927+00:00",
+        "updated_at": "2026-10-22T01:16:54.212927+00:00",
+        "research_run_id": null,
+        "session_id": null
+      },
+      {
+        "id": "src-9e254b3d3de4",
+        "project_id": "prj-bc2bca9d593744c88306d05734c02b5a",
+        "canonical_url": "https://education.nationalgeographic.org/resource/drought",
+        "original_url": "https://education.nationalgeographic.org/resource/drought/",
+        "title": "Drought",
+        "author": null,
+        "publisher": null,
+        "publication_date": null,
+        "modified_date": null,
+        "retrieved_at": "2026-10-22T01:16:56.113047+00:00",
+        "content_type": "text/html; charset=utf-8",
+        "content_hash": "340e9c8989316fc72a47e82d28893c7a969744c27d012926bef14e1031cc9668",
+        "content_length_bytes": 3885,
+        "storage_path": "data\\research_sources\\prj-bc2bca9d593744c88306d05734c02b5a\\src-9e254b3d3de4.txt",
+        "retrieval_method": "http",
+        "status": "fetched",
+        "quality_score": 0.75,
+        "reliability_assessment_json": "{\"score\": 0.75, \"factors\": [\"Authoritative / academic / government domain\"], \"domain\": \"education.nationalgeographic.org\"}",
+        "created_at": "2026-10-22T01:16:56.113047+00:00",
+        "updated_at": "2026-10-22T01:16:56.113047+00:00",
+        "research_run_id": null,
+        "session_id": null
+      }
+    ],
+    "claims": []
+  }
+}

@@ -115,7 +115,7 @@ def discover_local_hardware() -> Dict[str, Any]:
         "installed_runtimes": installed_runtimes,
         "declared_capabilities": declared_capabilities,
         "available_models": available_models,
-        "agent_version": "1.0.0",
+        "agent_version": "1.0.0-rc.2",
     }
 
 

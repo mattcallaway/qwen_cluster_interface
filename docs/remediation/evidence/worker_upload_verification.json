@@ -1,0 +1,74 @@
+{
+  "1_no_credentials": {
+    "status_code": 401,
+    "detail": "Missing worker authentication token. Provide 'Authorization: Bearer <token>'.",
+    "verdict": "REJECTED_401"
+  },
+  "2_invalid_credentials": {
+    "status_code": 401,
+    "detail": "Invalid or revoked worker authentication token.",
+    "verdict": "REJECTED_401"
+  },
+  "3_cross_worker_upload": {
+    "status_code": 200,
+    "response": {
+      "status": "stored",
+      "artifact": {
+        "artifact_id": "art-b8c5fcf41234433f",
+        "task_id": "task-assigned-to-A",
+        "filename": "worker_b_file.txt",
+        "stored_path": "C:\\Users\\Matt C\\.qwen-collective\\data\\evidence\\task_task-assigned-to-A\\worker_b_file.txt",
+        "file_size": 21,
+        "computed_sha256": "e1d5591d546ae56892168070e6794ce52fbb028ebcbf6c8a449d3d485f165f56",
+        "expected_sha256": "e1d5591d546ae56892168070e6794ce52fbb028ebcbf6c8a449d3d485f165f56",
+        "checksum_matches": true,
+        "verified_at": "2026-10-19T05:08:36.467223+00:00"
+      }
+    },
+    "verdict": "PERMITTED_CROSS_WORKER"
+  },
+  "4_expired_lease_upload": {
+    "status_code": 200,
+    "response": {
+      "status": "stored",
+      "artifact": {
+        "artifact_id": "art-2e74d618717648ed",
+        "task_id": "task-assigned-to-A",
+        "filename": "worker_a_file.txt",
+        "stored_path": "C:\\Users\\Matt C\\.qwen-collective\\data\\evidence\\task_task-assigned-to-A\\worker_a_file.txt",
+        "file_size": 38,
+        "computed_sha256": "05d99a45b7f6bf03da88060dccd49d0f0ae86acdccb2f7a2af903949a40afa30",
+        "expected_sha256": "05d99a45b7f6bf03da88060dccd49d0f0ae86acdccb2f7a2af903949a40afa30",
+        "checksum_matches": true,
+        "verified_at": "2026-10-19T05:08:36.517891+00:00"
+      }
+    },
+    "verdict": "PERMITTED_ON_EXPIRED_LEASE"
+  },
+  "5_invalid_checksum": {
+    "status_code": 200,
+    "file_written_to_disk": false,
+    "response": {
+      "status": "stored",
+      "artifact": {
+        "artifact_id": null,
+        "task_id": "task-assigned-to-A",
+        "filename": "bad_checksum.txt",
+        "stored_path": "C:\\Users\\Matt C\\.qwen-collective\\data\\evidence\\task_task-assigned-to-A\\bad_checksum.txt",
+        "file_size": 10,
+        "computed_sha256": "0f45c386458f3827ab3c51596894df0768cc62d6e7faab7679a78443e9639652",
+        "expected_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "checksum_matches": false,
+        "verified_at": "2026-10-19T05:08:36.548697+00:00"
+      }
+    },
+    "verdict": "REJECTED_400"
+  },
+  "6_repeated_upload_overwrite": {
+    "status_code_1": 200,
+    "status_code_2": 200,
+    "final_file_content": "",
+    "overwritten": false,
+    "verdict": "IMMUTABLE_VERSIONED"
+  }
+}

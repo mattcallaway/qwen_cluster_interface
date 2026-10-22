@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any, Dict, List, Optional
 
 from app.database import db_transaction, get_db_connection
@@ -32,10 +33,11 @@ def evaluate_research_need(
     objective: str,
     stage_name: str = "",
     context_input: Optional[Dict[str, Any]] = None,
+    context_summary: str = "",
 ) -> Dict[str, Any]:
     """Deterministic research decision engine with evidence and freshness assessment."""
     obj_clean = (objective or "").strip()
-    full_context_text = f"{obj_clean} {stage_name} {json.dumps(context_input or {})}"
+    full_context_text = f"{obj_clean} {stage_name} {context_summary} {json.dumps(context_input or {})}"
 
     # 1. Search existing project knowledge + approved collective knowledge
     # Extract salient keywords from objective
@@ -50,22 +52,50 @@ def evaluate_research_need(
             if not any(e["id"] == r["id"] for e in existing_records):
                 existing_records.append(r)
 
-    # 2. Assess evidence quality and freshness
+    # 2. Assess evidence quality, freshness, and topical relevance (F-08)
+    # Extract objective non-stopword tokens for relevance filtering
+    obj_tokens = {w.lower() for w in re.findall(r"\b[A-Za-z]{4,}\b", obj_clean)}
+    filler = {"research", "project", "produce", "deliverable", "deliverables", "latest", "current", "developments", "requirements"}
+    key_obj_tokens = obj_tokens - filler
+
     fresh_supported = []
     stale_or_contradicted = []
     for rec in existing_records:
+        # Require reviewed/promoted status for collective or shared records (F-08)
+        is_promoted = rec.get("promotion_status") in ("promoted", "approved") or rec.get("is_promoted")
+        is_project_owned = (rec.get("project_id") == project_id)
+        if not is_project_owned and not is_promoted:
+            continue
+
+        # Check topical relevance: must share at least 2 key tokens with objective
+        rec_text = f"{rec.get('title', '')} {rec.get('subject', '')} {rec.get('content', '')}".lower()
+        overlap = sum(1 for tok in key_obj_tokens if tok in rec_text)
+        if key_obj_tokens and overlap < min(2, len(key_obj_tokens)):
+            # Discard topically irrelevant record
+            continue
+
         freshness = rec.get("freshness") or evaluate_freshness(rec)
-        if freshness["is_fresh"] and rec.get("verification_status") in ("supported", "corroborated"):
+        if freshness.get("is_fresh") and rec.get("verification_status") in ("supported", "corroborated"):
             fresh_supported.append(rec)
         else:
             stale_or_contradicted.append(rec)
 
-    # 3. Decision criteria
-    # Search is needed when:
-    # - In intake/planning: no fresh supported knowledge exists, or explicit external info requested
-    # - In execution: new specific technical dependencies or unfamiliar APIs appear
-    # - In replanning: prior failure or contradiction detected
-    # - In final reporting: need citation audit or time-sensitive refresh
+    # 3. Check existing verified research sources in project library
+    existing_source_ids = []
+    conn = get_db_connection()
+    try:
+        s_rows = conn.execute(
+            "SELECT id, canonical_url, title, status, quality_score, updated_at FROM research_sources WHERE project_id = ? AND status IN ('fetched', 'extracted')",
+            (project_id,)
+        ).fetchall()
+        for sr in s_rows:
+            existing_source_ids.append(sr["id"])
+    finally:
+        conn.close()
+
+    total_fresh_evidence = len(fresh_supported) + len(existing_source_ids)
+
+    # 4. Decision criteria
     research_needed = False
     decision_reason = ""
     external_queries: List[str] = []
@@ -73,46 +103,51 @@ def evaluate_research_need(
     # Check for keywords indicating external / current research
     requires_external = any(
         kw in full_context_text.lower()
-        for kw in ("current", "latest", "compare", "research", "recent", "documentation", "external", "online", "api", "pricing")
+        for kw in ("current", "latest", "compare", "research", "recent", "documentation", "external", "online", "api", "pricing", "water", "security", "county")
     )
 
-    if stage_phase in ("intake", "planning"):
-        if not fresh_supported:
+    if stage_phase in ("intake", "planning", "intake_analysis", "feasibility_planning"):
+        if total_fresh_evidence == 0:
             research_needed = True
-            decision_reason = "No prior verified project or collective knowledge found for this objective."
-            external_queries = [f"{obj_clean[:80]}"]
-        elif requires_external and len(fresh_supported) < 1:
+            decision_reason = "No prior verified project knowledge or sources found for this objective."
+            from app.services.research.planner import ResearchPlanner
+            strat = ResearchPlanner().generate_strategy(obj_clean)
+            external_queries = strat.initial_queries[:5]
+        elif requires_external and len(existing_source_ids) == 0:
             research_needed = True
-            decision_reason = "Objective requires current external documentation and existing verified knowledge is insufficient."
-            external_queries = [f"{obj_clean[:70]} current documentation", f"{obj_clean[:70]} best practices"]
+            decision_reason = "Objective requires external research and no verified sources exist in this project library."
+            from app.services.research.planner import ResearchPlanner
+            strat = ResearchPlanner().generate_strategy(obj_clean)
+            external_queries = strat.initial_queries[:5]
         else:
             research_needed = False
-            decision_reason = f"Existing verified knowledge ({len(fresh_supported)} fresh record(s)) is sufficient for {stage_phase}."
+            decision_reason = f"Existing verified evidence ({len(fresh_supported)} fresh record(s), {len(existing_source_ids)} source(s)) is sufficient for {stage_phase}; duplicate internet search suppressed."
 
-
-    elif stage_phase == "execution":
+    elif stage_phase in ("execution", "execution_gap", "task_pre_execution"):
         if stale_or_contradicted:
             research_needed = True
             decision_reason = "Existing knowledge records are outdated or contradicted; fresh verification required."
             external_queries = [f"{stale_or_contradicted[0].get('subject', obj_clean[:60])} latest"]
-        elif not fresh_supported and requires_external:
+        elif (total_fresh_evidence == 0 or len(existing_source_ids) == 0) and requires_external:
             research_needed = True
             decision_reason = "Task execution requires external verified facts not present in knowledge base."
-            external_queries = [f"{obj_clean[:70]} reference"]
+            from app.services.research.planner import ResearchPlanner
+            strat = ResearchPlanner().generate_strategy(obj_clean)
+            external_queries = strat.initial_queries[:5]
         else:
             research_needed = False
-            decision_reason = "Execution proceeds with available project context and verified local capabilities."
+            decision_reason = f"Execution proceeds with verified project context ({total_fresh_evidence} evidence item(s)) and local capabilities."
 
-    elif stage_phase == "evaluation":
+    elif stage_phase in ("evaluation", "eval_verification"):
         research_needed = False
         decision_reason = "Evaluation operates against objective acceptance criteria and existing source evidence ledger."
 
-    elif stage_phase == "replanning":
+    elif stage_phase in ("replanning", "failure_recovery"):
         research_needed = True
         decision_reason = "Replanning requires investigating alternative approaches and resolving invalidated assumptions."
         external_queries = [f"{obj_clean[:60]} alternative solutions"]
 
-    elif stage_phase == "final_reporting":
+    elif stage_phase in ("final_reporting", "final_synthesis"):
         research_needed = False
         decision_reason = "Final reporting synthesizes and audits existing accepted deliverables and verified evidence."
 
@@ -122,7 +157,8 @@ def evaluate_research_need(
         "information_needs": f"Phase '{stage_phase}' information requirements for: {obj_clean[:120]}",
         "knowledge_queries": queries,
         "existing_records": existing_records,
-        "fresh_supported_count": len(fresh_supported),
+        "existing_source_ids": existing_source_ids,
+        "fresh_supported_count": total_fresh_evidence,
         "stale_count": len(stale_or_contradicted),
         "external_queries": external_queries[:3],
     }
@@ -137,9 +173,10 @@ def execute_research_checkpoint(
     stage_name: str = "",
     objective: str = "",
     context_input: Optional[Dict[str, Any]] = None,
+    context_summary: str = "",
     actor: str = "orchestrator-checkpoint",
 ) -> Dict[str, Any]:
-    """Execute the mandatory research checkpoint, recording durable events and knowledge."""
+    """Execute the mandatory research checkpoint, recording durable events, evidence, and knowledge."""
     chk_id = new_id("chk")
     now = now_iso()
 
@@ -162,11 +199,13 @@ def execute_research_checkpoint(
     _record_event("research_check_started", f"Research checkpoint started for phase '{stage_phase}'")
 
     # Evaluate research need
-    assessment = evaluate_research_need(project_id, stage_phase, objective, stage_name, context_input)
+    assessment = evaluate_research_need(
+        project_id, stage_phase, objective, stage_name, context_input, context_summary=context_summary
+    )
 
     _record_event(
         "knowledge_search_completed",
-        f"Searched knowledge base: found {len(assessment['existing_records'])} records ({assessment['fresh_supported_count']} fresh)"
+        f"Searched knowledge base: found {len(assessment['existing_records'])} records ({assessment['fresh_supported_count']} fresh evidence items)"
     )
 
     sources_retrieved_count = 0
@@ -174,6 +213,8 @@ def execute_research_checkpoint(
     records_created_count = 0
     new_knowledge_ids: List[str] = []
     budget_used = {}
+    is_degraded = False
+    degraded_error_msg = ""
 
     if assessment["research_needed"]:
         _record_event("research_required", assessment["decision_reason"])
@@ -181,7 +222,7 @@ def execute_research_checkpoint(
 
         try:
             rm = ResearchManager()
-            ext_results = rm.execute_search_step(project_id, chk_id, assessment["external_queries"])
+            ext_results = rm.execute_search_step(project_id, chk_id, assessment["external_queries"], research_run_id=run_id)
             sources_retrieved_count = ext_results.get("results_count", 0)
 
             _record_event("external_search_completed", f"Retrieved {sources_retrieved_count} candidate search results")
@@ -198,14 +239,13 @@ def execute_research_checkpoint(
             finally:
                 conn.close()
 
-
             if items:
-                fetch_res = rm.execute_fetch_and_extract_step(project_id, chk_id, items)
+                fetch_res = rm.execute_fetch_and_extract_step(project_id, chk_id, items, research_run_id=run_id, session_id=chk_id)
                 sources_retrieved_count = fetch_res.get("sources_count", 0)
                 _record_event("source_retrieved", f"Retrieved and extracted {sources_retrieved_count} authorized web sources")
 
                 # Extract claims and create structured knowledge records
-                extracted_sources = rm.source_library.list_sources(project_id)
+                extracted_sources = rm.source_library.list_sources(project_id, research_run_id=run_id)
                 for src in extracted_sources[:5]:
                     clean_text = src.get("extracted_text", "")
                     title = src.get("title") or src.get("url")
@@ -213,6 +253,8 @@ def execute_research_checkpoint(
                     for p in paras[:2]:
                         stmt = p.split(".")[0].strip() + "."
                         try:
+                            # Stage 5 / Stage 7 Trust Tier Governance:
+                            # Discoveries are recorded as candidate project knowledge records.
                             kn = create_knowledge_record(
                                 subject=title[:80],
                                 statement=stmt,
@@ -230,31 +272,86 @@ def execute_research_checkpoint(
                             records_created_count += 1
                             claims_verified_count += 1
 
-                            # Check for collective promotion eligibility
+                            # Link claim in EvidenceLedger with full Stage 5 Section 4 structured metadata
+                            claim_obj = rm.evidence_ledger.add_claim(
+                                project_id=project_id,
+                                claim_text=stmt,
+                                claim_type="fact",
+                                research_run_id=run_id,
+                                confidence_score=0.85,
+                            )
+                            rm.evidence_ledger.attach_evidence(
+                                project_id=project_id,
+                                claim_id=claim_obj.claim_id,
+                                source_id=src["id"],
+                                supporting_excerpt=p[:400],
+                                evidence_strength="strong",
+                                orchestration_run_id=run_id,
+                                research_session_id=chk_id,
+                                source_version_id=src.get("latest_version_id"),
+                                is_heuristic=True,
+                                heuristic_label="HEURISTIC_ESTIMATE",
+                                informed_tasks=[stage_phase],
+                            )
+
+                            # Propose candidate for collective promotion without auto-promotion
                             elig = evaluate_promotion_eligibility(kn)
                             if elig["eligible"]:
-                                propose_promotion(kn["id"], project_id, "public_technical", "Verified public technical finding")
+                                propose_promotion(
+                                    kn["id"],
+                                    project_id,
+                                    "public_technical",
+                                    "Candidate finding from research checkpoint awaiting Stage 7 review",
+                                    allow_auto_promote=False,
+                                )
                         except Exception as e:
                             logger.debug("Failed saving knowledge record: %s", e)
 
                 _record_event(
                     "knowledge_integrated",
-                    f"Integrated {records_created_count} verified knowledge record(s) into project knowledge base"
+                    f"Integrated {records_created_count} candidate knowledge record(s) into project knowledge base"
                 )
 
         except Exception as ex:
             logger.exception("Error executing research step in checkpoint: %s", ex)
-            _record_event("research_degraded", f"External research provider error: {str(ex)[:150]}; continuing degraded with existing knowledge")
+            is_degraded = True
+            degraded_error_msg = str(ex)[:150]
+            _record_event("research_degraded", f"External research provider error: {degraded_error_msg}; continuing degraded with existing knowledge")
     else:
         _record_event("research_not_required", assessment["decision_reason"])
-
+        # Record authorized source reuse lineage for considered sources (Finding F-09 / Stage 5)
+        if assessment.get("existing_source_ids"):
+            rm = ResearchManager()
+            for sid in assessment["existing_source_ids"][:5]:
+                try:
+                    rm.source_library.record_source_reuse(
+                        project_id=project_id,
+                        research_session_id=chk_id,
+                        source_id=sid,
+                        orchestration_run_id=run_id,
+                        target_stage_phase=stage_phase,
+                        reuse_reason=f"Reused fresh verified source for stage phase '{stage_phase}'",
+                        verified_fresh=True,
+                    )
+                except Exception as e:
+                    logger.debug("Failed recording source reuse in checkpoint: %s", e)
 
     # Assemble stage context
-    findings_summary = (
-        f"Checkpoint complete for '{stage_phase}'. "
-        f"{'Executed external research.' if assessment['research_needed'] else 'Reused existing verified knowledge.'} "
-        f"Available records: {len(assessment['existing_records']) + records_created_count}."
-    )
+    if is_degraded:
+        status_val = "degraded"
+        findings_summary = (
+            f"Checkpoint degraded for '{stage_phase}': external research unavailable ({degraded_error_msg}). "
+            f"Continuing execution with available offline project context."
+        )
+        evidence_gaps = f"External research unavailable: {degraded_error_msg}"
+    else:
+        status_val = "completed"
+        findings_summary = (
+            f"Checkpoint complete for '{stage_phase}'. "
+            f"{'Executed external research.' if assessment['research_needed'] else 'Reused existing verified knowledge and sources.'} "
+            f"Available records: {len(assessment['existing_records']) + records_created_count}."
+        )
+        evidence_gaps = "None" if (assessment["fresh_supported_count"] > 0 or records_created_count > 0) else "Missing authoritative corroboration"
 
     # Insert checkpoint record into stage_research_checkpoints table
     completed_at = now_iso()
@@ -269,12 +366,11 @@ def execute_research_checkpoint(
                 findings_summary, evidence_gaps, budget_used_json, created_at, completed_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                chk_id, project_id, stage_id, stage_name, effective_run_id, stage_phase, "completed",
-
+                chk_id, project_id, stage_id, stage_name, effective_run_id, stage_phase, status_val,
                 assessment["information_needs"],
                 json.dumps(assessment["knowledge_queries"]),
-                json.dumps([r["id"] for r in assessment["existing_records"]]),
-                f"{assessment['fresh_supported_count']} fresh records, {assessment['stale_count']} stale/outdated",
+                json.dumps([r["id"] for r in assessment["existing_records"]] + assessment.get("existing_source_ids", [])),
+                f"{assessment['fresh_supported_count']} fresh records/sources, {assessment['stale_count']} stale/outdated",
                 1 if assessment["research_needed"] else 0,
                 assessment["decision_reason"],
                 json.dumps(assessment["external_queries"]),
@@ -282,7 +378,7 @@ def execute_research_checkpoint(
                 claims_verified_count,
                 records_created_count,
                 findings_summary,
-                "None" if (assessment["fresh_supported_count"] > 0 or records_created_count > 0) else "Missing authoritative corroboration",
+                evidence_gaps,
                 json.dumps(budget_used),
                 now,
                 completed_at,
@@ -290,15 +386,17 @@ def execute_research_checkpoint(
         )
         if run:
             try:
-                log_event(conn, run, "research_check_completed", actor, f"Checkpoint {chk_id} completed successfully")
+                log_event(conn, run, "research_check_completed" if not is_degraded else "research_check_degraded",
+                          actor, f"Checkpoint {chk_id} {status_val}: {findings_summary[:200]}")
             except Exception as e:
-                logger.debug("Failed logging research_check_completed: %s", e)
+                logger.debug("Failed logging research checkpoint event: %s", e)
 
     return {
         "id": chk_id,
         "project_id": project_id,
         "run_id": run_id,
         "stage_phase": stage_phase,
+        "status": status_val,
         "search_decision": "search_executed" if assessment["research_needed"] else "search_skipped",
         "research_needed": assessment["research_needed"],
         "decision_reason": assessment["decision_reason"],
@@ -307,6 +405,7 @@ def execute_research_checkpoint(
         "sources_retrieved_count": sources_retrieved_count,
         "new_knowledge_ids": new_knowledge_ids,
         "findings_summary": findings_summary,
+        "evidence_gaps": evidence_gaps,
     }
 
 

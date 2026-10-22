@@ -1,0 +1,191 @@
+{
+  "generated_utc": "2026-10-22T01:31:48.913724+00:00",
+  "inference_requests_during_projects": {
+    "original_user_project": [],
+    "audit_rerun_project": [],
+    "routing_probe_project": [
+      {
+        "id": "inf-13ca27d8efdb414e",
+        "run_id": "run-3ed0a2b98ea94cba",
+        "orch_task_id": null,
+        "purpose": "plan_repair",
+        "node_id": "pi-brain",
+        "model": "qwen2.5:0.5b",
+        "task_id": "task-d24b6256",
+        "status": "completed",
+        "prompt_chars": 4899,
+        "prompt_tokens": 1282,
+        "gen_tokens": 509,
+        "latency_s": 131.702,
+        "error_class": null,
+        "response_text": "{\n  \"schema\": \"qc.plan.v1\",\n  \"overview\": {\n    \"objective\": \"High-level goal description\",\n    \"scope\": \"Scope description\",\n    \"assumptions\": [\"Assumption 1\"],\n    \"constraints\": [\"Local execution only\"],\n    \"expected_outcome\": \"Outcome summary\"\n  },\n  \"paths\": [\n    {\n      \"key\": \"main\",\n      \"name\": \"Main Execution Path\",\n      \"rationale\": \"Direct execution sequence\",\n      \"stages\": [{\"key\": \"s1\", \"name\": \"Execute tasks\", \"objective\": \"Execute tasks\"}]\n    }\n  ],\n  \"tasks\": [\n    {\n      \"key\": \"t1\",\n      \"title\": \"Task 1 Name\",\n      \"description\": \"Task 1 objective\",\n      \"stage\": \"s1\",\n      \"agent_role\": \"execution\",\n      \"depends_on\": [],\n      \"allowed_nodes\": [\"qwen-vps\"],\n      \"action\": {\"type\": \"library_script\", \"script_id\": \"sys_health_basic\"}\n    },\n    {\n      \"key\": \"t2\",\n      \"title\": \"Task 2 Name\",\n      \"description\": \"Task 2 objective\",\n      \"stage\": \"s1\",\n      \"agent_role\": \"analysis\",\n      \"depends_on\": [\"t1\"],\n      \"allowed_nodes\": [],\n      \"action\": {\"type\": \"inference\", \"instruction\": \"Summarize results\", \"inputs\": [\"t1\"], \"max_tokens\": 200}\n    },\n    {\n      \"key\": \"t3\",\n      \"title\": \"Final Assembly\",\n      \"description\": \"Compile report\",\n      \"stage\": \"s1\",\n      \"agent_role\": \"integration\",\n      \"depends_on\": [\"t2\"],\n      \"allowed_nodes\": [],\n      \"action\": {\"type\": \"controller_step\", \"step\": \"assemble_report\", \"inputs\": [\"t2\"]}\n    }\n  ],\n  \"deliverables\": [\n    {\n      \"key\": \"d1\",\n      \"name\": \"Consolidated Report\",\n      \"type\": \"report\",\n      \"acceptance_criteria\": \"Validated findings\",\n      \"produced_by\": \"t3\",\n      \"stage\": \"s1\",\n      \"terminal\": true\n    }\n  ],\n  \"risks\": [{\"description\": \"Node offline\", \"mitigation\": \"Retry task\"}],\n  \"approval_gates\": []\n}",
+        "created_at": "2026-10-22T01:22:45.491569+00:00",
+        "completed_at": "2026-10-22T01:25:59.108372+00:00"
+      },
+      {
+        "id": "inf-89ec965ff229480f",
+        "run_id": "run-3ed0a2b98ea94cba",
+        "orch_task_id": null,
+        "purpose": "planning",
+        "node_id": "pi-brain",
+        "model": "qwen2.5:0.5b",
+        "task_id": "task-c258fba1",
+        "status": "submitted",
+        "prompt_chars": 4899,
+        "prompt_tokens": null,
+        "gen_tokens": null,
+        "latency_s": null,
+        "error_class": null,
+        "response_text": null,
+        "created_at": "2026-10-22T01:16:56.599575+00:00",
+        "completed_at": null
+      },
+      {
+        "id": "inf-1a8683398fed493f",
+        "run_id": "run-3ed0a2b98ea94cba",
+        "orch_task_id": null,
+        "purpose": "planning",
+        "node_id": "pi-brain",
+        "model": "qwen2.5:0.5b",
+        "task_id": "task-abe9ca3e",
+        "status": "timeout",
+        "prompt_chars": 4899,
+        "prompt_tokens": null,
+        "gen_tokens": null,
+        "latency_s": null,
+        "error_class": "model_timeout",
+        "response_text": null,
+        "created_at": "2026-10-22T01:17:55.343034+00:00",
+        "completed_at": "2026-10-22T01:22:45.461593+00:00"
+      }
+    ]
+  },
+  "last_inference_request_any_project": [
+    {
+      "id": "inf-13ca27d8efdb414e",
+      "purpose": "plan_repair",
+      "node_id": "pi-brain",
+      "model": "qwen2.5:0.5b",
+      "status": "completed",
+      "created_at": "2026-10-22T01:22:45.491569+00:00"
+    }
+  ],
+  "historical_inference_by_node_model": [
+    {
+      "node_id": "pi-brain",
+      "model": "qwen2.5:0.5b",
+      "purpose": "plan_repair",
+      "status": "completed",
+      "n": 1,
+      "first": "2026-10-22T01:22:45.491569+00:00",
+      "last": "2026-10-22T01:22:45.491569+00:00"
+    },
+    {
+      "node_id": "pi-brain",
+      "model": "qwen2.5:0.5b",
+      "purpose": "planning",
+      "status": "timeout",
+      "n": 1,
+      "first": "2026-10-22T01:17:55.343034+00:00",
+      "last": "2026-10-22T01:17:55.343034+00:00"
+    },
+    {
+      "node_id": "pi-brain",
+      "model": "qwen2.5:0.5b",
+      "purpose": "planning",
+      "status": "submitted",
+      "n": 1,
+      "first": "2026-10-22T01:16:56.599575+00:00",
+      "last": "2026-10-22T01:16:56.599575+00:00"
+    },
+    {
+      "node_id": "qwen-laptop",
+      "model": "qwen2.5:1.5b",
+      "purpose": "plan_repair",
+      "status": "completed",
+      "n": 36,
+      "first": "2026-10-15T23:56:59.144413+00:00",
+      "last": "2026-10-19T02:53:10.421387+00:00"
+    },
+    {
+      "node_id": "qwen-laptop",
+      "model": "qwen2.5:1.5b",
+      "purpose": "planning",
+      "status": "completed",
+      "n": 28,
+      "first": "2026-10-15T23:55:12.923286+00:00",
+      "last": "2026-10-19T02:49:23.663832+00:00"
+    },
+    {
+      "node_id": "qwen-laptop",
+      "model": "qwen2.5:1.5b",
+      "purpose": "plan_repair",
+      "status": "timeout",
+      "n": 8,
+      "first": "2026-10-16T19:41:10.759273+00:00",
+      "last": "2026-10-18T12:13:21.470376+00:00"
+    },
+    {
+      "node_id": "desktop-worker-01",
+      "model": "qwen2.5:1.5b",
+      "purpose": "task",
+      "status": "completed",
+      "n": 9,
+      "first": "2026-10-18T02:16:39.596485+00:00",
+      "last": "2026-10-18T11:53:14.163403+00:00"
+    },
+    {
+      "node_id": "qwen-laptop",
+      "model": "llama3.2:1b",
+      "purpose": "task",
+      "status": "completed",
+      "n": 5,
+      "first": "2026-10-16T01:08:26.702622+00:00",
+      "last": "2026-10-18T02:16:55.232542+00:00"
+    },
+    {
+      "node_id": "qwen-laptop",
+      "model": "qwen2.5:1.5b",
+      "purpose": "planning",
+      "status": "submitted",
+      "n": 1,
+      "first": "2026-10-16T22:07:02.119726+00:00",
+      "last": "2026-10-16T22:07:02.119726+00:00"
+    },
+    {
+      "node_id": "qwen-laptop",
+      "model": "qwen2.5:1.5b",
+      "purpose": "evaluation",
+      "status": "completed",
+      "n": 1,
+      "first": "2026-10-16T20:53:03.992579+00:00",
+      "last": "2026-10-16T20:53:03.992579+00:00"
+    },
+    {
+      "node_id": "desktop-worker-01",
+      "model": "qwen2.5:1.5b",
+      "purpose": "evaluation",
+      "status": "completed",
+      "n": 1,
+      "first": "2026-10-16T20:52:50.038732+00:00",
+      "last": "2026-10-16T20:52:50.038732+00:00"
+    }
+  ],
+  "dispatch_by_node_for_projects": {
+    "original_user_project": [
+      {
+        "dispatched_node": "controller-local",
+        "dispatched_model": null,
+        "n": 4
+      }
+    ],
+    "audit_rerun_project": [
+      {
+        "dispatched_node": "controller-local",
+        "dispatched_model": null,
+        "n": 4
+      }
+    ],
+    "routing_probe_project": []
+  }
+}

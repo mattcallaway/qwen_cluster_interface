@@ -8,6 +8,7 @@ from app.services.inference import (
     register_inference_backend,
     test_inference_endpoint,
     update_backend_status,
+    update_backend_tier_priority,
     get_all_distributed_groups,
     get_distributed_group_by_id,
     create_distributed_group,
@@ -87,6 +88,31 @@ async def test_backend(request: Request, backend_id: str, csrf_token: str = Form
         else:
             update_backend_status(backend_id, "error", error_details=err)
 
+    return RedirectResponse(url="/inference", status_code=status.HTTP_302_FOUND)
+
+@router.post("/inference/backends/{backend_id}/configure")
+def configure_backend(
+    request: Request,
+    backend_id: str,
+    csrf_token: str = Form(...),
+    tier: str = Form(...),
+    priority: int = Form(...),
+    is_active: int = Form(1),
+    timeout_seconds: float = Form(30.0),
+    description: Optional[str] = Form("")
+):
+    user = get_current_user(request)
+    if not user or not verify_csrf(request, csrf_token):
+        return RedirectResponse(url="/inference", status_code=status.HTTP_302_FOUND)
+
+    update_backend_tier_priority(
+        backend_id=backend_id,
+        tier=tier,
+        priority=priority,
+        is_active=is_active,
+        timeout_seconds=timeout_seconds,
+        description=description or ""
+    )
     return RedirectResponse(url="/inference", status_code=status.HTTP_302_FOUND)
 
 @router.post("/inference/groups/create")

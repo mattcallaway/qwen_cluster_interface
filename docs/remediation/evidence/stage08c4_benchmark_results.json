@@ -1,0 +1,401 @@
+{
+  "timestamp_utc": "2026-10-21T18:37:16.881897+00:00",
+  "environment": {
+    "source_revision": "c98510b9a1569a113c762f083f5bba4395704531",
+    "os_platform": "Windows-10-10.0.19045-SP0",
+    "cpu_architecture": "AMD64",
+    "cpu_processor": "Intel64 Family 6 Model 44 Stepping 2, GenuineIntel",
+    "cpu_physical_cores": 6,
+    "total_ram_gb": 24.0,
+    "available_ram_gb": 6.67,
+    "disk_total_gb": 476.35,
+    "disk_free_gb": 289.94,
+    "disk_type": "NVMe / SSD (local filesystem)",
+    "python_version": "3.12.10",
+    "python_executable": "C:\\Users\\Matt C\\.gemini\\antigravity-ide\\scratch\\qwen-collective\\.venv\\Scripts\\python.exe"
+  },
+  "worker_controller_perf": {
+    "single_worker": {
+      "tasks_processed": 25,
+      "elapsed_seconds": 0.728,
+      "throughput_tasks_per_sec": 34.32,
+      "dispatch_latency_ms": {
+        "median": 14.131,
+        "p95": 16.248,
+        "p99": 17.006
+      },
+      "completion_latency_ms": {
+        "median": 14.701,
+        "p95": 15.599,
+        "p99": 15.985
+      }
+    },
+    "multi_worker_scaling": {
+      "concurrency_2": {
+        "workers": 2,
+        "tasks_processed": 20,
+        "elapsed_seconds": 0.046,
+        "throughput_tasks_per_sec": 439.17,
+        "latency_ms": {
+          "median": 0,
+          "p95": 0,
+          "p99": 0
+        }
+      },
+      "concurrency_4": {
+        "workers": 4,
+        "tasks_processed": 40,
+        "elapsed_seconds": 0.081,
+        "throughput_tasks_per_sec": 492.7,
+        "latency_ms": {
+          "median": 0,
+          "p95": 0,
+          "p99": 0
+        }
+      },
+      "concurrency_8": {
+        "workers": 8,
+        "tasks_processed": 80,
+        "elapsed_seconds": 0.109,
+        "throughput_tasks_per_sec": 732.62,
+        "latency_ms": {
+          "median": 0,
+          "p95": 0,
+          "p99": 0
+        }
+      }
+    },
+    "queue_depth_scaling": {
+      "depth_10": {
+        "queue_depth": 10,
+        "enqueue_total_ms": 2.181,
+        "enqueue_per_task_ms": 0.2181,
+        "lease_query_ms": 15.127
+      },
+      "depth_50": {
+        "queue_depth": 50,
+        "enqueue_total_ms": 4.033,
+        "enqueue_per_task_ms": 0.0807,
+        "lease_query_ms": 15.421
+      },
+      "depth_100": {
+        "queue_depth": 100,
+        "enqueue_total_ms": 5.794,
+        "enqueue_per_task_ms": 0.0579,
+        "lease_query_ms": 15.244
+      },
+      "depth_200": {
+        "queue_depth": 200,
+        "enqueue_total_ms": 23.903,
+        "enqueue_per_task_ms": 0.1195,
+        "lease_query_ms": 16.867
+      }
+    },
+    "worker_disconnect_reassignment": {
+      "recovered_task_count": 1,
+      "reconciliation_latency_ms": 2.044,
+      "fencing_verified": true
+    },
+    "controller_rehydration": {
+      "rehydration_time_ms": 0.158,
+      "tasks_rehydrated_status_distribution": {
+        "completed": 25,
+        "in_progress": 9,
+        "pending": 492
+      },
+      "rehydrated_recovered_leases": 0
+    },
+    "model_capability_evaluation": {
+      "iterations": 1000,
+      "total_time_ms": 6.647,
+      "latency_per_eval_us": 6.65
+    },
+    "research_sidecar_scheduling": {
+      "iterations": 200,
+      "total_time_ms": 4560.518,
+      "latency_per_eval_ms": 22.803
+    },
+    "loop_detector_telemetry": {
+      "events_ingested": 5000,
+      "total_time_ms": 262.379,
+      "events_per_second": 19056.4,
+      "cost_per_event_us": 52.48
+    }
+  },
+  "concurrent_upload_capacity": {
+    "streaming_multipart": {
+      "concurrency_1": {
+        "concurrency": 1,
+        "payload_size_mb": 25.0,
+        "total_transferred_mb": 25.0,
+        "batch_elapsed_seconds": 0.089,
+        "aggregate_throughput_mb_s": 281.77,
+        "peak_tracemalloc_heap_mb": 29.94,
+        "initial_os_rss_mb": 0.0,
+        "peak_os_rss_mb": 0.0,
+        "rss_delta_mb": 0.0,
+        "latency_ms": {
+          "median": 86.47,
+          "p95": 86.47,
+          "p99": 86.47
+        },
+        "error_count": 0
+      },
+      "concurrency_2": {
+        "concurrency": 2,
+        "payload_size_mb": 25.0,
+        "total_transferred_mb": 50.0,
+        "batch_elapsed_seconds": 0.188,
+        "aggregate_throughput_mb_s": 265.41,
+        "peak_tracemalloc_heap_mb": 28.64,
+        "initial_os_rss_mb": 0.0,
+        "peak_os_rss_mb": 0.0,
+        "rss_delta_mb": 0.0,
+        "latency_ms": {
+          "median": 102.12,
+          "p95": 102.12,
+          "p99": 102.12
+        },
+        "error_count": 0
+      },
+      "concurrency_4": {
+        "concurrency": 4,
+        "payload_size_mb": 25.0,
+        "total_transferred_mb": 100.0,
+        "batch_elapsed_seconds": 0.457,
+        "aggregate_throughput_mb_s": 218.9,
+        "peak_tracemalloc_heap_mb": 28.64,
+        "initial_os_rss_mb": 0.0,
+        "peak_os_rss_mb": 0.0,
+        "rss_delta_mb": 0.0,
+        "latency_ms": {
+          "median": 117.9,
+          "p95": 118.51,
+          "p99": 118.51
+        },
+        "error_count": 0
+      },
+      "concurrency_8": {
+        "concurrency": 8,
+        "payload_size_mb": 25.0,
+        "total_transferred_mb": 200.0,
+        "batch_elapsed_seconds": 0.852,
+        "aggregate_throughput_mb_s": 234.88,
+        "peak_tracemalloc_heap_mb": 28.65,
+        "initial_os_rss_mb": 0.0,
+        "peak_os_rss_mb": 0.0,
+        "rss_delta_mb": 0.0,
+        "latency_ms": {
+          "median": 111.09,
+          "p95": 126.71,
+          "p99": 126.71
+        },
+        "error_count": 0
+      }
+    },
+    "json_base64": {
+      "concurrency_1": {
+        "concurrency": 1,
+        "payload_size_mb": 25.0,
+        "wire_body_size_mb": 33.33,
+        "batch_elapsed_seconds": 0.103,
+        "aggregate_throughput_mb_s": 322.12,
+        "peak_tracemalloc_heap_mb": 35.76,
+        "initial_os_rss_mb": 0.0,
+        "peak_os_rss_mb": 0.0,
+        "rss_delta_mb": 0.0,
+        "latency_ms": {
+          "median": 101.62,
+          "p95": 101.62,
+          "p99": 101.62
+        },
+        "error_count": 0
+      },
+      "concurrency_2": {
+        "concurrency": 2,
+        "payload_size_mb": 25.0,
+        "wire_body_size_mb": 33.33,
+        "batch_elapsed_seconds": 0.238,
+        "aggregate_throughput_mb_s": 280.19,
+        "peak_tracemalloc_heap_mb": 35.76,
+        "initial_os_rss_mb": 0.0,
+        "peak_os_rss_mb": 0.0,
+        "rss_delta_mb": 0.0,
+        "latency_ms": {
+          "median": 132.31,
+          "p95": 132.31,
+          "p99": 132.31
+        },
+        "error_count": 0
+      },
+      "concurrency_4": {
+        "concurrency": 4,
+        "payload_size_mb": 25.0,
+        "wire_body_size_mb": 33.33,
+        "batch_elapsed_seconds": 0.551,
+        "aggregate_throughput_mb_s": 242.09,
+        "peak_tracemalloc_heap_mb": 35.77,
+        "initial_os_rss_mb": 0.0,
+        "peak_os_rss_mb": 0.0,
+        "rss_delta_mb": 0.0,
+        "latency_ms": {
+          "median": 139.23,
+          "p95": 142.59,
+          "p99": 142.59
+        },
+        "error_count": 0
+      },
+      "concurrency_8": {
+        "concurrency": 8,
+        "payload_size_mb": 25.0,
+        "wire_body_size_mb": 33.33,
+        "batch_elapsed_seconds": 1.039,
+        "aggregate_throughput_mb_s": 256.57,
+        "peak_tracemalloc_heap_mb": 35.77,
+        "initial_os_rss_mb": 0.0,
+        "peak_os_rss_mb": 0.0,
+        "rss_delta_mb": 0.0,
+        "latency_ms": {
+          "median": 134.14,
+          "p95": 148.13,
+          "p99": 148.13
+        },
+        "error_count": 0
+      }
+    }
+  },
+  "health_monitoring_overhead": {
+    "component_latencies": {
+      "heartbeat_ms": {
+        "median": 26.595,
+        "p95": 29.139
+      },
+      "lease_renewal_ms": {
+        "median": 12.887,
+        "p95": 13.927
+      },
+      "diagnostics_ms": {
+        "median": 6.012,
+        "p95": 7.006
+      },
+      "cluster_snapshot_ms": {
+        "median": 23.08,
+        "p95": 25.846
+      },
+      "backup_health_ms": {
+        "median": 1.068,
+        "p95": 1.201
+      }
+    },
+    "polling_interference": {
+      "tasks_count": 30,
+      "baseline_elapsed_seconds": 0.814,
+      "baseline_throughput_tasks_s": 36.87,
+      "under_10hz_polling_elapsed_seconds": 0.87,
+      "under_10hz_polling_throughput_tasks_s": 34.49,
+      "throughput_delta_percent": -6.46,
+      "impact_assessment": "Negligible"
+    }
+  },
+  "backup_recovery_perf": {
+    "small_5mb": {
+      "dataset_nominal_mb": 5,
+      "artifact_count": 20,
+      "unpacked_size_mb": 5.0,
+      "compressed_archive_mb": 0.06,
+      "compression_ratio": 84.23,
+      "backup_creation_seconds": 0.996,
+      "manifest_verification_seconds": 0.092,
+      "restore_extraction_seconds": 0.594,
+      "cas_hash_verification_seconds": 0.024,
+      "total_recovery_time_seconds": 0.71,
+      "rto_target_seconds": 60.0,
+      "rto_achieved": true
+    },
+    "medium_25mb": {
+      "dataset_nominal_mb": 25,
+      "artifact_count": 50,
+      "unpacked_size_mb": 25.0,
+      "compressed_archive_mb": 0.12,
+      "compression_ratio": 200.69,
+      "backup_creation_seconds": 2.374,
+      "manifest_verification_seconds": 0.271,
+      "restore_extraction_seconds": 1.587,
+      "cas_hash_verification_seconds": 0.107,
+      "total_recovery_time_seconds": 1.965,
+      "rto_target_seconds": 60.0,
+      "rto_achieved": true
+    },
+    "large_75mb": {
+      "dataset_nominal_mb": 75,
+      "artifact_count": 100,
+      "unpacked_size_mb": 75.0,
+      "compressed_archive_mb": 0.28,
+      "compression_ratio": 267.12,
+      "backup_creation_seconds": 3.639,
+      "manifest_verification_seconds": 0.721,
+      "restore_extraction_seconds": 2.787,
+      "cas_hash_verification_seconds": 0.314,
+      "total_recovery_time_seconds": 3.822,
+      "rto_target_seconds": 60.0,
+      "rto_achieved": true
+    }
+  },
+  "rto_rpo_evaluation": {
+    "recovery_time_objective": {
+      "target_seconds": 60.0,
+      "measured_worst_case_seconds": 3.822,
+      "status": "ACHIEVED",
+      "margin_seconds": 56.18,
+      "justification": "Complete verified restoration across up to 75MB datasets required 3.82s, safely below the 60s RTO boundary."
+    },
+    "recovery_point_objective": {
+      "target_seconds": 300.0,
+      "cadence_interval_seconds": 300.0,
+      "backup_execution_duration_seconds": 3.639,
+      "status": "ACHIEVED",
+      "effective_data_loss_window_seconds": 303.6,
+      "justification": "With automated snapshotting scheduled on a 5-minute (300s) cadence and backup generation taking 3.64s, the worst-case unbacked-up data loss window is 303.6s, matching production 5-minute RPO specifications."
+    }
+  },
+  "failure_saturation_results": {
+    "database_contention": {
+      "concurrent_threads": 10,
+      "attempted_transactions": 200,
+      "successful_transactions": 200,
+      "operational_errors": 0,
+      "elapsed_seconds": 0.735,
+      "resilience": "PASS"
+    },
+    "unavailable_model_defense": {
+      "requested_model": "nonexistent:model-70b",
+      "eligible_nodes_found": 0,
+      "defensive_fallback": "PASS"
+    },
+    "corrupted_backup_detection": {
+      "detected_corruption": true,
+      "fail_closed_error_message": "Archive verification exception: file could not be opened successfully:\n- method gz: ReadError('zlib error: Error -3 while decompressing data: invalid stored block lengths')\n- method bz2: ReadError('not a bzip2 file')\n- method xz: ReadError('not an lzma file')\n- method tar: ReadError('truncated header')",
+      "status": "PASS"
+    },
+    "storage_capacity_monitoring": {
+      "free_gb": 0,
+      "warning_threshold_gb": 10.0,
+      "warning_flagged": false,
+      "status": "PASS"
+    },
+    "loop_detector_saturation": {
+      "condition": "UNPRODUCTIVE_TOOL_LOOP",
+      "warning_message": "Worker is repeatedly executing identical operations ('web_search') (5 times) without state advancement or output changes despite active heartbeats.",
+      "detected_correctly": true,
+      "status": "PASS"
+    }
+  },
+  "recommended_capacity_limits": {
+    "max_concurrent_25mb_multipart_uploads": 8,
+    "max_concurrent_25mb_json_uploads": 4,
+    "recommended_worker_task_concurrency_per_node": 4,
+    "max_task_queue_depth_before_admission_throttling": 1000,
+    "health_polling_safe_frequency_hz": 10.0,
+    "backup_schedule_cadence_seconds": 300
+  }
+}

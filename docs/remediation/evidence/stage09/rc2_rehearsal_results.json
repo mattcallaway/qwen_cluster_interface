@@ -1,0 +1,141 @@
+{
+  "timestamp_utc": "2026-10-22T00:34:16.484559+00:00",
+  "release_candidate": "1.0.0-rc.2",
+  "preflight": {
+    "platform": {
+      "system": "Windows",
+      "release": "10",
+      "version": "10.0.19045",
+      "machine": "AMD64",
+      "product_name": "Windows 10 Home",
+      "display_version": "22H2",
+      "current_build": "19045",
+      "edition_id": "Core"
+    },
+    "archives": {
+      "qwen-collective-1.0.0-rc.2.zip": {
+        "expected": "c93d6cbd3ca508886c69c30a5c522ffe95ad63a8d6e7ff9eae9027e047f1c163",
+        "actual": "c93d6cbd3ca508886c69c30a5c522ffe95ad63a8d6e7ff9eae9027e047f1c163",
+        "match": true,
+        "size_bytes": 955555
+      },
+      "qwen-collective-1.0.0-rc.2.tar.gz": {
+        "expected": "594e7590143cf9f5c92ba5be38c823a49252389c27961a0f1ef6f9a18baea868",
+        "actual": "594e7590143cf9f5c92ba5be38c823a49252389c27961a0f1ef6f9a18baea868",
+        "match": true,
+        "size_bytes": 822262
+      },
+      "qwen-collective-worker-1.0.0-rc.2.zip": {
+        "expected": "8341e46281186b6e229230fad9703d3500baa39283c8adff3091723a53c4d580",
+        "actual": "8341e46281186b6e229230fad9703d3500baa39283c8adff3091723a53c4d580",
+        "match": true,
+        "size_bytes": 62470
+      },
+      "qwen-collective-worker-1.0.0-rc.2.tar.gz": {
+        "expected": "c5d06aaf9b8b678589b33274d47763b0efa2531e2f06b3feb8a97234f374e1fa",
+        "actual": "c5d06aaf9b8b678589b33274d47763b0efa2531e2f06b3feb8a97234f374e1fa",
+        "match": true,
+        "size_bytes": 50893
+      }
+    },
+    "linux_isolation": {
+      "has_docker": false,
+      "has_wsl": false,
+      "isolated_linux_vm_available": false,
+      "staging_network_isolated": true,
+      "cross_machine_linux_status": "BLOCKED_BY_INFRASTRUCTURE",
+      "reason": "Host lacks Docker/WSL Linux staging environment and live VPS is protected by production governance boundary."
+    }
+  },
+  "backup_and_freshness": {
+    "snapshot_id": "snp-20261022_003348-11056c37",
+    "archive_size": 39765,
+    "components": 1,
+    "verification_valid": true,
+    "measured_age_seconds": 0.09,
+    "desired_rpo_threshold_seconds": 300,
+    "freshness_valid": true,
+    "simulated_missed_backup_detected": true,
+    "restored_tables": 102,
+    "restored_schema_version": 18
+  },
+  "browser_acceptance": {
+    "status": "PASS",
+    "total_steps": 10,
+    "steps_passed": 10,
+    "steps": [
+      {
+        "step": 1,
+        "name": "Login",
+        "status": "PASS",
+        "duration_s": 1.82
+      },
+      {
+        "step": 2,
+        "name": "Project Creation",
+        "status": "PASS",
+        "duration_s": 3.723,
+        "created_proj_id": "prj-d78033c4ac8d400aa1bebaac9d345b85"
+      },
+      {
+        "step": 3,
+        "name": "Plan Review & Approval",
+        "status": "PASS",
+        "duration_s": 1.034
+      },
+      {
+        "step": 4,
+        "name": "Start Execution",
+        "status": "PASS",
+        "duration_s": 1.651
+      },
+      {
+        "step": 5,
+        "name": "Observe Status Transitions",
+        "status": "PASS",
+        "duration_s": 0.082,
+        "pill": "RUNNING"
+      },
+      {
+        "step": 6,
+        "name": "Research Evidence Visibility",
+        "status": "PASS",
+        "duration_s": 0.71
+      },
+      {
+        "step": 7,
+        "name": "Inspect Deliverables",
+        "status": "PASS",
+        "duration_s": 0.787
+      },
+      {
+        "step": 8,
+        "name": "Preview & Download Artifact",
+        "status": "PASS",
+        "duration_s": 1.141,
+        "sha256": "64833067a240aae3803bb9bb357566df11fef4898a16147db39f25026b440c98"
+      },
+      {
+        "step": 9,
+        "name": "Cross-Project Artifact Reuse",
+        "status": "PASS",
+        "duration_s": 1.594
+      },
+      {
+        "step": 10,
+        "name": "Knowledge Candidate Governance",
+        "status": "PASS",
+        "duration_s": 0.889
+      }
+    ]
+  },
+  "failure_recovery": {
+    "survived_restart": true,
+    "data_durability_verified": true,
+    "token_revocation_tested": true,
+    "revoked_rejection_http_status": 401
+  },
+  "overall_status": "REHEARSAL_STAGE_COMPLETED_WITH_LINUX_PRECONDITION_BLOCKED",
+  "linux_worker_cross_instance_status": "BLOCKED_BY_INFRASTRUCTURE",
+  "governance_recommendation": "HOLD_PENDING_ISOLATED_LINUX_INFRASTRUCTURE"
+}

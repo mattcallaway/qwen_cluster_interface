@@ -495,11 +495,15 @@ def test_admin_can_revoke_worker_token_via_api(client, db_conn):
     resp_unauth = client.delete(f"/api/v1/worker/tokens/{token_id}")
     assert resp_unauth.status_code == 401
 
-    # Admin revokes token
+    # Admin revokes token (with CSRF protection F-15)
+    import hashlib
+    import hmac
+    from app.config import settings
     admin_session = create_session_token("admin")
     client.cookies.set("qc_session", admin_session)
+    csrf_tok = hmac.new(settings.secret_key.encode("utf-8"), f"csrf:{admin_session}".encode("utf-8"), hashlib.sha256).hexdigest()[:32]
 
-    resp_revoke = client.delete(f"/api/v1/worker/tokens/{token_id}")
+    resp_revoke = client.delete(f"/api/v1/worker/tokens/{token_id}", headers={"X-CSRF-Token": csrf_tok})
     assert resp_revoke.status_code == 200
     assert resp_revoke.json()["status"] == "revoked"
 

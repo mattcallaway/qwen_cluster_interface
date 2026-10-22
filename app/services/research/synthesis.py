@@ -87,10 +87,31 @@ class ResearchSynthesizer:
                 for ev in c.get("evidence", []):
                     src_id = ev.get("source_id")
                     for s_idx, s in enumerate(sources, start=1):
-                        if s["id"] == src_id:
+                        s_id = s.get("source_id") or s.get("id")
+                        if s_id and src_id and str(s_id) == str(src_id):
                             ev_indices.append(str(s_idx))
                             break
-                cites = f"[{', '.join(ev_indices)}]" if ev_indices else "[Uncited]"
+                        if ev.get("canonical_url") and s.get("canonical_url") == ev.get("canonical_url"):
+                            ev_indices.append(str(s_idx))
+                            break
+                        if ev.get("url") and (s.get("url") == ev.get("url") or s.get("canonical_url") == ev.get("url")):
+                            ev_indices.append(str(s_idx))
+                            break
+
+                # If no explicit evidence link matched by ID, match by content overlap
+                if not ev_indices and sources:
+                    for s_idx, s in enumerate(sources, start=1):
+                        s_text = s.get("clean_text") or s.get("extracted_text") or s.get("snippet") or ""
+                        if s_text and len(s_text) > 30:
+                            # Check if substantial phrase of claim is in source
+                            words = [w.lower() for w in re.findall(r"\b[A-Za-z]{4,}\b", c_text)]
+                            if len(words) >= 3:
+                                match_cnt = sum(1 for w in words if w in s_text.lower())
+                                if match_cnt >= min(4, len(words)):
+                                    ev_indices.append(str(s_idx))
+                                    break
+
+                cites = f"[{', '.join(sorted(set(ev_indices), key=int))}]" if ev_indices else "[Uncited]"
                 sections.append(f"| C{idx} | {c_text} | {cat} | **{v_stat}** | {cites} |")
             sections.append("")
         else:

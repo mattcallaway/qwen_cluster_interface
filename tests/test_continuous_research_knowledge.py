@@ -170,14 +170,30 @@ def test_promotion_governance_and_workflow():
     pending = list_promotions(status="proposed")
     assert any(p["id"] == promo["id"] for p in pending)
     
-    # 3. Approve promotion
-    approved = approve_promotion(promo["id"], reviewer="admin_architect")
+    # 3. Security check: Plain unauthenticated string reviewer is strictly rejected
+    with pytest.raises(PermissionError, match="cannot provide operator authority"):
+        approve_promotion(promo["id"], reviewer="admin_architect")
+
+    # 4. Authenticated operator authority approval
+    from app.auth import create_session_token, ensure_default_admin
+    from datetime import datetime, timezone
+    ensure_default_admin()
+    admin_token = create_session_token("admin")
+
+    with get_db_connection() as conn:
+        conn.execute(
+            "UPDATE knowledge_records SET reviewed_by = 'admin', reviewed_at = ? WHERE id = ?",
+            (datetime.now(timezone.utc).isoformat(), rec["id"])
+        )
+        conn.commit()
+
+    approved = approve_promotion(promo["id"], session_token=admin_token, rationale="Admin verified architectural finding")
     assert approved["status"] == "approved"
     
     # Record scope must now be 'collective'
     updated_rec = get_knowledge_record(rec["id"])
     assert updated_rec["scope"] == "collective"
-    assert updated_rec["promoted_by"] == "admin_architect"
+    assert updated_rec["promoted_by"] == "admin"
 
 
 def test_contradiction_detection_and_impact_tracking():

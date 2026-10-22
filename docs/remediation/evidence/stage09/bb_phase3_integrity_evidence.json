@@ -1,0 +1,111 @@
+{
+  "timestamp_utc": "2026-10-21T21:28:55.562214+00:00",
+  "bb12_transport_verification": {
+    "passed": true,
+    "tests": {
+      "mixed_dns_all_addresses_checked": {
+        "resolved_ips": [
+          "93.184.216.34",
+          "127.0.0.1"
+        ],
+        "blocked": true,
+        "reason": "Prohibited destination for 'mixed-dns.example.com': IPv4 address 127.0.0.1 belongs to blocked private/reserved network 127.0.0.0/8."
+      },
+      "connection_pinning_keepalive_zero": {
+        "keepalive_expiry": 0.0,
+        "is_pinned_zero_keepalive": true
+      },
+      "dns_rebind_step2_intercepted": {
+        "step2_response": "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nX-Proxy-Blocked: SSRF-Violation\r\nConnection: close",
+        "blocked_403": true
+      },
+      "redirect_independent_validation": {
+        "status_code": 403,
+        "error_message": "Security policy rejected URL: Destination port 8000 is prohibited for public web research.",
+        "blocked": true
+      },
+      "unavailable_transport_fails_closed": {
+        "status_code": 403,
+        "fails_closed": true
+      }
+    },
+    "elapsed_ms": 15822.33
+  },
+  "bb13_browser_ssrf_verification": {
+    "passed": true,
+    "tests": {
+      "browser_nav_loopback_blocked": {
+        "status": "403 Forbidden",
+        "blocked": true
+      },
+      "subresource_metadata_blocked": {
+        "status": "403 Forbidden",
+        "blocked": true
+      },
+      "subresource_lan_iframe_blocked": {
+        "status": "403 Forbidden",
+        "blocked": true
+      },
+      "websocket_upgrade_internal_blocked": {
+        "status": "403 Forbidden",
+        "blocked": true
+      },
+      "tailscale_cgnat_connect_blocked": {
+        "status": "403 Forbidden",
+        "blocked": true
+      },
+      "proxy_shutdown_fails_closed": true
+    },
+    "audit_records_count": 5,
+    "all_audit_decisions_denied": true,
+    "elapsed_ms": 1017.77
+  },
+  "bb28_http_revocation_verification": {
+    "passed": true,
+    "http_steps": {
+      "step1_registration_http_status": 200,
+      "step2_pre_revocation_heartbeat_status": 200,
+      "step3_revocation_executed": true,
+      "step4_post_revocation_heartbeat_status": 401,
+      "step4_post_revocation_heartbeat_detail": "Invalid or revoked worker authentication token.",
+      "step5a_cached_lease_poll_status": 401,
+      "step5b_cached_telemetry_status": 401,
+      "step5c_cached_artifact_upload_status": 401,
+      "step6_durable_side_effects_check": {
+        "total_telemetry_samples": 1,
+        "unauthorized_telemetry_samples_created": 0,
+        "leases_created": 0,
+        "zero_side_effects": true
+      }
+    },
+    "cleanup_completed": true,
+    "elapsed_ms": 527.96
+  },
+  "bb29_http_proxy_trust_verification": {
+    "passed": true,
+    "http_steps": {
+      "live_tailscale_ingress": {
+        "status": 200,
+        "server": "uvicorn",
+        "tls_version": "TLSv1.3"
+      },
+      "trusted_proxy_status": 200,
+      "untrusted_spoof_detection": {
+        "peer_ip": "198.51.100.22",
+        "detected_ip": "198.51.100.22",
+        "peer_preserved": true,
+        "proto_untrusted": true
+      },
+      "cross_worker_upload_rejection": {
+        "status_code": 403,
+        "blocked_403_or_404": true,
+        "detail": "Worker 'phase3-worker-a-1792618153' is not authorized for task 'task-assigned-to-b' (assigned to 'phase3-worker-b-1792618153')."
+      },
+      "unauthorized_registration_rejected": {
+        "status_code": 401,
+        "detail": "Worker enrollment authorization required. Please provide a valid single-use enrollment token via the 'X-Enrollment-Token' header or authenticate with an administrator session."
+      }
+    },
+    "elapsed_ms": 166.68
+  }
+}

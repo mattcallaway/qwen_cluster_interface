@@ -189,7 +189,22 @@ Based on telemetry dataset `{vps_art_id}`:
 
     # If status is proposed, approve promotion
     if promo["status"] == "proposed":
-        approved = approve_promotion(promo["id"], reviewer="system_architect")
+        # Security negative check: Plain unauthenticated string reviewer is rejected
+        with pytest.raises(PermissionError, match="cannot provide operator authority"):
+            approve_promotion(promo["id"], reviewer="system_architect")
+
+        from app.auth import create_session_token, ensure_default_admin
+        from datetime import datetime, timezone
+        ensure_default_admin()
+        admin_token = create_session_token("admin")
+        with get_db_connection() as conn:
+            conn.execute(
+                "UPDATE knowledge_records SET reviewed_by = 'admin', reviewed_at = ? WHERE id = ?",
+                (datetime.now(timezone.utc).isoformat(), first_kid)
+            )
+            conn.commit()
+
+        approved = approve_promotion(promo["id"], session_token=admin_token, rationale="Authorized distributed telemetry review")
         assert approved["status"] == "approved"
 
     # Step 12 & 13: Create Project 2 using 'Create Project From This'

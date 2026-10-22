@@ -8,22 +8,33 @@ from app.services import infrastructure as infra_svc
 
 @pytest.fixture(autouse=True)
 def clean_infrastructure_tables():
-    """Ensure clean infrastructure tables before each test."""
-    with get_db_connection() as conn:
-        conn.execute("PRAGMA foreign_keys = OFF")
-        conn.execute("DROP TRIGGER IF EXISTS trg_worker_exec_no_delete")
-        conn.execute("DELETE FROM worker_executions")
-        conn.execute("""
-            CREATE TRIGGER trg_worker_exec_no_delete BEFORE DELETE ON worker_executions
-            BEGIN SELECT RAISE(ABORT, 'worker_executions is append-only'); END
-        """)
-        conn.execute("DELETE FROM infrastructure_verifications")
-        conn.execute("DELETE FROM infrastructure_reconciliations")
-        conn.execute("DELETE FROM infrastructure_capabilities")
-        conn.execute("DELETE FROM infrastructure_nodes")
-        conn.commit()
-        conn.execute("PRAGMA foreign_keys = ON")
+    """Ensure clean infrastructure tables before and after each test with foreign keys enforced."""
+    def _clean_infra():
+        with get_db_connection() as conn:
+            conn.execute("DROP TRIGGER IF EXISTS trg_worker_exec_no_delete")
+            conn.execute("DELETE FROM worker_executions")
+            conn.execute("DELETE FROM worker_task_leases")
+            conn.execute("""
+                CREATE TRIGGER trg_worker_exec_no_delete BEFORE DELETE ON worker_executions
+                BEGIN SELECT RAISE(ABORT, 'worker_executions is append-only'); END
+            """)
+            conn.execute("DELETE FROM worker_auth_tokens")
+            conn.execute("DELETE FROM infrastructure_reconciliations")
+            conn.execute("DELETE FROM infrastructure_verifications")
+            conn.execute("DELETE FROM infrastructure_capabilities")
+            conn.execute("DELETE FROM infrastructure_nodes")
+            conn.commit()
+            fk_errs = conn.execute("PRAGMA foreign_key_check").fetchall()
+            assert not fk_errs, f"Foreign key check failed in infrastructure clean: {fk_errs}"
+
+    _clean_infra()
     yield
+    _clean_infra()
+    # Ensure controller node is restored for subsequent tests
+    infra_svc.ensure_controller_node()
+    with get_db_connection() as conn:
+        fk_errs = conn.execute("PRAGMA foreign_key_check").fetchall()
+        assert not fk_errs, f"Foreign key check failed after controller restoration: {fk_errs}"
 
 
 def test_ensure_controller_node():

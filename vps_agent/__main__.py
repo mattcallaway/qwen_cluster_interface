@@ -31,7 +31,7 @@ from vps_agent.config import (
     validate_config,
 )
 
-__version__ = "1.0.0"
+__version__ = "1.0.0-rc.2"
 
 logger = logging.getLogger("qwen_collective.vps_daemon")
 
@@ -80,6 +80,43 @@ def parse_args(args=None) -> argparse.Namespace:
     return parser.parse_args(args)
 
 
+def _is_pid_running(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(0x1000, False, pid)
+        if handle:
+            kernel32.CloseHandle(handle)
+            return True
+        return False
+    else:
+        try:
+            os.kill(pid, 0)
+            return True
+        except Exception:
+            return False
+
+def acquire_pid_lock(data_dir: Path) -> Optional[Path]:
+    lock_file = data_dir / "vps_agent.pid"
+    if lock_file.exists():
+        try:
+            old_pid = int(lock_file.read_text(encoding="utf-8").strip())
+            if old_pid != os.getpid() and _is_pid_running(old_pid):
+                logger.error("Another VPS Worker Daemon is already running (PID %d). Aborting startup.", old_pid)
+                return None
+        except Exception:
+            pass
+    try:
+        data_dir.mkdir(parents=True, exist_ok=True)
+        lock_file.write_text(str(os.getpid()), encoding="utf-8")
+        return lock_file
+    except Exception as e:
+        logger.warning("Could not write worker PID lock file %s: %s", lock_file, e)
+        return lock_file
+
+
 def run_daemon(config: AgentConfig, once: bool = False, stop_event: Optional[threading.Event] = None) -> int:
     """
     Main worker daemon execution loop.
@@ -102,6 +139,10 @@ def run_daemon(config: AgentConfig, once: bool = False, stop_event: Optional[thr
             pass
 
     ensure_runtime_directories(config)
+
+    lock = acquire_pid_lock(config.data_dir)
+    if lock is None:
+        return 1
 
     logger.info("==================================================================")
     logger.info("Qwen Collective VPS Worker Daemon starting")
@@ -127,6 +168,8 @@ def run_daemon(config: AgentConfig, once: bool = False, stop_event: Optional[thr
             "Fatal authentication failure: enrollment token was rejected by controller (HTTP 403) "
             "and no persistent worker token exists."
         )
+        if lock and lock.exists():
+            lock.unlink(missing_ok=True)
         if once:
             return 1
 
@@ -174,6 +217,8 @@ def run_daemon(config: AgentConfig, once: bool = False, stop_event: Optional[thr
         logger.exception("Unexpected exception in daemon execution loop: %s", e)
         return 1
     finally:
+        if lock and lock.exists():
+            lock.unlink(missing_ok=True)
         logger.info("VPS worker daemon stopped cleanly. Cleaning up resources.")
 
     return 0

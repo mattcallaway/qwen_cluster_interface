@@ -21,7 +21,11 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin, urlparse
 
-from bs4 import BeautifulSoup, Comment
+try:
+    from bs4 import BeautifulSoup, Comment
+except ImportError:
+    BeautifulSoup = None
+    Comment = None
 
 from app.services.research.cache import compute_content_hash
 
@@ -41,6 +45,49 @@ DATE_PATTERNS = [
     r"(\d{1,2} (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{4})",
 ]
 
+# Anti-bot / CAPTCHA / access interstitial markers (F-05). Matched case-insensitively.
+CHALLENGE_STRONG_MARKERS = [
+    "verify you are human", "verifying you are human", "are you a robot", "i'm not a robot",
+    "i am not a robot", "complete the captcha", "please complete the security check",
+    "checking your browser before accessing", "checking if the site connection is secure",
+    "just a moment...", "attention required! | cloudflare", "cf-browser-verification",
+    "cf-challenge", "challenge-platform", "g-recaptcha", "h-captcha", "hcaptcha.com",
+    "recaptcha/api.js", "turnstile", "px-captcha", "perimeterx", "distil_r_captcha",
+    "_incapsula_resource", "request unsuccessful. incapsula", "datadome",
+    "press & hold", "press and hold to confirm", "enable javascript and cookies to continue",
+    "unusual traffic from your computer network", "our systems have detected unusual traffic",
+    "access to this page has been denied", "you have been blocked", "sorry, you have been blocked",
+    "reference #18.", "errors.edgesuite.net", "bot detection", "automated access",
+]
+CHALLENGE_TITLE_MARKERS = [
+    "just a moment", "attention required", "access denied", "captcha", "security check",
+    "are you a robot", "robot check", "verify", "blocked", "403 forbidden", "pardon our interruption",
+    "one more step", "ddos protection", "please wait",
+]
+
+
+def detect_challenge_page(title: str = "", text: str = "", raw_html: str = "") -> Optional[str]:
+    """Return a reason string if the content is a CAPTCHA/anti-bot/access interstitial, else None.
+
+    Long, content-rich pages that merely embed a reCAPTCHA widget (e.g. a comment form) are not
+    flagged unless the readable text is short.
+    """
+    t = (title or "").strip().lower()
+    body = (text or "").lower()
+    raw = (raw_html or "").lower()
+    word_count = len(body.split())
+
+    for marker in CHALLENGE_STRONG_MARKERS:
+        if marker in body:
+            if word_count < 400:
+                return f"challenge_text:{marker}"
+        if marker in raw and word_count < 150:
+            return f"challenge_markup:{marker}"
+    for marker in CHALLENGE_TITLE_MARKERS:
+        if marker in t and word_count < 250:
+            return f"challenge_title:{marker}"
+    return None
+
 
 @dataclass
 class ExtractedDocument:
@@ -59,6 +106,11 @@ class ExtractedDocument:
     content_hash: str = ""
     content_type: str = "text/html"
     is_spa_placeholder: bool = False
+    challenge_reason: Optional[str] = None
+
+    @property
+    def is_challenge_page(self) -> bool:
+        return bool(self.challenge_reason)
 
     @property
     def text(self) -> str:
@@ -109,6 +161,51 @@ class DocumentExtractor:
             html_text = content
 
         content_hash = compute_content_hash(html_text)
+        if BeautifulSoup is None:
+            import html
+            title_match = re.search(r"<title[^>]*>(.*?)</title>", html_text, re.IGNORECASE | re.DOTALL)
+            title = html.unescape(title_match.group(1).strip()) if title_match else ""
+            # Headings
+            headings = []
+            for h_m in re.finditer(r"<h([1-6])[^>]*>(.*?)</h\1>", html_text, re.IGNORECASE | re.DOTALL):
+                h_text = html.unescape(re.sub(r"<[^>]+>", " ", h_m.group(2))).strip()
+                if h_text:
+                    headings.append({"level": int(h_m.group(1)), "text": h_text})
+
+            # Tables
+            tables = []
+            for t_m in re.finditer(r"<table[^>]*>(.*?)</table>", html_text, re.IGNORECASE | re.DOTALL):
+                table_html = t_m.group(1)
+                rows = []
+                for r_m in re.finditer(r"<tr[^>]*>(.*?)</tr>", table_html, re.IGNORECASE | re.DOTALL):
+                    row_html = r_m.group(1)
+                    cols = []
+                    for c_m in re.finditer(r"<(?:td|th)[^>]*>(.*?)</(?:td|th)>", row_html, re.IGNORECASE | re.DOTALL):
+                        col_text = html.unescape(re.sub(r"<[^>]+>", " ", c_m.group(1))).strip()
+                        cols.append(col_text)
+                    if cols:
+                        rows.append(cols)
+                if rows:
+                    tables.append(rows)
+
+            stripped = re.sub(r"<(script|style|noscript|header|footer|nav|aside)[^>]*>.*?</\1>", "", html_text, flags=re.IGNORECASE | re.DOTALL)
+            clean_text = re.sub(r"<[^>]+>", " ", stripped)
+            clean_text = html.unescape(clean_text)
+            clean_lines = [line.strip() for line in clean_text.splitlines() if line.strip()]
+            clean_text = "\n\n".join(clean_lines)
+            word_count = len(clean_text.split())
+            return ExtractedDocument(
+                title=title,
+                canonical_url=base_url,
+                clean_text=clean_text,
+                headings=headings,
+                tables=tables,
+                word_count=word_count,
+                content_hash=content_hash,
+                content_type="text/html",
+                challenge_reason=detect_challenge_page(title, clean_text, html_text),
+            )
+
         soup = BeautifulSoup(html_text, "html.parser")
 
         # 1. Metadata extraction
@@ -232,6 +329,7 @@ class DocumentExtractor:
             content_hash=content_hash,
             content_type="text/html",
             is_spa_placeholder=is_spa,
+            challenge_reason=detect_challenge_page(title, clean_text, html_text),
         )
 
     def extract_pdf(self, content: bytes | str, base_url: str = "") -> ExtractedDocument:
@@ -305,3 +403,116 @@ class DocumentExtractor:
             content_hash=compute_content_hash(text),
             content_type="application/json",
         )
+
+
+@dataclass
+class FactualClaimSpan:
+    """Represents a factual assertion extracted from source text with precise provenance spans."""
+    claim_text: str
+    category: str  # "fact", "statistic", "date", "entity"
+    start_char: int
+    end_char: int
+    start_line: int
+    end_line: int
+    context_passage: str
+    exact_quote: str
+    confidence_score: float
+    source_id: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+# Patterns detecting verifiable factual statements:
+# 1. Numeric statistics, percentages, currency, metrics, years
+_STAT_OR_METRIC_RE = re.compile(
+    r"(\b\d+(\.\d+)?%|\$\d+(\.\d+)?\s*(billion|million|trillion|k|m|b)?|\b\d{4}\b|\b\d+ (?:ms|seconds|minutes|hours|days|percent|GB|MB|TB|nodes|instances|operations|users|requests)\b)",
+    re.IGNORECASE,
+)
+# 2. Definite assertions and relationship markers
+_RELATION_RE = re.compile(
+    r"\b(achieved|outperformed|increased by|decreased by|published by|founded in|released in|supports|measured at|confirmed that|demonstrated that|evaluated across)\b",
+    re.IGNORECASE,
+)
+
+
+def extract_claims_with_spans(
+    text: str,
+    source_id: Optional[str] = None,
+    source_quality: float = 1.0,
+    max_claims: int = 15,
+) -> List[FactualClaimSpan]:
+    """
+    Extract factual assertions from document text with exact character and line spans (Finding F-06).
+    
+    Eliminates naive sentence splitting and hardcoded confidence scores (e.g. 0.9).
+    Calculates defensible confidence scores from grounded structural and linguistic features:
+    - Evidence of measurable numbers, percentages, dates, or metrics
+    - Assertion completeness and sentence length
+    - Source quality weighting
+    - Contextual passage boundaries
+    """
+    if not text or len(text.strip()) < 20:
+        return []
+
+    results: List[FactualClaimSpan] = []
+    # Sentence splitter preserving punctuation and boundaries
+    sentence_pattern = re.compile(r'([A-Z0-9][^.!?\n]{15,}?[.!?])(?:\s+|$|\n)', re.MULTILINE)
+
+    for m in sentence_pattern.finditer(text):
+        sentence = m.group(1).strip()
+        start_char = m.start(1)
+        end_char = m.end(1)
+
+        # Ignore short fragments, code blocks, or pure markdown links
+        if len(sentence) < 25 or sentence.startswith(("#", "-", "*", "|", "http")):
+            continue
+
+        has_stat = bool(_STAT_OR_METRIC_RE.search(sentence))
+        has_relation = bool(_RELATION_RE.search(sentence))
+
+        # Must have at least factual statistic or definite relation to qualify as a verifiable claim
+        if not (has_stat or has_relation):
+            continue
+
+        cat = "statistic" if has_stat else "fact"
+
+        # Compute line numbers
+        start_line = text[:start_char].count("\n") + 1
+        end_line = text[:end_char].count("\n") + 1
+
+        # Extract surrounding context passage (up to 150 chars before and after)
+        p_start = max(0, start_char - 150)
+        p_end = min(len(text), end_char + 150)
+        context_passage = text[p_start:p_end].strip()
+
+        # Defensible confidence calculation (no synthetic 0.9 constant)
+        # Base confidence: 0.50
+        conf = 0.50
+        if has_stat:
+            conf += 0.20
+        if has_relation:
+            conf += 0.10
+        if 40 <= len(sentence) <= 220:
+            conf += 0.05
+        # Weighted by source quality (scale 0.0 to 1.0)
+        conf += min(0.10, max(0.0, float(source_quality) * 0.10))
+        conf = min(0.95, round(conf, 2))
+
+        span = FactualClaimSpan(
+            claim_text=sentence,
+            category=cat,
+            start_char=start_char,
+            end_char=end_char,
+            start_line=start_line,
+            end_line=end_line,
+            context_passage=context_passage,
+            exact_quote=sentence,
+            confidence_score=conf,
+            source_id=source_id,
+        )
+        results.append(span)
+        if len(results) >= max_claims:
+            break
+
+    return results

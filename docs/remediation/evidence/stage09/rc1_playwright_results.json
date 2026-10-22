@@ -1,0 +1,173 @@
+{
+  "release_candidate": "1.0.0-rc.1",
+  "timestamp_utc": "2026-10-21T23:13:08.864327+00:00",
+  "steps": {
+    "step1_user_login": {
+      "status": "PASS",
+      "final_url": "http://127.0.0.1:64295/"
+    },
+    "step2_project_creation": {
+      "status": "PASS",
+      "orchestrator_url": "http://127.0.0.1:64295/projects/prj-46a5a3285a13437883db58d735bea911/orchestrator",
+      "project_id": "prj-46a5a3285a13437883db58d735bea911"
+    },
+    "step3_planning_and_approval": {
+      "status": "PASS",
+      "state": "READY"
+    },
+    "step4_start_execution": {
+      "status": "PASS"
+    },
+    "step5_execution_progress": {
+      "status": "PASS",
+      "pill_text": "RUNNING"
+    },
+    "step6_research_evidence": {
+      "status": "PASS",
+      "title": "Research Engine \u2014 RC1 Acceptance Project 1792624392 \u2014 Qwen Collective"
+    },
+    "step7_deliverable_listing": {
+      "status": "PASS",
+      "deliverable_id": "art-0b076fc0f1bc4100"
+    },
+    "step8_preview_and_download": {
+      "status": "PASS",
+      "bytes_downloaded": 213,
+      "checksum_sha256": "efd0cd4ced5c85ad81bf64d5c857e16c38e42abf1f18f808d2a1f1f6b4347545"
+    },
+    "step9_cross_project_reuse": {
+      "status": "PASS",
+      "target_project_id": "prj-edb450baca554f5db8b2a4606d1626b0",
+      "redirected_url": "http://127.0.0.1:64295/projects/prj-edb450baca554f5db8b2a4606d1626b0?tab=tasks"
+    },
+    "step10_knowledge_candidate_handling": {
+      "status": "PASS",
+      "candidate_record_id": "kn-0889a184d1a74aa3",
+      "verified_unverified_badge": true
+    }
+  },
+  "api_requests": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:64295/api/v1/orchestration/projects",
+      "timestamp": 1792624392.9715538
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:64295/api/v1/projects/prj-46a5a3285a13437883db58d735bea911/orchestration/plan",
+      "timestamp": 1792624393.0387828
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:64295/api/v1/projects/prj-46a5a3285a13437883db58d735bea911/orchestration/status",
+      "timestamp": 1792624396.155533
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:64295/api/v1/projects/prj-46a5a3285a13437883db58d735bea911/orchestration/plan",
+      "timestamp": 1792624396.243058
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:64295/api/v1/projects/prj-46a5a3285a13437883db58d735bea911/orchestration/artifacts",
+      "timestamp": 1792624396.2721975
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:64295/api/v1/projects/prj-46a5a3285a13437883db58d735bea911/orchestration/events?after_id=0&limit=200",
+      "timestamp": 1792624396.308167
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:64295/api/v1/projects/prj-46a5a3285a13437883db58d735bea911/orchestration/approve",
+      "timestamp": 1792624397.0922532
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:64295/api/v1/projects/prj-46a5a3285a13437883db58d735bea911/orchestration/status",
+      "timestamp": 1792624397.450378
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:64295/api/v1/projects/prj-46a5a3285a13437883db58d735bea911/orchestration/plan",
+      "timestamp": 1792624397.6893332
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:64295/api/v1/projects/prj-46a5a3285a13437883db58d735bea911/orchestration/artifacts",
+      "timestamp": 1792624397.6893332
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:64295/api/v1/projects/prj-46a5a3285a13437883db58d735bea911/orchestration/events?after_id=11&limit=200",
+      "timestamp": 1792624397.7370377
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:64295/api/v1/projects/prj-46a5a3285a13437883db58d735bea911/orchestration/start",
+      "timestamp": 1792624398.1003177
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:64295/api/v1/projects/prj-46a5a3285a13437883db58d735bea911/orchestration/status",
+      "timestamp": 1792624398.1554847
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:64295/api/v1/projects/prj-46a5a3285a13437883db58d735bea911/orchestration/plan",
+      "timestamp": 1792624398.2565188
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:64295/api/v1/projects/prj-46a5a3285a13437883db58d735bea911/orchestration/artifacts",
+      "timestamp": 1792624398.291594
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:64295/api/v1/projects/prj-46a5a3285a13437883db58d735bea911/orchestration/events?after_id=14&limit=200",
+      "timestamp": 1792624398.3062046
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:64295/api/v1/projects/prj-46a5a3285a13437883db58d735bea911/orchestration/status",
+      "timestamp": 1792624398.8499124
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:64295/api/v1/projects/prj-46a5a3285a13437883db58d735bea911/orchestration/plan",
+      "timestamp": 1792624398.933529
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:64295/api/v1/projects/prj-46a5a3285a13437883db58d735bea911/orchestration/artifacts",
+      "timestamp": 1792624398.9587493
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:64295/api/v1/projects/prj-46a5a3285a13437883db58d735bea911/orchestration/events?after_id=15&limit=200",
+      "timestamp": 1792624399.0189688
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:64295/api/v1/artifacts/art-0b076fc0f1bc4100/download?version=1",
+      "timestamp": 1792624402.2298703
+    }
+  ],
+  "screenshots": [
+    "01_login_page.png",
+    "02_dashboard_logged_in.png",
+    "03_new_project_form.png",
+    "04_orchestrator_initial.png",
+    "05_plan_approved.png",
+    "06_execution_running.png",
+    "07_execution_progress.png",
+    "08_research_evidence.png",
+    "09_deliverables_list.png",
+    "10_deliverable_detail.png",
+    "11_download_verified.png",
+    "12_cross_project_reused.png",
+    "13_knowledge_candidates.png",
+    "14_knowledge_record_detail.png"
+  ],
+  "overall_status": "PASSED"
+}

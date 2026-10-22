@@ -63,10 +63,10 @@ def test_worker_cannot_self_verify_arbitrary_metric(client, db_conn):
     idem_key = f"idem-metric-self-verify-{uuid.uuid4().hex[:6]}"
     db_conn.execute(
         """
-        INSERT INTO tasks (id, title, task_type, status, project_id, created_at, updated_at)
-        VALUES (?, 'Self Verify Task', 'test_task', 'in_progress', ?, ?, ?)
+        INSERT INTO tasks (id, title, task_type, status, assigned_worker, project_id, created_at, updated_at)
+        VALUES (?, 'Self Verify Task', 'test_task', 'in_progress', ?, ?, ?, ?)
         """,
-        (task_id, pid, now, now),
+        (task_id, node_id, pid, now, now),
     )
     db_conn.commit()
 
@@ -110,10 +110,10 @@ def test_metric_observation_invalid_checksum_rejected(client, db_conn):
     idem_key = f"idem-invalid-cs-{uuid.uuid4().hex[:6]}"
     db_conn.execute(
         """
-        INSERT INTO tasks (id, title, task_type, status, project_id, created_at, updated_at)
-        VALUES (?, 'Invalid CS Task', 'test_task', 'in_progress', ?, ?, ?)
+        INSERT INTO tasks (id, title, task_type, status, assigned_worker, project_id, created_at, updated_at)
+        VALUES (?, 'Invalid CS Task', 'test_task', 'in_progress', ?, ?, ?, ?)
         """,
-        (task_id, pid, now, now),
+        (task_id, node_id, pid, now, now),
     )
     db_conn.commit()
 
@@ -158,10 +158,10 @@ def test_metric_observation_checksum_mismatch_on_file_rejected(client, db_conn, 
     idem_key = f"idem-mismatch-cs-{uuid.uuid4().hex[:6]}"
     db_conn.execute(
         """
-        INSERT INTO tasks (id, title, task_type, status, project_id, created_at, updated_at)
-        VALUES (?, 'Mismatch CS Task', 'test_task', 'in_progress', ?, ?, ?)
+        INSERT INTO tasks (id, title, task_type, status, assigned_worker, project_id, created_at, updated_at)
+        VALUES (?, 'Mismatch CS Task', 'test_task', 'in_progress', ?, ?, ?, ?)
         """,
-        (task_id, pid, now, now),
+        (task_id, node_id, pid, now, now),
     )
     db_conn.commit()
 
@@ -211,10 +211,10 @@ def test_metric_observation_valid_evidence_and_checksum_verified(client, db_conn
     idem_key = f"idem-valid-cs-{uuid.uuid4().hex[:6]}"
     db_conn.execute(
         """
-        INSERT INTO tasks (id, title, task_type, status, project_id, created_at, updated_at)
-        VALUES (?, 'Valid CS Task', 'test_task', 'in_progress', ?, ?, ?)
+        INSERT INTO tasks (id, title, task_type, status, assigned_worker, project_id, created_at, updated_at)
+        VALUES (?, 'Valid CS Task', 'test_task', 'in_progress', ?, ?, ?, ?)
         """,
-        (task_id, pid, now, now),
+        (task_id, node_id, pid, now, now),
     )
     db_conn.commit()
 
@@ -256,11 +256,11 @@ def test_metric_observation_deduplication(client, db_conn):
     task_id_2 = f"task-dedup-2-{uuid.uuid4().hex[:6]}"
     db_conn.execute(
         """
-        INSERT INTO tasks (id, title, task_type, status, project_id, created_at, updated_at)
-        VALUES (?, 'Dedup Task 1', 'test_task', 'in_progress', ?, ?, ?),
-               (?, 'Dedup Task 2', 'test_task', 'in_progress', ?, ?, ?)
+        INSERT INTO tasks (id, title, task_type, status, assigned_worker, project_id, created_at, updated_at)
+        VALUES (?, 'Dedup Task 1', 'test_task', 'in_progress', ?, ?, ?, ?),
+               (?, 'Dedup Task 2', 'test_task', 'in_progress', ?, ?, ?, ?)
         """,
-        (task_id_1, pid, now, now, task_id_2, pid, now, now),
+        (task_id_1, node_id, pid, now, now, task_id_2, node_id, pid, now, now),
     )
     db_conn.commit()
 
@@ -370,8 +370,8 @@ def test_shortcut_a_valid_checksum_without_retrievable_evidence_is_unverified(cl
     task_id = f"task-shortcut-a-{uuid.uuid4().hex[:6]}"
     idem_key = f"idem-shortcut-a-{uuid.uuid4().hex[:6]}"
     db_conn.execute(
-        "INSERT INTO tasks (id, title, task_type, status, project_id, created_at, updated_at) VALUES (?, 'Shortcut A Task', 'test_task', 'in_progress', ?, ?, ?)",
-        (task_id, pid, now, now),
+        "INSERT INTO tasks (id, title, task_type, status, assigned_worker, project_id, created_at, updated_at) VALUES (?, 'Shortcut A Task', 'test_task', 'in_progress', ?, ?, ?, ?)",
+        (task_id, node_id, pid, now, now),
     )
     db_conn.commit()
 
@@ -413,8 +413,8 @@ def test_shortcut_b_deliverable_association_without_evidence_is_unverified(clien
     task_id = f"task-shortcut-b-{uuid.uuid4().hex[:6]}"
     idem_key = f"idem-shortcut-b-{uuid.uuid4().hex[:6]}"
     db_conn.execute(
-        "INSERT INTO tasks (id, title, task_type, status, project_id, deliverable_id, created_at, updated_at) VALUES (?, 'Shortcut B Task', 'test_task', 'in_progress', ?, ?, ?, ?)",
-        (task_id, pid, deliv_id, now, now),
+        "INSERT INTO tasks (id, title, task_type, status, assigned_worker, project_id, deliverable_id, created_at, updated_at) VALUES (?, 'Shortcut B Task', 'test_task', 'in_progress', ?, ?, ?, ?, ?)",
+        (task_id, node_id, pid, deliv_id, now, now),
     )
     db_conn.commit()
 
@@ -455,8 +455,8 @@ def test_real_artifact_upload_and_verification_lifecycle(client, db_conn):
     task_id = f"task-art-cycle-{uuid.uuid4().hex[:6]}"
     idem_key = f"idem-art-cycle-{uuid.uuid4().hex[:6]}"
     db_conn.execute(
-        "INSERT INTO tasks (id, title, task_type, status, project_id, deliverable_id, created_at, updated_at) VALUES (?, 'Artifact Task', 'test_task', 'in_progress', ?, ?, ?, ?)",
-        (task_id, pid, deliv_id, now, now),
+        "INSERT INTO tasks (id, title, task_type, status, assigned_worker, project_id, deliverable_id, created_at, updated_at) VALUES (?, 'Artifact Task', 'test_task', 'in_progress', ?, ?, ?, ?, ?)",
+        (task_id, node_id, pid, deliv_id, now, now),
     )
     db_conn.commit()
 

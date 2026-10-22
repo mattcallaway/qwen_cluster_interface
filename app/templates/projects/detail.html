@@ -400,6 +400,8 @@
         <td style="font-size:0.8rem; max-width:240px;">
           {% if t.deliverable_id %}
             <div><strong>Deliverable:</strong> {{ deliverable_names.get(t.deliverable_id, t.deliverable_id) }}</div>
+          {% elif t.task_type == 'artifact_reuse' %}
+            <div><strong>Reuse Action:</strong> <span class="badge badge-role" style="font-size:0.7rem;">Artifact Reuse</span></div>
           {% endif %}
           <div style="margin-top:4px;"><strong>Prerequisites:</strong>
             {% if t.dependencies %}
@@ -428,7 +430,15 @@
           </details>
           {% endif %}
         </td>
-        <td style="font-size:0.82rem; max-width:260px;">{{ t.purpose or '—' }}<div style="color:var(--text-muted);">{{ t.expected_output or '' }}</div></td>
+        <td style="font-size:0.82rem; max-width:260px;">
+          {{ t.purpose or t.description or '—' }}
+          <div style="color:var(--text-muted);">{{ t.expected_output or '' }}</div>
+          {% if t.task_type == 'artifact_reuse' %}
+            <div style="margin-top:4px;">
+              <span class="badge badge-primary" style="font-size:0.7rem;">Input Artifact Linked</span>
+            </div>
+          {% endif %}
+        </td>
         <td style="font-size:0.8rem; max-width:240px;">
           {% if t.status in ('draft','awaiting_approval') %}
             {% if t.problems %}<ul style="margin:0; padding-left:16px; color:#b91c1c;">{% for pr in t.problems %}<li>{{ pr }}</li>{% endfor %}</ul>
@@ -556,13 +566,52 @@
             <div><strong>Artifacts:</strong> <span style="white-space:pre-wrap;">{{ d.artifact_references }}</span></div>
           {% else %}<span style="color:var(--text-muted);">No artifacts submitted</span>{% endif %}
           {% if d.primary_artifact_id %}
-            <div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">
+            <div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
               <a href="/deliverables/{{ d.primary_artifact_id }}" class="btn btn-secondary btn-sm" style="font-size:0.72rem; padding:3px 8px; text-decoration:none;" title="Open and Preview Deliverable">
                 Open / Preview
               </a>
               <a href="/api/v1/artifacts/{{ d.primary_artifact_id }}/download" class="btn btn-primary btn-sm" style="font-size:0.72rem; padding:3px 8px; text-decoration:none;" title="Download exact file">
                 Download
               </a>
+              <details class="dropdown" style="position:relative; display:inline-block;">
+                <summary class="btn btn-secondary btn-sm" style="font-size:0.72rem; padding:3px 8px; cursor:pointer;" title="Reuse deliverable in current or other project">
+                  Reuse ▾
+                </summary>
+                <div style="position:absolute; left:0; top:100%; margin-top:4px; width:280px; background:white; border:1px solid var(--border-color, #e5e7eb); border-radius:6px; box-shadow:0 10px 15px -3px rgba(0,0,0,0.1); padding:10px; z-index:50; text-align:left;">
+                  <div style="font-weight:600; font-size:0.8rem; margin-bottom:2px; color:var(--text-color, #111827);">Reuse Deliverable</div>
+                  <div style="font-size:0.72rem; color:var(--text-muted, #6b7280); margin-bottom:8px;">
+                    Artifact: <strong>{{ d.name }}</strong> (ID: {{ d.primary_artifact_id[:8] }})
+                  </div>
+                  <form action="/deliverables/{{ d.primary_artifact_id }}/reuse" method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <div class="form-group" style="margin-bottom:6px;">
+                      <label style="font-size:0.72rem; color:var(--text-muted, #6b7280); display:block; margin-bottom:2px;">Destination Project</label>
+                      <select name="target_project_id" class="form-control" style="font-size:0.75rem; width:100%; padding:3px 6px;">
+                        <option value="{{ project.id }}" selected>{{ project.name }} (Current Project)</option>
+                        {% for cp in candidate_parents %}
+                          <option value="{{ cp.id }}">{{ cp.name }}</option>
+                        {% endfor %}
+                      </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom:6px;">
+                      <label style="font-size:0.72rem; color:var(--text-muted, #6b7280); display:block; margin-bottom:2px;">Action</label>
+                      <select name="action_type" class="form-control" style="font-size:0.75rem; width:100%; padding:3px 6px;">
+                        <option value="analyze">Analyze Content</option>
+                        <option value="revise">Revise Deliverable</option>
+                        <option value="expand">Expand Report</option>
+                        <option value="summarize">Summarize Document</option>
+                        <option value="convert">Convert Format</option>
+                        <option value="extract_data">Extract Structured Data</option>
+                      </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom:8px;">
+                      <label style="font-size:0.72rem; color:var(--text-muted, #6b7280); display:block; margin-bottom:2px;">Instructions (Optional)</label>
+                      <input type="text" name="instructions" placeholder="e.g. Update findings with latest data" class="form-control" style="font-size:0.75rem; width:100%; padding:3px 6px;">
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-sm" style="width:100%; font-size:0.75rem; padding:4px 8px;">Confirm Reuse</button>
+                  </form>
+                </div>
+              </details>
             </div>
           {% endif %}
           {% if d.verification_results %}
@@ -687,7 +736,46 @@
         </td>
         <td style="text-align:right; white-space:nowrap;">
           <a href="/deliverables/{{ art.id }}" class="btn btn-secondary btn-sm" style="font-size:0.75rem; padding:2px 8px; margin-right:4px;">Open</a>
-          <a href="/api/v1/artifacts/{{ art.id }}/download" class="btn btn-primary btn-sm" style="font-size:0.75rem; padding:2px 8px;">Download</a>
+          <a href="/api/v1/artifacts/{{ art.id }}/download" class="btn btn-primary btn-sm" style="font-size:0.75rem; padding:2px 8px; margin-right:4px;">Download</a>
+          <details class="dropdown" style="position:relative; display:inline-block; text-align:left;">
+            <summary class="btn btn-secondary btn-sm" style="font-size:0.75rem; padding:2px 8px; cursor:pointer;" title="Reuse artifact in project">
+              Reuse ▾
+            </summary>
+            <div style="position:absolute; right:0; top:100%; margin-top:4px; width:280px; background:white; border:1px solid var(--border-color, #e5e7eb); border-radius:6px; box-shadow:0 10px 15px -3px rgba(0,0,0,0.1); padding:10px; z-index:50;">
+              <div style="font-weight:600; font-size:0.8rem; margin-bottom:2px; color:var(--text-color, #111827);">Reuse Output Asset</div>
+              <div style="font-size:0.72rem; color:var(--text-muted, #6b7280); margin-bottom:8px;">
+                Artifact: <strong>{{ art.display_name or art.filename }}</strong> (v{{ art.version or 1 }})
+              </div>
+              <form action="/deliverables/{{ art.id }}/reuse" method="post">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="form-group" style="margin-bottom:6px;">
+                  <label style="font-size:0.72rem; color:var(--text-muted, #6b7280); display:block; margin-bottom:2px;">Destination Project</label>
+                  <select name="target_project_id" class="form-control" style="font-size:0.75rem; width:100%; padding:3px 6px;">
+                    <option value="{{ project.id }}" selected>{{ project.name }} (Current Project)</option>
+                    {% for cp in candidate_parents %}
+                      <option value="{{ cp.id }}">{{ cp.name }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="form-group" style="margin-bottom:6px;">
+                  <label style="font-size:0.72rem; color:var(--text-muted, #6b7280); display:block; margin-bottom:2px;">Action</label>
+                  <select name="action_type" class="form-control" style="font-size:0.75rem; width:100%; padding:3px 6px;">
+                    <option value="analyze">Analyze Content</option>
+                    <option value="revise">Revise Deliverable</option>
+                    <option value="expand">Expand Report</option>
+                    <option value="summarize">Summarize Document</option>
+                    <option value="convert">Convert Format</option>
+                    <option value="extract_data">Extract Structured Data</option>
+                  </select>
+                </div>
+                <div class="form-group" style="margin-bottom:8px;">
+                  <label style="font-size:0.72rem; color:var(--text-muted, #6b7280); display:block; margin-bottom:2px;">Instructions (Optional)</label>
+                  <input type="text" name="instructions" placeholder="e.g. Update findings with latest data" class="form-control" style="font-size:0.75rem; width:100%; padding:3px 6px;">
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm" style="width:100%; font-size:0.75rem; padding:4px 8px;">Confirm Reuse</button>
+              </form>
+            </div>
+          </details>
         </td>
       </tr>
       {% endfor %}

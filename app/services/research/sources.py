@@ -62,6 +62,8 @@ class SourceLibrary:
         search_query: str = "",
         search_provider: str = "",
         metadata: Optional[Dict[str, Any]] = None,
+        research_run_id: Optional[str] = None,
+        session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Convenience method to ingest text directly into the source library."""
         extracted = ExtractedDocument(
@@ -71,7 +73,7 @@ class SourceLibrary:
             content_type=content_type,
             content_hash=compute_content_hash(raw_content or extracted_text.encode("utf-8")),
         )
-        return self.record_source(project_id, url, extracted)
+        return self.record_source(project_id, url, extracted, research_run_id=research_run_id, session_id=session_id)
 
     def record_source(
         self,
@@ -80,6 +82,8 @@ class SourceLibrary:
         extracted: ExtractedDocument,
         retrieval_method: str = "http",
         status: str = "fetched",
+        research_run_id: Optional[str] = None,
+        session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Record a newly retrieved and extracted source in the project source library.
@@ -118,12 +122,12 @@ class SourceLibrary:
                         """
                         INSERT INTO research_source_versions (
                             id, source_id, version_number, content_hash,
-                            content_length_bytes, storage_path, retrieved_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                            content_length_bytes, storage_path, retrieved_at, session_id, research_run_id
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             f"sver-{uuid.uuid4().hex[:12]}", source_id, new_version, content_hash,
-                            len(extracted.clean_text.encode("utf-8")), str(v_file), now,
+                            len(extracted.clean_text.encode("utf-8")), str(v_file), now, session_id, research_run_id
                         ),
                     )
 
@@ -141,7 +145,9 @@ class SourceLibrary:
                             status = ?,
                             quality_score = ?,
                             reliability_assessment_json = ?,
-                            updated_at = ?
+                            updated_at = ?,
+                            session_id = COALESCE(?, session_id),
+                            research_run_id = COALESCE(research_run_id, ?)
                         WHERE id = ?
                         """,
                         (
@@ -149,7 +155,7 @@ class SourceLibrary:
                             extracted.publication_date, extracted.modified_date,
                             content_hash, len(extracted.clean_text.encode("utf-8")),
                             str(v_file), status, quality_score, json.dumps(reliability_assessment),
-                            now, source_id,
+                            now, session_id, research_run_id, source_id,
                         ),
                     )
 
@@ -175,6 +181,25 @@ class SourceLibrary:
                             extracted.word_count, now,
                         ),
                     )
+                else:
+                    # Content is identical: record authorized reuse in subsequent session
+                    if session_id:
+                        v_row = conn.execute(
+                            "SELECT id, version_number FROM research_source_versions WHERE source_id = ? ORDER BY version_number DESC LIMIT 1",
+                            (source_id,)
+                        ).fetchone()
+                        vid = v_row[0] if v_row else None
+                        self.record_source_reuse(
+                            project_id=project_id,
+                            research_session_id=session_id,
+                            source_id=source_id,
+                            source_version_id=vid,
+                            orchestration_run_id=research_run_id,
+                            reuse_reason="Identical content verified fresh in subsequent session",
+                            verified_fresh=True,
+                            conn=conn,
+                        )
+
                 conn.commit()
                 return self.get_source(project_id, source_id)
 
@@ -187,15 +212,15 @@ class SourceLibrary:
             conn.execute(
                 """
                 INSERT INTO research_sources (
-                    id, project_id, canonical_url, original_url, title, author,
+                    id, project_id, research_run_id, session_id, canonical_url, original_url, title, author,
                     publisher, publication_date, modified_date, retrieved_at,
                     content_type, content_hash, content_length_bytes, storage_path,
                     retrieval_method, status, quality_score, reliability_assessment_json,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    source_id, project_id, canon_url, original_url, extracted.title,
+                    source_id, project_id, research_run_id, session_id, canon_url, original_url, extracted.title,
                     extracted.author, extracted.publisher, extracted.publication_date,
                     extracted.modified_date, now, extracted.content_type, content_hash,
                     len(extracted.clean_text.encode("utf-8")), str(storage_file),
@@ -209,12 +234,12 @@ class SourceLibrary:
                 """
                 INSERT INTO research_source_versions (
                     id, source_id, version_number, content_hash,
-                    content_length_bytes, storage_path, retrieved_at
-                ) VALUES (?, ?, 1, ?, ?, ?, ?)
+                    content_length_bytes, storage_path, retrieved_at, session_id, research_run_id
+                ) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     f"sver-{uuid.uuid4().hex[:12]}", source_id, content_hash,
-                    len(extracted.clean_text.encode("utf-8")), str(storage_file), now,
+                    len(extracted.clean_text.encode("utf-8")), str(storage_file), now, session_id, research_run_id
                 ),
             )
 
@@ -274,13 +299,57 @@ class SourceLibrary:
         finally:
             conn.close()
 
-    def list_sources(self, project_id: str, limit: int = 100) -> List[Dict[str, Any]]:
+    def get_source_versions(self, project_id: str, source_id: str) -> List[Dict[str, Any]]:
+        """Returns all immutable version records for a given research source."""
         conn = get_db_connection()
         try:
             rows = conn.execute(
-                "SELECT * FROM research_sources WHERE project_id = ? ORDER BY quality_score DESC, retrieved_at DESC LIMIT ?",
-                (project_id, limit),
+                """SELECT * FROM research_source_versions WHERE source_id = ?
+                   ORDER BY version_number ASC""",
+                (source_id,),
             ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    def list_sources(
+        self,
+        project_id: str,
+        limit: int = 100,
+        research_run_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        conn = get_db_connection()
+        try:
+            if research_run_id:
+                # Ensure research_source_reuses table exists
+                conn.execute(
+                    """CREATE TABLE IF NOT EXISTS research_source_reuses (
+                        id TEXT PRIMARY KEY,
+                        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                        source_id TEXT NOT NULL REFERENCES research_sources(id) ON DELETE CASCADE,
+                        origin_run_id TEXT,
+                        target_run_id TEXT NOT NULL,
+                        authorized_by TEXT NOT NULL,
+                        authorization_note TEXT NOT NULL DEFAULT '',
+                        authorized_at TEXT NOT NULL,
+                        UNIQUE (source_id, target_run_id)
+                    )"""
+                )
+                rows = conn.execute(
+                    """SELECT * FROM research_sources
+                       WHERE project_id = ?
+                         AND (
+                             research_run_id = ?
+                             OR id IN (SELECT source_id FROM research_source_reuses WHERE project_id = ? AND target_run_id = ?)
+                         )
+                       ORDER BY quality_score DESC, retrieved_at DESC LIMIT ?""",
+                    (project_id, research_run_id, project_id, research_run_id, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM research_sources WHERE project_id = ? ORDER BY quality_score DESC, retrieved_at DESC LIMIT ?",
+                    (project_id, limit),
+                ).fetchall()
             out = []
             for r in rows:
                 d = dict(r)
@@ -289,6 +358,69 @@ class SourceLibrary:
                 d["extracted_text"] = ext["clean_text"] if ext else ""
                 out.append(d)
             return out
+        finally:
+            conn.close()
+
+    def reuse_source_in_run(
+        self,
+        project_id: str,
+        source_id: str,
+        target_run_id: str,
+        authorized_by: str = "operator",
+        notes: str = "",
+    ) -> Dict[str, Any]:
+        """
+        Explicitly authorizes the reuse of an existing source in a new research run (Finding F-09).
+        
+        Guarantees:
+        1. The original source record and its historical provenance/run-id remain strictly intact.
+        2. Authorized reuse is auditable via research_source_reuses.
+        3. Prevents implicit promotion or silent reattribution across runs.
+        """
+        conn = get_db_connection()
+        try:
+            # Ensure reuse ledger exists
+            conn.execute(
+                """CREATE TABLE IF NOT EXISTS research_source_reuses (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                    source_id TEXT NOT NULL REFERENCES research_sources(id) ON DELETE CASCADE,
+                    origin_run_id TEXT,
+                    target_run_id TEXT NOT NULL,
+                    authorized_by TEXT NOT NULL,
+                    authorization_note TEXT NOT NULL DEFAULT '',
+                    authorized_at TEXT NOT NULL,
+                    UNIQUE (source_id, target_run_id)
+                )"""
+            )
+            src = conn.execute(
+                "SELECT * FROM research_sources WHERE project_id = ? AND id = ?",
+                (project_id, source_id),
+            ).fetchone()
+            if not src:
+                raise ValueError(f"Source '{source_id}' does not exist under project '{project_id}'.")
+
+            origin_run_id = src["research_run_id"]
+            now = _now_iso()
+            reuse_id = f"reuse-{uuid.uuid4().hex[:12]}"
+            conn.execute(
+                """INSERT OR REPLACE INTO research_source_reuses (
+                    id, project_id, source_id, origin_run_id, target_run_id,
+                    authorized_by, authorization_note, authorized_at, reused_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (reuse_id, project_id, source_id, origin_run_id, target_run_id, authorized_by, notes, now, now),
+            )
+            conn.commit()
+            return {
+                "id": reuse_id,
+                "project_id": project_id,
+                "source_id": source_id,
+                "origin_run_id": origin_run_id,
+                "target_run_id": target_run_id,
+                "authorized_by": authorized_by,
+                "authorized_at": now,
+                "status": "authorized",
+            }
         finally:
             conn.close()
 
@@ -326,3 +458,95 @@ class SourceLibrary:
 
         score = min(1.0, round(score, 2))
         return score, {"score": score, "factors": reasons, "domain": host}
+
+    def record_source_reuse(
+        self,
+        project_id: str,
+        research_session_id: str,
+        source_id: str,
+        orchestration_run_id: Optional[str] = None,
+        source_version_id: Optional[str] = None,
+        target_task_id: Optional[str] = None,
+        target_stage_phase: Optional[str] = None,
+        reuse_reason: str = "Authorized source reuse",
+        verified_fresh: bool = True,
+        conn: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """Record an explicit authorized source reuse in research_source_reuses."""
+        reuse_id = f"reu-{uuid.uuid4().hex[:12]}"
+        now = _now_iso()
+        own_conn = conn is None
+        c = get_db_connection() if own_conn else conn
+        try:
+            c.execute(
+                """
+                INSERT INTO research_source_reuses (
+                    id, project_id, orchestration_run_id, research_session_id,
+                    source_id, source_version_id, target_task_id, target_stage_phase,
+                    reuse_reason, verified_fresh, reused_at, target_run_id, origin_run_id,
+                    authorized_by, authorization_note, authorized_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    reuse_id, project_id, orchestration_run_id, research_session_id,
+                    source_id, source_version_id, target_task_id, target_stage_phase,
+                    reuse_reason, 1 if verified_fresh else 0, now, orchestration_run_id,
+                    None, "operator", reuse_reason, now
+                ),
+            )
+            if own_conn:
+                c.commit()
+            return {
+                "id": reuse_id,
+                "project_id": project_id,
+                "orchestration_run_id": orchestration_run_id,
+                "research_session_id": research_session_id,
+                "source_id": source_id,
+                "source_version_id": source_version_id,
+                "target_task_id": target_task_id,
+                "target_stage_phase": target_stage_phase,
+                "reuse_reason": reuse_reason,
+                "verified_fresh": verified_fresh,
+                "reused_at": now,
+            }
+        finally:
+            if own_conn:
+                c.close()
+
+    def list_source_reuses(
+        self,
+        project_id: str,
+        orchestration_run_id: Optional[str] = None,
+        research_session_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """List authorized source reuses for a project, optionally filtered by run or session."""
+        conn = get_db_connection()
+        try:
+            sql = "SELECT * FROM research_source_reuses WHERE project_id = ?"
+            params: List[Any] = [project_id]
+            if orchestration_run_id:
+                sql += " AND orchestration_run_id = ?"
+                params.append(orchestration_run_id)
+            if research_session_id:
+                sql += " AND research_session_id = ?"
+                params.append(research_session_id)
+            sql += " ORDER BY reused_at DESC"
+            rows = conn.execute(sql, tuple(params)).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+
+# Module-level convenience functions
+def record_source(project_id: str, original_url: str, extracted: Any, **kwargs) -> Dict[str, Any]:
+    return SourceLibrary().record_source(project_id, original_url, extracted, **kwargs)
+
+def add_source(project_id: str, url: str, **kwargs) -> Dict[str, Any]:
+    return SourceLibrary().add_source(project_id, url, **kwargs)
+
+def record_source_reuse(project_id: str, research_session_id: str, source_id: str, **kwargs) -> Dict[str, Any]:
+    return SourceLibrary().record_source_reuse(project_id, research_session_id, source_id, **kwargs)
+
+def list_source_reuses(project_id: str, **kwargs) -> List[Dict[str, Any]]:
+    return SourceLibrary().list_source_reuses(project_id, **kwargs)
+

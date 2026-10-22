@@ -219,6 +219,12 @@ def sync_from_existing_machines_and_vps() -> None:
                     m_health, m["last_checked_at"], m["last_checked_at"], m["notes"] or "", m["is_enabled"], now, now
                 ))
                 ensure_default_capabilities(m_id)
+            else:
+                conn.execute("""
+                    UPDATE infrastructure_nodes SET
+                        is_enabled = ?, updated_at = ?
+                    WHERE id = ?
+                """, (m["is_enabled"], now, m_id))
 
         # 3. Sync from infrastructure_nodes back to machines table
         infra_nodes = conn.execute("SELECT * FROM infrastructure_nodes WHERE id <> 'controller-local'").fetchall()
@@ -246,9 +252,9 @@ def sync_from_existing_machines_and_vps() -> None:
                 conn.execute("""
                     UPDATE machines SET
                         display_name = ?, connection_status = ?, last_checked_at = ?,
-                        ram_avail_mb = ?, updated_at = ?
+                        ram_avail_mb = ?, is_enabled = ?, updated_at = ?
                     WHERE id = ?
-                """, (node["name"], node["health_status"], node["last_contact_at"], node["available_ram_mb"], now, node["id"]))
+                """, (node["name"], node["health_status"], node["last_contact_at"], node["available_ram_mb"], node["is_enabled"], now, node["id"]))
 
 
 def register_or_update_node(

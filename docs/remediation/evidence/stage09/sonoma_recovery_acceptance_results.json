@@ -1,0 +1,57 @@
+{
+  "timestamp": "2026-10-22T02:52:22.658328+00:00",
+  "stages": {
+    "stage1_security": {
+      "status": "PASSED",
+      "unauth_download_code": 401,
+      "unauth_metadata_code": 401,
+      "unauth_preview_code": 401,
+      "cross_user_code": 403,
+      "authorized_code": 200,
+      "safe_preview_rendered": true,
+      "safe_ui_preview_rendered": true
+    },
+    "stage2_query_generation": {
+      "status": "PASSED",
+      "query_count": 10,
+      "queries": [
+        "Sonoma County Water Security Groundwater depletion watershed levels decommissioning",
+        "Sonoma County Water Security depletion watershed levels official data statistics",
+        "Sonoma County Water Security depletion watershed levels risks challenges",
+        "Sonoma County Water Security depletion watershed levels plan policy recommendations",
+        "Sonoma County Water Security depletion watershed levels funding costs",
+        "Sonoma County Water Security depletion watershed levels report pdf",
+        "Groundwater depletion watershed levels",
+        "Russian River depletion watershed levels",
+        "Lake Mendocino depletion watershed levels",
+        "Sonoma County Water Security decommissioning usage"
+      ],
+      "retains_entities": true,
+      "zero_topic_blind_queries": true
+    },
+    "stage3_planning": {
+      "status": "PASSED",
+      "deliverable_count": 5,
+      "deliverables": [
+        "Executive Summary",
+        "Groundwater Analysis",
+        "Reservoir Status & Potter Valley Project",
+        "Agricultural Impacts",
+        "Policy Recommendations"
+      ],
+      "task_count": 9,
+      "has_model_inference_task": true,
+      "validation_passed": true
+    },
+    "stage4_execution": {
+      "status": "PASSED",
+      "deliverables_persisted": 5,
+      "deliverables_accepted": 5,
+      "sources_ingested": 3,
+      "claims_corroborated": 4,
+      "zero_uncited_claims": true,
+      "has_numeric_citations": true
+    }
+  },
+  "summary": "SUCCESS"
+}

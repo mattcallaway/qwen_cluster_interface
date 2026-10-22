@@ -1,0 +1,15 @@
+{
+  "timestamp_utc": "2026-10-20T21:20:52Z",
+  "backup_location": "data/backups/stage06_preflight_backup",
+  "db_backup_file": "data/backups/stage06_preflight_backup/qwen_collective.db.preflight.db",
+  "db_backup_bytes": 40312832,
+  "db_schema_version": 15,
+  "tables_count": 98,
+  "orchestration_runs_count": 9,
+  "research_sources_count": 29,
+  "test_restore_verified": true,
+  "baseline_tests_collected": 634,
+  "baseline_tests_passed": 633,
+  "baseline_tests_failed": 1,
+  "preexisting_failure": "tests/test_web_routes.py::test_knowledge_page"
+}

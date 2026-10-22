@@ -1,0 +1,7 @@
+{
+  "command": "C:\\Users\\Matt C\\.gemini\\antigravity-ide\\scratch\\qwen-collective\\.venv\\Scripts\\python.exe -m pytest -v --junitxml=C:\\Users\\Matt C\\.gemini\\antigravity-ide\\scratch\\qwen-collective\\docs\\remediation\\evidence\\junit_report.xml",
+  "exit_code": 0,
+  "start_time_utc": "2026-10-21T17:56:52.911447+00:00",
+  "end_time_utc": "2026-10-21T18:01:19.196605+00:00",
+  "duration_seconds": 266.29
+}

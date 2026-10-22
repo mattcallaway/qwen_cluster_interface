@@ -20,7 +20,7 @@ def now():
     return datetime.now(timezone.utc).isoformat()
 
 
-def register_node(node_id, role="vps_worker", models=None, runtimes=None, token=True, health="online", ram=2000, enabled=1):
+def register_node(node_id, role="vps_worker", models=None, runtimes=None, token=True, health="online", ram=2000, enabled=1, verified=True):
     runtimes = runtimes if runtimes is not None else (["python-3.12", "ollama"] if models else ["python-3.12"])
     with db_transaction() as c:
         c.execute("DELETE FROM worker_auth_tokens WHERE node_id=?", (node_id,))
@@ -35,6 +35,30 @@ def register_node(node_id, role="vps_worker", models=None, runtimes=None, token=
         if token:
             c.execute("INSERT INTO worker_auth_tokens (id, node_id, token_hash, token_prefix, created_at, revoked) VALUES (?,?,?,?,?,0)",
                       (uuid.uuid4().hex, node_id, uuid.uuid4().hex, "tst", now()))
+        cap_id = f"cap-{node_id}-inference"
+        if verified and models:
+            c.execute("""INSERT INTO infrastructure_capabilities (
+                id, node_id, name, category, required_software, discovery_status,
+                discovery_method, verification_status, verification_method, last_verified_at,
+                verification_error, created_at, updated_at
+            ) VALUES (?, ?, 'model_inference', 'ai_inference', 'ollama', 'discovered', 'agent_probe',
+                      'verified', 'health_check', ?, '', ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                verification_status = excluded.verification_status,
+                last_verified_at = excluded.last_verified_at,
+                updated_at = excluded.updated_at""",
+                (cap_id, node_id, now(), now(), now())
+            )
+            c.execute("DELETE FROM infrastructure_verifications WHERE node_id=? AND verification_test='model_inference_probe'", (node_id,))
+            c.execute(
+                """INSERT INTO infrastructure_verifications (
+                    id, capability_id, node_id, verification_test, result_status, details, verified_at, verified_by
+                ) VALUES (?, ?, ?, 'model_inference_probe', 'passed', ?, ?, 'test_harness')""",
+                (f"verif-{uuid.uuid4().hex[:8]}", cap_id, node_id, json.dumps({"models": models}), now())
+            )
+        elif not verified:
+            c.execute("DELETE FROM infrastructure_verifications WHERE node_id=? AND verification_test='model_inference_probe'", (node_id,))
+            c.execute("UPDATE infrastructure_capabilities SET verification_status='unverified' WHERE node_id=?", (node_id,))
 
 
 def set_health(node_id, health="online", age_seconds=0):
@@ -61,6 +85,8 @@ def restore_nodes():
         c.execute("UPDATE infrastructure_nodes SET is_enabled=0 WHERE id LIKE 't-%'")
         for nid in list(_disabled_by_us):
             c.execute("UPDATE infrastructure_nodes SET is_enabled=1 WHERE id=?", (nid,))
+        c.execute("UPDATE worker_task_leases SET status='completed' WHERE status IN ('leased', 'active') AND worker_id LIKE 't-%'")
+        c.execute("UPDATE tasks SET status='cancelled' WHERE status IN ('queued', 'in_progress', 'running', 'awaiting_approval') AND (assigned_worker LIKE 't-%' OR assigned_worker IS NULL)")
     _disabled_by_us.clear()
 
 

@@ -129,6 +129,7 @@ def _list_s(v: Any, limit: int = 20, each: int = 300) -> List[str]:
 
 
 DELIVERABLE_TYPE_ALIASES = {
+    "doc": "document", "docs": "document",
     "response": "document", "text": "document", "summary": "document",
     "confirmation": "document", "file": "document", "plan": "document",
     "channel": "other", "service": "other", "deployment": "software_artifact",
@@ -152,72 +153,48 @@ def normalize_plan(plan: Dict[str, Any], nodes: Optional[List[Dict[str, Any]]] =
         "paths": [], "tasks": [], "deliverables": [],
         "risks": [], "approval_gates": [],
     }
-    for p in (plan.get("paths") or [])[:4] if isinstance(plan.get("paths"), list) else []:
+    for p in (plan.get("paths") or []) if isinstance(plan.get("paths"), list) else []:
         if not isinstance(p, dict):
             continue
         stages = []
-        for s in (p.get("stages") or [])[:MAX_STAGES + 2] if isinstance(p.get("stages"), list) else []:
+        for s in (p.get("stages") or []) if isinstance(p.get("stages"), list) else []:
             if isinstance(s, dict):
-                stages.append({"key": _s(s.get("key"), 40), "name": _s(s.get("name"), 120),
+                stages.append({"key": _s(s.get("key"), 200), "name": _s(s.get("name"), 200),
                                "objective": _s(s.get("objective"))})
-        out["paths"].append({"key": _s(p.get("key"), 40), "name": _s(p.get("name"), 120),
+        out["paths"].append({"key": _s(p.get("key"), 200), "name": _s(p.get("name"), 200),
                              "rationale": _s(p.get("rationale")), "stages": stages})
-    for t in (plan.get("tasks") or [])[:MAX_TASKS + 5] if isinstance(plan.get("tasks"), list) else []:
+    for t in (plan.get("tasks") or []) if isinstance(plan.get("tasks"), list) else []:
         if not isinstance(t, dict):
             continue
-        task_key = _s(t.get("key"), 40)
-        act = t.get("action") if isinstance(t.get("action"), dict) else {}
+        task_key = _s(t.get("key"), 200)
+        act = dict(t.get("action")) if isinstance(t.get("action"), dict) else {}
         if not act.get("type"):
             # Model may put action_type at task root, or as a string in 'action'
             cand_type = t.get("action_type") or t.get("type") or (t.get("action") if isinstance(t.get("action"), str) else None)
             if cand_type in ACTION_TYPES:
                 act["type"] = cand_type
-            elif t.get("script_id") or "health" in (t.get("title") or "").lower() or "collect" in (t.get("title") or "").lower():
+            elif t.get("script_id"):
                 act["type"] = "library_script"
-                act["script_id"] = t.get("script_id") or "sys_health_basic"
-            elif t.get("step") or "report" in (t.get("title") or "").lower() or "assemble" in (t.get("title") or "").lower():
+                act["script_id"] = t.get("script_id")
+            elif t.get("step"):
                 act["type"] = "controller_step"
-                act["step"] = t.get("step") or "assemble_report"
-            else:
+                act["step"] = t.get("step")
+            elif t.get("instruction"):
                 act["type"] = "inference"
-                if not act.get("instruction"):
-                    act["instruction"] = _s(t.get("description")) or f"Analyze task {_s(t.get('title'))}"
-                if not act.get("max_tokens"):
-                    act["max_tokens"] = 200
+                act["instruction"] = _s(t.get("instruction"))
 
-        # If action is library_script but missing script_id, default to sys_health_basic
-        if act.get("type") == "library_script" and not act.get("script_id"):
-            act["script_id"] = t.get("script_id") or "sys_health_basic"
-
-        # If action is controller_step but missing step, default to assemble_report
-        if act.get("type") == "controller_step" and not act.get("step"):
-            act["step"] = "assemble_report"
-
-        # If action is inference, ensure instruction and max_tokens
-        if act.get("type") == "inference":
-            if not act.get("instruction"):
-                act["instruction"] = _s(t.get("description")) or _s(t.get("title")) or "Perform analysis."
-            if not isinstance(act.get("max_tokens"), int) or act.get("max_tokens", 0) <= 0:
-                act["max_tokens"] = 200
-
-        # Sanitize action inputs: strip self-references
+        # Preserve declared action inputs verbatim without truncation or discarding
         if isinstance(act.get("inputs"), list):
-            act["inputs"] = [_s(inp, 40) for inp in act["inputs"] if _s(inp, 40) and _s(inp, 40) != task_key]
+            act["inputs"] = [_s(inp, 200) for inp in act["inputs"] if _s(inp, 200)]
 
-        # Sanitize depends_on: strip self-references and automatically align with inputs
-        deps_list = _list_s(t.get("depends_on"), 20, 40)
-        deps_list = [d for d in deps_list if d != task_key]
-        for inp in (act.get("inputs") or []):
-            if inp != task_key and inp not in deps_list:
-                deps_list.append(inp)
-
-        # Sanitize agent_role: if the model copied "execution|analysis|...", choose the first valid token
-        raw_role = _s(t.get("agent_role"), 40) or "execution"
-        if "|" in raw_role or raw_role not in AGENT_ROLES:
-            cand_tokens = [tok.strip() for tok in raw_role.split("|") if tok.strip() in AGENT_ROLES]
-            role = cand_tokens[0] if cand_tokens else ("analysis" if "analysis" in raw_role else "execution")
+        # Preserve declared depends_on verbatim without truncation, slicing, or auto-injection
+        if isinstance(t.get("depends_on"), list):
+            deps_list = [_s(dep, 200) for dep in t.get("depends_on") if _s(dep, 200)]
         else:
-            role = raw_role
+            deps_list = []
+
+        # Preserve agent_role verbatim without truncation or picking tokens
+        role = _s(t.get("agent_role"), 200) or "execution"
 
         acc = t.get("acceptance") if isinstance(t.get("acceptance"), dict) else {}
         allowed = _list_s(t.get("allowed_nodes"), 8, 64)
@@ -237,7 +214,7 @@ def normalize_plan(plan: Dict[str, Any], nodes: Optional[List[Dict[str, Any]]] =
 
         out["tasks"].append({
             "key": task_key, "title": _s(t.get("title"), 200),
-            "description": _s(t.get("description")), "stage": _s(t.get("stage"), 40),
+            "description": _s(t.get("description")), "stage": _s(t.get("stage"), 200),
             "agent_role": role,
             "action": act, "acceptance": acc,
             "depends_on": deps_list,
@@ -251,19 +228,20 @@ def normalize_plan(plan: Dict[str, Any], nodes: Optional[List[Dict[str, Any]]] =
             "approval": "required" if _s(t.get("approval")) == "required" else "auto",
             "risk": _s(t.get("risk"), 10) if _s(t.get("risk"), 10) in ("low", "medium", "high") else "low",
         })
-    for d in (plan.get("deliverables") or [])[:20] if isinstance(plan.get("deliverables"), list) else []:
+    for d in (plan.get("deliverables") or []) if isinstance(plan.get("deliverables"), list) else []:
         if isinstance(d, dict):
-            raw_type = _s(d.get("type"), 40).lower()
-            if raw_type not in DELIVERABLE_TYPES:
-                raw_type = DELIVERABLE_TYPE_ALIASES.get(raw_type, "document")
-            raw_prod = _s(d.get("produced_by"), 40)
+            raw_type = _s(d.get("type"), 200).lower()
+            if raw_type in DELIVERABLE_TYPE_ALIASES:
+                raw_type = DELIVERABLE_TYPE_ALIASES[raw_type]
+            # If raw_type is not recognized, preserve verbatim (do NOT default to document)
+            raw_prod = _s(d.get("produced_by"), 200)
             if "," in raw_prod:
                 parts = [x.strip() for x in raw_prod.split(",") if x.strip()]
                 raw_prod = parts[-1] if parts else raw_prod
             out["deliverables"].append({
-                "key": _s(d.get("key"), 40), "name": _s(d.get("name"), 160), "type": raw_type,
+                "key": _s(d.get("key"), 200), "name": _s(d.get("name"), 200), "type": raw_type,
                 "description": _s(d.get("description")), "acceptance_criteria": _s(d.get("acceptance_criteria")),
-                "produced_by": raw_prod, "stage": _s(d.get("stage"), 40),
+                "produced_by": raw_prod, "stage": _s(d.get("stage"), 200),
                 "terminal": bool(d.get("terminal")),
             })
     for r in (plan.get("risks") or [])[:15] if isinstance(plan.get("risks"), list) else []:
@@ -276,106 +254,38 @@ def normalize_plan(plan: Dict[str, Any], nodes: Optional[List[Dict[str, Any]]] =
 
 
 def auto_repair_plan(plan: Dict[str, Any], errors: List[str], nodes: Optional[List[Dict[str, Any]]] = None) -> Tuple[Dict[str, Any], List[str]]:
-    """Deterministically repair common structural, capability, and reference defects in a candidate plan.
+    """Deterministically repair provably safe syntactic defects in a candidate plan.
+
+    CRITICAL STAGE 2 SAFETY INVARIANTS:
+    - Never silently convert unknown library scripts or controller steps to 'inference' or 'assemble_report'.
+    - Never delete edges or self-references to resolve dependency cycles or invalid dependencies.
+    - Never delete dependencies on missing tasks or silently inject inputs into depends_on.
+    - Never select one role from a pipe-delimited role expression or mutate execution roles.
+    - Never silently convert unknown deliverable types to 'document' (unknown types must produce UNSUPPORTED_DELIVERABLE_TYPE).
+    - Never insert generic acceptance criteria such as 'Validated output meets project requirements.' (missing criteria must produce MISSING_ACCEPTANCE_CRITERIA).
+    - Never arbitrarily mark the last deliverable terminal (terminal status must follow validated requirements or fail with MISSING_TERMINAL_DELIVERABLE).
+    - Deterministic repair is strictly limited to provably safe, explicit alias mappings:
+      normalizing explicit deliverable aliases in DELIVERABLE_TYPE_ALIASES (e.g. 'doc' -> 'document', 'code' -> 'software_artifact').
+    - Any defect in dependencies, inputs, actions, capabilities, roles, deliverable types, criteria, or terminals is preserved verbatim
+      and caught as an explicit validation error for operator visibility.
 
     Returns (repaired_plan, remaining_errors) after full re-validation.
     """
     import copy
     repaired = copy.deepcopy(plan) if isinstance(plan, dict) else {}
-    tasks = repaired.get("tasks", [])
-    task_keys = [t.get("key") for t in tasks if isinstance(t, dict) and t.get("key")]
 
-    # 1. Repair tasks
-    for t in tasks:
-        if not isinstance(t, dict):
-            continue
-        k = t.get("key")
-        act = t.get("action")
-        if not isinstance(act, dict):
-            act = {"type": "inference", "instruction": t.get("description") or f"Execute {t.get('title')}", "inputs": [], "max_tokens": 200}
-            t["action"] = act
-
-        typ = act.get("type")
-        if typ == "library_script":
-            script_id = act.get("script_id")
-            if script_id not in script_library.LIBRARY:
-                # Unknown library script: convert to registered inference action
-                act["type"] = "inference"
-                act["instruction"] = act.get("instruction") or t.get("description") or f"Perform {t.get('title')}"
-                act.pop("script_id", None)
-                if not act.get("max_tokens"):
-                    act["max_tokens"] = 200
-                t["allowed_nodes"] = []
-        elif typ == "controller_step":
-            if act.get("step") not in CONTROLLER_STEPS:
-                act["step"] = "assemble_report"
-        elif typ not in ACTION_TYPES:
-            act["type"] = "inference"
-            if not act.get("instruction"):
-                act["instruction"] = t.get("description") or f"Execute {t.get('title')}"
-            if not act.get("max_tokens"):
-                act["max_tokens"] = 200
-
-        # Strip self-reference in inputs
-        if isinstance(act.get("inputs"), list):
-            act["inputs"] = [inp for inp in act["inputs"] if inp != k and inp in task_keys]
-
-        # Strip self-reference in depends_on
-        deps = t.get("depends_on", [])
-        if isinstance(deps, list):
-            deps = [d for d in deps if d != k and d in task_keys]
-        else:
-            deps = []
-
-        # Ensure declared inputs are in depends_on
-        for inp in (act.get("inputs") or []):
-            if inp not in deps:
-                deps.append(inp)
-        t["depends_on"] = deps
-
-        # Sanitize role
-        if t.get("agent_role") not in AGENT_ROLES:
-            t["agent_role"] = "analysis" if "analysis" in str(t.get("agent_role")) else "execution"
-
-    # 2. Cycle detection and repair
-    deps_map = {t["key"]: list(t.get("depends_on", [])) for t in tasks if isinstance(t, dict) and t.get("key")}
-    cyc = detect_cycle(deps_map)
-    if cyc:
-        for t in tasks:
-            if t.get("key") in cyc:
-                t["depends_on"] = [d for d in t.get("depends_on", []) if task_keys.index(d) < task_keys.index(t["key"])]
-                if isinstance(t.get("action", {}).get("inputs"), list):
-                    t["action"]["inputs"] = [inp for inp in t["action"]["inputs"] if inp in t["depends_on"]]
-
-    # 3. Deliverables repair
+    # Deliverables explicit alias normalization ONLY
     dels = repaired.get("deliverables", [])
-    if dels:
-        has_terminal = False
+    if isinstance(dels, list):
         for d in dels:
             if not isinstance(d, dict):
                 continue
-            dt = str(d.get("type")).lower()
-            if dt not in DELIVERABLE_TYPES:
-                d["type"] = DELIVERABLE_TYPE_ALIASES.get(dt, "document")
-            prod = d.get("produced_by")
-            if prod not in task_keys:
-                d["produced_by"] = task_keys[-1] if task_keys else "t1"
-            if not d.get("acceptance_criteria"):
-                d["acceptance_criteria"] = "Validated output meets project requirements."
-            if d.get("terminal"):
-                has_terminal = True
-        if not has_terminal and dels:
-            dels[-1]["terminal"] = True
-    elif task_keys:
-        repaired["deliverables"] = [{
-            "key": "d1",
-            "name": "Project Deliverable",
-            "type": "document",
-            "acceptance_criteria": "Validated output meets project requirements.",
-            "produced_by": task_keys[-1],
-            "stage": tasks[-1].get("stage", "s1"),
-            "terminal": True
-        }]
+            dt = str(d.get("type") or "").strip().lower()
+            if dt in DELIVERABLE_TYPE_ALIASES:
+                d["type"] = DELIVERABLE_TYPE_ALIASES[dt]
+            # Unknown types preserved verbatim so validate_plan catches UNSUPPORTED_DELIVERABLE_TYPE
+            # Empty acceptance_criteria is NOT populated with generic strings
+            # Terminal status is NOT arbitrarily forced
 
     norm = normalize_plan(repaired, nodes)
     v = validate_plan(norm, nodes)
@@ -418,13 +328,14 @@ def validate_plan(plan: Dict[str, Any], nodes: Optional[List[Dict[str, Any]]] = 
         if len(main["stages"]) > MAX_STAGES:
             errors.append(f"At most {MAX_STAGES} stages are allowed.")
         for s in main["stages"]:
-            if not KEY_RE.match(s["key"]):
-                errors.append(f"Invalid stage key '{s['key']}'.")
-            elif s["key"] in stage_keys:
-                errors.append(f"Duplicate stage key '{s['key']}'.")
-            stage_keys.add(s["key"])
+            sk = s["key"]
+            if len(sk) > 40 or not KEY_RE.match(sk):
+                errors.append(f"Stage key '{sk}' violates schema limits (exceeds 40 characters or invalid format; length={len(sk)}).")
+            elif sk in stage_keys:
+                errors.append(f"Duplicate stage key '{sk}'.")
+            stage_keys.add(sk)
             if not s["name"]:
-                errors.append(f"Stage '{s['key']}' needs a name.")
+                errors.append(f"Stage '{sk}' needs a name.")
         if len(paths) > 1:
             warnings.append("Only the first path is executable; other paths are recorded as proposed alternatives.")
 
@@ -438,8 +349,8 @@ def validate_plan(plan: Dict[str, Any], nodes: Optional[List[Dict[str, Any]]] = 
     by_key: Dict[str, Dict[str, Any]] = {}
     for t in tasks:
         k = t["key"]
-        if not KEY_RE.match(k):
-            errors.append(f"Invalid task key '{k}'.")
+        if len(k) > 40 or not KEY_RE.match(k):
+            errors.append(f"Invalid task key '{k}' (violates schema limits: exceeds 40 characters or invalid format; length={len(k)}).")
             continue
         if k in keys:
             errors.append(f"Duplicate task key '{k}'.")
@@ -447,14 +358,19 @@ def validate_plan(plan: Dict[str, Any], nodes: Optional[List[Dict[str, Any]]] = 
         keys.add(k)
         by_key[k] = t
         deps[k] = list(t["depends_on"])
+        if len(t["depends_on"]) > 20:
+            errors.append(f"Task '{k}' has {len(t['depends_on'])} dependencies, exceeding maximum limit of 20 (SCHEMA_LIMIT_EXCEEDED).")
+        for dep in t["depends_on"]:
+            if len(dep) > 40 or not KEY_RE.match(dep):
+                errors.append(f"Task '{k}' dependency identifier '{dep}' violates schema limits (exceeds 40 characters or invalid format; length={len(dep)}).")
         if not t["title"]:
             errors.append(f"Task '{k}' needs a title.")
         if not t["description"]:
             errors.append(f"Task '{k}' needs a clear objective (description).")
         if t["stage"] not in stage_keys:
             errors.append(f"Task '{k}' references unknown stage '{t['stage']}'.")
-        if t["agent_role"] not in AGENT_ROLES:
-            errors.append(f"Task '{k}' has unknown agent role '{t['agent_role']}'.")
+        if len(t["agent_role"]) > 40 or t["agent_role"] not in AGENT_ROLES:
+            errors.append(f"Task '{k}' has unknown agent role '{t['agent_role']}' (length={len(t['agent_role'])}). Allowed roles: {sorted(AGENT_ROLES)}.")
         if not 1 <= t["priority"] <= 5:
             errors.append(f"Task '{k}' priority must be 1..5.")
         if not 1 <= t["max_attempts"] <= 5:
@@ -491,29 +407,63 @@ def validate_plan(plan: Dict[str, Any], nodes: Optional[List[Dict[str, Any]]] = 
         errors.append("At least one deliverable is required.")
     dkeys: Set[str] = set()
     for d in dels:
-        if not KEY_RE.match(d["key"]) or d["key"] in dkeys:
-            errors.append(f"Invalid or duplicate deliverable key '{d['key']}'.")
-        dkeys.add(d["key"])
+        dk = d["key"]
+        if len(dk) > 40 or not KEY_RE.match(dk):
+            errors.append(f"Deliverable key '{dk}' violates schema limits (exceeds 40 characters or invalid format; length={len(dk)}).")
+            continue
+        if dk in dkeys:
+            errors.append(f"Duplicate deliverable key '{dk}'.")
+            continue
+        dkeys.add(dk)
         if d["type"] not in DELIVERABLE_TYPES:
-            errors.append(f"Deliverable '{d['key']}' has invalid type '{d['type']}'.")
+            errors.append(f"Deliverable '{dk}' has unsupported type '{d['type']}' (UNSUPPORTED_DELIVERABLE_TYPE). Allowed types: {sorted(DELIVERABLE_TYPES)}.")
         if not d["name"]:
-            errors.append(f"Deliverable '{d['key']}' needs a name.")
+            errors.append(f"Deliverable '{dk}' needs a name.")
         if not d["acceptance_criteria"]:
-            errors.append(f"Deliverable '{d['key']}' has no acceptance criteria.")
-        if d["produced_by"] not in keys:
-            errors.append(f"Deliverable '{d['key']}' is produced by unknown task '{d['produced_by']}'.")
+            errors.append(f"Deliverable '{dk}' has no acceptance criteria (MISSING_ACCEPTANCE_CRITERIA).")
+        if len(d["produced_by"]) > 40 or not KEY_RE.match(d["produced_by"]):
+            errors.append(f"Deliverable '{dk}' produced_by identifier '{d['produced_by']}' violates schema limits (exceeds 40 characters or invalid format; length={len(d['produced_by'])}).")
+        elif d["produced_by"] not in keys:
+            errors.append(f"Deliverable '{dk}' is produced by unknown task '{d['produced_by']}'.")
         if d["stage"] and d["stage"] not in stage_keys:
-            errors.append(f"Deliverable '{d['key']}' references unknown stage '{d['stage']}'.")
-    if dels and not any(d["terminal"] for d in dels):
-        errors.append("No terminal (final) deliverable is marked.")
+            errors.append(f"Deliverable '{dk}' references unknown stage '{d['stage']}'.")
+        # Terminal deliverable validation:
+        if d.get("terminal"):
+            prod_task = d["produced_by"]
+            if any(prod_task in other.get("depends_on", []) for other in tasks):
+                errors.append(f"Deliverable '{dk}' marked terminal is produced by intermediate task '{prod_task}', which has downstream dependent tasks (INCORRECT_TERMINAL_DELIVERABLE).")
+
+    if dels and not any(d.get("terminal") for d in dels):
+        errors.append("No terminal (final) deliverable is marked (MISSING_TERMINAL_DELIVERABLE).")
+
+    # Schema placeholder rejection (F-14): Model copying prompt schema example verbatim
+    _schema_placeholders = {
+        "task 1 name", "task 2 name", "task 3 name",
+        "high-level goal description", "stage 1 title", "stage 2 title",
+        "deliverable 1 name", "deliverable 2 name",
+    }
+    obj_str = str(ov.get("objective", "")).strip().lower()
+    if obj_str in _schema_placeholders or "high-level goal description" in obj_str:
+        errors.append("Plan overview.objective is an unadapted schema placeholder literal.")
+    for s in main.get("stages", []):
+        if str(s.get("name", "")).strip().lower() in _schema_placeholders:
+            errors.append(f"Stage '{s.get('key')}' uses schema placeholder literal: '{s.get('name')}'.")
+    for t in tasks:
+        t_title = str(t.get("title", "")).strip().lower()
+        if t_title in _schema_placeholders or "task 1 name" in t_title or "task 2 name" in t_title:
+            errors.append(f"Task '{t['key']}' uses prompt schema example placeholder: '{t.get('title')}'.")
+    for d in dels:
+        if str(d.get("name", "")).strip().lower() in _schema_placeholders:
+            errors.append(f"Deliverable '{d['key']}' uses schema placeholder literal: '{d.get('name')}'.")
 
     if nodes is not None and not errors:
         from app.services.orchestration import model_router
         for t in tasks:
-            cands = model_router.eligible_nodes(t, nodes)
+            cands = model_router.eligible_nodes(t, nodes, enforce_verified=False)
             if not cands["eligible"]:
-                capability_issues.append(
-                    f"Task '{t['key']}' has no compatible node: {'; '.join(cands['reasons']) or 'unknown'}")
+                err = f"Task '{t['key']}' has no compatible node: {'; '.join(cands['reasons']) or 'unknown'}"
+                capability_issues.append(err)
+                errors.append(err)
 
     n_inf = sum(1 for t in tasks if t["action"].get("type") == "inference")
     estimate = {
@@ -558,8 +508,15 @@ def _validate_action(t: Dict[str, Any], errors: List[str]) -> None:
     elif typ == "controller_step":
         if a.get("step") not in CONTROLLER_STEPS:
             errors.append(f"Task '{k}' has unknown controller step '{a.get('step')}'. Allowed controller steps: {sorted(CONTROLLER_STEPS)}.")
-    if a.get("inputs") is not None and not isinstance(a.get("inputs"), list):
-        errors.append(f"Task '{k}' inputs must be a list of task keys.")
+    if a.get("inputs") is not None:
+        if not isinstance(a.get("inputs"), list):
+            errors.append(f"Task '{k}' inputs must be a list of task keys.")
+        else:
+            if len(a["inputs"]) > 20:
+                errors.append(f"Task '{k}' action has {len(a['inputs'])} inputs, exceeding maximum limit of 20 (SCHEMA_LIMIT_EXCEEDED).")
+            for inp in a["inputs"]:
+                if len(inp) > 40 or not KEY_RE.match(inp):
+                    errors.append(f"Task '{k}' action input '{inp}' violates schema limits (exceeds 40 characters or invalid format; length={len(inp)}).")
 
 
 def _validate_acceptance(t: Dict[str, Any], errors: List[str]) -> None:

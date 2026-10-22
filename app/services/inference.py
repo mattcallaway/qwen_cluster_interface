@@ -63,7 +63,7 @@ async def test_inference_endpoint(backend_type: str, endpoint_url: str, api_key:
 def get_all_backends() -> List[Dict[str, Any]]:
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM inference_backends ORDER BY created_at DESC")
+    cursor.execute("SELECT * FROM inference_backends ORDER BY priority ASC, created_at ASC")
     rows = cursor.fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -71,17 +71,41 @@ def get_all_backends() -> List[Dict[str, Any]]:
 def get_active_backend() -> Optional[Dict[str, Any]]:
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM inference_backends WHERE is_active = 1 AND status = 'ready' LIMIT 1")
+    cursor.execute("SELECT * FROM inference_backends WHERE is_active = 1 AND status = 'ready' ORDER BY priority ASC, created_at ASC LIMIT 1")
     row = cursor.fetchone()
     conn.close()
     return dict(row) if row else None
+
+def get_ordered_backends(target_tier: Optional[str] = None) -> List[Dict[str, Any]]:
+    """
+    Return active backends ordered by priority.
+    If target_tier is specified, backends in that tier are placed first,
+    followed by fallback backends in other tiers.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM inference_backends WHERE is_active = 1 ORDER BY priority ASC, created_at ASC")
+    rows = cursor.fetchall()
+    conn.close()
+    all_backends = [dict(r) for r in rows]
+
+    if not target_tier:
+        return all_backends
+
+    tier_matches = [b for b in all_backends if b.get("tier") == target_tier]
+    other_tiers = [b for b in all_backends if b.get("tier") != target_tier]
+    return tier_matches + other_tiers
 
 def register_inference_backend(
     name: str,
     backend_type: str,
     endpoint_url: str,
     api_key: Optional[str] = None,
-    context_window: int = 4096
+    context_window: int = 4096,
+    tier: str = "tier_1_primary",
+    priority: int = 10,
+    timeout_seconds: float = 30.0,
+    description: str = ""
 ) -> Dict[str, Any]:
     backend_id = f"inf-{uuid.uuid4().hex[:8]}"
     now = datetime.now(timezone.utc).isoformat()
@@ -90,12 +114,37 @@ def register_inference_backend(
     cursor.execute("""
     INSERT INTO inference_backends (
         id, name, backend_type, endpoint_url, api_key,
-        status, context_window, is_active, created_at
-    ) VALUES (?, ?, ?, ?, ?, 'untested', ?, 1, ?)
-    """, (backend_id, name.strip(), backend_type, endpoint_url.strip(), api_key or None, context_window, now))
+        status, context_window, is_active, tier, priority,
+        timeout_seconds, description, created_at
+    ) VALUES (?, ?, ?, ?, ?, 'untested', ?, 1, ?, ?, ?, ?, ?)
+    """, (
+        backend_id, name.strip(), backend_type, endpoint_url.strip(), api_key or None,
+        context_window, tier, priority, timeout_seconds, description.strip(), now
+    ))
     conn.commit()
     conn.close()
     return {"id": backend_id, "name": name}
+
+def update_backend_tier_priority(
+    backend_id: str,
+    tier: str,
+    priority: int,
+    is_active: int = 1,
+    timeout_seconds: float = 30.0,
+    description: Optional[str] = None
+) -> None:
+    conn = get_db_connection()
+    conn.execute("""
+    UPDATE inference_backends
+    SET tier = ?,
+        priority = ?,
+        is_active = ?,
+        timeout_seconds = ?,
+        description = COALESCE(?, description)
+    WHERE id = ?
+    """, (tier, priority, is_active, timeout_seconds, description, backend_id))
+    conn.commit()
+    conn.close()
 
 def update_backend_status(backend_id: str, status: str, model_name: Optional[str] = None, error_details: Optional[str] = None):
     conn = get_db_connection()
@@ -230,65 +279,134 @@ def get_benchmarks() -> List[Dict[str, Any]]:
     conn.close()
     return [dict(r) for r in rows]
 
-async def send_chat_completion(messages: List[Dict[str, str]]) -> Dict[str, Any]:
-    """Execute a chat query against the active ready backend."""
-    backend = get_active_backend()
-    if not backend:
+async def send_chat_completion(
+    messages: List[Dict[str, str]],
+    target_tier: Optional[str] = None,
+    enable_fallback: bool = True
+) -> Dict[str, Any]:
+    """
+    Execute a chat query against ordered inference backends with automatic multi-tier fallback.
+    Cascades through candidate backends in priority order until one succeeds.
+    """
+    candidates = get_ordered_backends(target_tier=target_tier)
+    if not candidates:
         return {
             "success": False,
-            "error": "No verified inference backend is currently active and ready. Configure a backend in Machines -> Inference."
+            "error": "No active inference backends are configured in the collective. Configure a backend in Machines -> Inference."
         }
-        
-    url = backend["endpoint_url"].rstrip("/")
-    headers = {}
-    if backend.get("api_key"):
-        headers["Authorization"] = f"Bearer {backend['api_key']}"
-        
-    try:
-        async with httpx.AsyncClient(timeout=180.0, follow_redirects=False) as client:
-            if backend["backend_type"] == "ollama":
-                payload = {
-                    "model": backend.get("model_name", "qwen2.5:3b"),
-                    "messages": messages,
-                    "options": {"num_ctx": 8192},
-                    "stream": False
-                }
-                resp = await client.post(f"{url}/api/chat", json=payload, headers=headers)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    content = data.get("message", {}).get("content", "")
-                    return {
-                        "success": True,
-                        "content": content,
-                        "model": backend.get("model_name"),
-                        "backend": backend["name"]
+
+    if not enable_fallback and target_tier:
+        candidates = [b for b in candidates if b.get("tier") == target_tier]
+        if not candidates:
+            return {
+                "success": False,
+                "error": f"No active backends available in target tier '{target_tier}'."
+            }
+
+    attempts_log = []
+
+    for idx, backend in enumerate(candidates):
+        backend_id = backend["id"]
+        backend_name = backend["name"]
+        tier = backend.get("tier", "tier_1_primary")
+        url = backend["endpoint_url"].rstrip("/")
+        timeout_sec = float(backend.get("timeout_seconds") or 45.0)
+        headers = {}
+        if backend.get("api_key"):
+            headers["Authorization"] = f"Bearer {backend['api_key']}"
+
+        logger.info(
+            "Attempting inference on backend %s [%s] (priority %s, tier %s, timeout %.1fs)...",
+            backend_name, url, backend.get("priority"), tier, timeout_sec
+        )
+
+        try:
+            async with httpx.AsyncClient(timeout=timeout_sec, follow_redirects=False) as client:
+                if backend["backend_type"] == "ollama":
+                    payload = {
+                        "model": backend.get("model_name", "qwen2.5:3b"),
+                        "messages": messages,
+                        "options": {"num_ctx": min(backend.get("context_window") or 8192, 8192)},
+                        "stream": False
                     }
+                    resp = await client.post(f"{url}/api/chat", json=payload, headers=headers)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        content = data.get("message", {}).get("content", "")
+                        if not content:
+                            raise ValueError("Ollama returned empty response content.")
+
+                        update_backend_status(backend_id, "ready", error_details=None)
+
+                        return {
+                            "success": True,
+                            "content": content,
+                            "model": backend.get("model_name"),
+                            "backend": backend_name,
+                            "backend_id": backend_id,
+                            "tier": tier,
+                            "fallback_occurred": (idx > 0),
+                            "attempts": attempts_log
+                        }
+                    else:
+                        err_msg = f"HTTP {resp.status_code} from {backend_name}: {resp.text[:200]}"
+                        logger.warning("Backend %s failed with status %d: %s", backend_name, resp.status_code, err_msg)
+                        update_backend_status(backend_id, "error", error_details=err_msg)
+                        attempts_log.append({"backend": backend_name, "error": err_msg, "tier": tier})
+
                 else:
-                    return {"success": False, "error": f"Ollama error (HTTP {resp.status_code}): {resp.text}"}
-            else:
-                # llama.cpp server / OpenAI API
-                payload = {
-                    "messages": messages,
-                    "temperature": 0.7,
-                    "max_tokens": 1024,
-                    "stream": False
-                }
-                resp = await client.post(f"{url}/v1/chat/completions", json=payload, headers=headers)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    choices = data.get("choices", [])
-                    content = choices[0].get("message", {}).get("content", "") if choices else ""
-                    return {
-                        "success": True,
-                        "content": content,
-                        "model": backend.get("model_name"),
-                        "backend": backend["name"]
+                    # llama.cpp server / OpenAI API
+                    payload = {
+                        "messages": messages,
+                        "temperature": 0.7,
+                        "max_tokens": 1024,
+                        "stream": False
                     }
-                else:
-                    return {"success": False, "error": f"llama-server error (HTTP {resp.status_code}): {resp.text}"}
-    except httpx.ConnectError:
-        return {"success": False, "error": f"Inference backend at {url} is unreachable."}
-    except httpx.TimeoutException:
-        return {"success": False, "error": "Inference request timed out."}
-    except Exception as e:
-        return {"success": False, "error": f"Inference error: {str(e)}"}
+                    resp = await client.post(f"{url}/v1/chat/completions", json=payload, headers=headers)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        choices = data.get("choices", [])
+                        content = choices[0].get("message", {}).get("content", "") if choices else ""
+                        if not content:
+                            raise ValueError("llama-server returned empty choices.")
+
+                        update_backend_status(backend_id, "ready", error_details=None)
+
+                        return {
+                            "success": True,
+                            "content": content,
+                            "model": backend.get("model_name"),
+                            "backend": backend_name,
+                            "backend_id": backend_id,
+                            "tier": tier,
+                            "fallback_occurred": (idx > 0),
+                            "attempts": attempts_log
+                        }
+                    else:
+                        err_msg = f"HTTP {resp.status_code} from {backend_name}: {resp.text[:200]}"
+                        logger.warning("Backend %s failed: %s", backend_name, err_msg)
+                        update_backend_status(backend_id, "error", error_details=err_msg)
+                        attempts_log.append({"backend": backend_name, "error": err_msg, "tier": tier})
+
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            err_msg = f"Unreachable: {str(e)}"
+            logger.warning("Backend %s unreachable, cascading to fallback: %s", backend_name, err_msg)
+            update_backend_status(backend_id, "offline", error_details=err_msg)
+            attempts_log.append({"backend": backend_name, "error": err_msg, "tier": tier})
+        except httpx.TimeoutException as e:
+            err_msg = f"Timed out after {timeout_sec}s: {str(e)}"
+            logger.warning("Backend %s timed out, cascading to fallback: %s", backend_name, err_msg)
+            update_backend_status(backend_id, "error", error_details=err_msg)
+            attempts_log.append({"backend": backend_name, "error": err_msg, "tier": tier})
+        except Exception as e:
+            err_msg = f"Execution error: {str(e)}"
+            logger.warning("Backend %s encountered exception, cascading to fallback: %s", backend_name, err_msg)
+            update_backend_status(backend_id, "error", error_details=err_msg)
+            attempts_log.append({"backend": backend_name, "error": err_msg, "tier": tier})
+
+    # All candidates exhausted
+    return {
+        "success": False,
+        "error": f"All {len(candidates)} candidate inference backend(s) failed. Failover summary: {json.dumps(attempts_log)}",
+        "attempts": attempts_log
+    }

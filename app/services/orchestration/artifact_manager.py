@@ -26,16 +26,32 @@ def _mime(name: str) -> str:
 
 
 def _insert(run_id: Optional[str], project_id: str, task_id: Optional[str], orch_task_id: Optional[str],
-            worker_id: Optional[str], path: Path, provenance: str) -> Optional[str]:
+            worker_id: Optional[str], path: Path, provenance: str,
+            producer_attempt: int = 1, cas_hash: Optional[str] = None) -> Optional[str]:
     data = path.read_bytes()
+    computed_sha = hashlib.sha256(data).hexdigest()
     aid = new_id("art")
+
+    # If cas_hash not supplied, store in CAS automatically
+    if not cas_hash:
+        try:
+            from app.services.artifacts.storage import storage_backend
+            cas_res = storage_backend.store_cas_blob(data)
+            cas_hash = cas_res["cas_hash"]
+        except Exception:
+            cas_hash = computed_sha
+
+    allowed_prov = {'worker_telemetry', 'model_output', 'controller_generated', 'user_supplied'}
+    if provenance not in allowed_prov:
+        provenance = 'controller_generated'
+
     with db_transaction() as c:
         cur = c.execute(
             """INSERT OR IGNORE INTO artifact_metadata (id, run_id, project_id, task_id, orch_task_id, worker_id,
-                   filename, mime_type, size_bytes, sha256, storage_path, provenance, validation_state, created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'pending', ?)""",
+                   filename, mime_type, size_bytes, sha256, storage_path, cas_hash, producer_attempt, provenance, validation_state, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'pending', ?)""",
             (aid, run_id, project_id, task_id, orch_task_id, worker_id, path.name, _mime(path.name), len(data),
-             hashlib.sha256(data).hexdigest(), str(path.resolve()), provenance, now_iso()))
+             computed_sha, str(path.resolve()), cas_hash, producer_attempt, provenance, now_iso()))
         if cur.rowcount != 1:
             row = c.execute("SELECT id FROM artifact_metadata WHERE storage_path = ?", (str(path.resolve()),)).fetchone()
             if row:
@@ -49,11 +65,13 @@ def _insert(run_id: Optional[str], project_id: str, task_id: Optional[str], orch
                            worker_id = COALESCE(?, worker_id),
                            size_bytes = ?,
                            sha256 = ?,
+                           cas_hash = COALESCE(?, cas_hash),
+                           producer_attempt = ?,
                            provenance = ?,
                            created_at = ?
                        WHERE id = ?""",
                     (run_id, project_id, task_id, orch_task_id, worker_id, len(data),
-                     hashlib.sha256(data).hexdigest(), provenance, now_iso(), aid))
+                     computed_sha, cas_hash, producer_attempt, provenance, now_iso(), aid))
                 return aid
             return None
     if run_id:
@@ -62,8 +80,6 @@ def _insert(run_id: Optional[str], project_id: str, task_id: Optional[str], orch
 
     # Sync with canonical artifacts tables
     try:
-        from app.services.artifacts import artifact_service
-        # Check if canonical artifact already exists
         with db_transaction() as c:
             c.execute(
                 """
@@ -71,29 +87,29 @@ def _insert(run_id: Optional[str], project_id: str, task_id: Optional[str], orch
                     id, display_name, description, artifact_type, mime_type, file_extension,
                     size_bytes, checksum_sha256, storage_backend, storage_key, current_version_number,
                     status, validation_status, validation_detail, knowledge_status, visibility,
-                    retention_policy, origin_project_id, origin_task_id, origin_worker_id,
-                    created_by, created_at, updated_at
+                    retention_policy, origin_project_id, origin_run_id, origin_task_id, origin_worker_id,
+                    producer_attempt, cas_hash, created_by, created_at, updated_at
                 ) VALUES (?, ?, 'Task output artifact', 'document', ?, ?, ?, ?, 'local_filesystem', ?, 1,
-                          'available', 'valid', '', 'not_processed', 'private', 'standard', ?, ?, ?, 'orchestrator', ?, ?)
+                          'available', 'valid', '', 'not_processed', 'private', 'standard', ?, ?, ?, ?, ?, ?, 'orchestrator', ?, ?)
                 """,
                 (
                     aid, path.name, _mime(path.name), Path(path.name).suffix.lower(),
-                    len(data), hashlib.sha256(data).hexdigest(), str(path.resolve()),
-                    project_id, task_id, worker_id, now_iso(), now_iso(),
+                    len(data), computed_sha, str(path.resolve()),
+                    project_id, run_id, task_id, worker_id, producer_attempt, cas_hash, now_iso(), now_iso(),
                 ),
             )
             c.execute(
                 """
                 INSERT OR IGNORE INTO artifact_versions (
                     id, artifact_id, version_number, storage_backend, storage_key,
-                    size_bytes, checksum_sha256, change_description, producing_task_id,
-                    producing_worker_id, validation_status, created_by, created_at
-                ) VALUES (?, ?, 1, 'local_filesystem', ?, ?, ?, 'Orchestration task output', ?, ?, 'valid', 'orchestrator', ?)
+                    size_bytes, checksum_sha256, change_description, producing_run_id, producing_task_id,
+                    producing_worker_id, producer_attempt, cas_hash, validation_status, created_by, created_at
+                ) VALUES (?, ?, 1, 'local_filesystem', ?, ?, ?, 'Orchestration task output', ?, ?, ?, ?, ?, 'valid', 'orchestrator', ?)
                 """,
                 (
                     f"artver-{aid[4:] if aid.startswith('art-') else aid}",
-                    aid, str(path.resolve()), len(data), hashlib.sha256(data).hexdigest(),
-                    task_id, worker_id, now_iso(),
+                    aid, str(path.resolve()), len(data), computed_sha,
+                    run_id, task_id, worker_id, producer_attempt, cas_hash, now_iso(),
                 ),
             )
             c.execute(
@@ -103,7 +119,7 @@ def _insert(run_id: Optional[str], project_id: str, task_id: Optional[str], orch
                 """,
                 (f"apl-{aid[4:] if aid.startswith('art-') else aid}", aid, project_id, now_iso()),
             )
-    except Exception as ex:
+    except Exception:
         # Non-fatal sync
         pass
 
@@ -111,28 +127,40 @@ def _insert(run_id: Optional[str], project_id: str, task_id: Optional[str], orch
 
 
 def register_task_artifacts(run: Dict[str, Any], orch_task_id: str, task_id: str, worker_id: Optional[str],
-                            provenance: str) -> List[str]:
+                            provenance: str, producer_attempt: int = 1) -> List[str]:
     """Index files the worker result pipeline stored under evidence/task_<id>/ (idempotent)."""
     d = settings.evidence_dir / f"task_{task_id}"
     ids: List[str] = []
     if d.is_dir():
         for f in sorted(d.iterdir()):
             if f.is_file() and f.stat().st_size <= MAX_ARTIFACT_BYTES:
-                aid = _insert(run["id"], run["project_id"], task_id, orch_task_id, worker_id, f, provenance)
+                aid = _insert(run["id"], run["project_id"], task_id, orch_task_id, worker_id, f, provenance,
+                              producer_attempt=producer_attempt)
                 if aid:
                     ids.append(aid)
     return ids
 
 
 def write_controller_artifact(run: Dict[str, Any], orch_task_id: Optional[str], filename: str, content: bytes,
-                              provenance: str = "controller_generated") -> str:
+                              provenance: str = "controller_generated", producer_attempt: int = 1) -> str:
     if len(content) > MAX_ARTIFACT_BYTES:
         raise ValueError("Artifact too large.")
     d = settings.evidence_dir / f"orch_{run['id']}"
     d.mkdir(parents=True, exist_ok=True)
-    p = d / _safe_name(filename)
+    base_name = _safe_name(filename)
+    if producer_attempt > 1:
+        p = d / f"att{producer_attempt}_{base_name}"
+    else:
+        p = d / base_name
     p.write_bytes(content)
-    aid = _insert(run["id"], run["project_id"], None, orch_task_id, "controller-local", p, provenance)
+
+    # Store in CAS
+    from app.services.artifacts.storage import storage_backend
+    cas_res = storage_backend.store_cas_blob(content)
+    cas_hash = cas_res["cas_hash"]
+
+    aid = _insert(run["id"], run["project_id"], None, orch_task_id, "controller-local", p, provenance,
+                  producer_attempt=producer_attempt, cas_hash=cas_hash)
     assert aid
     return aid
 
@@ -150,7 +178,7 @@ def list_artifacts(project_id: str) -> List[Dict[str, Any]]:
     try:
         rows = c.execute(
             """SELECT a.id, a.task_id, a.orch_task_id, a.worker_id, a.filename, a.mime_type, a.size_bytes, a.sha256,
-                      a.provenance, a.validation_state, a.validation_detail, a.created_at, t.plan_key
+                      a.storage_path, a.cas_hash, a.producer_attempt, a.provenance, a.validation_state, a.validation_detail, a.created_at, t.plan_key
                FROM artifact_metadata a LEFT JOIN orchestration_tasks t ON t.id = a.orch_task_id
                WHERE a.project_id = ? ORDER BY a.created_at""", (project_id,)).fetchall()
         return [dict(r) for r in rows]
@@ -159,7 +187,7 @@ def list_artifacts(project_id: str) -> List[Dict[str, Any]]:
 
 
 def resolve_for_download(project_id: str, artifact_id: str) -> Dict[str, Any]:
-    """Return metadata + verified path. Rejects anything outside the evidence directory (no traversal)."""
+    """Return metadata + verified path. Rejects anything outside authorized directories (no traversal)."""
     c = get_db_connection()
     try:
         row = c.execute("SELECT * FROM artifact_metadata WHERE id = ? AND project_id = ?",
@@ -170,9 +198,21 @@ def resolve_for_download(project_id: str, artifact_id: str) -> Dict[str, Any]:
         raise NotFound("Artifact not found.")
     meta = dict(row)
     p = Path(meta["storage_path"]).resolve()
-    base = settings.evidence_dir.resolve()
-    if not p.is_relative_to(base) or not p.is_file():
+    allowed_roots = [settings.evidence_dir.resolve(), settings.artifacts_dir.resolve()]
+    is_confined = any(p == root or p.is_relative_to(root) for root in allowed_roots)
+    if not is_confined:
         raise NotFound("Artifact file is unavailable.")
+    if not p.is_file():
+        # Fallback to CAS blob lookup
+        if meta.get("cas_hash"):
+            from app.services.artifacts.storage import storage_backend
+            cas_path = storage_backend.get_cas_path(meta["cas_hash"])
+            if cas_path.is_file():
+                p = cas_path
+            else:
+                raise NotFound("Artifact file is unavailable.")
+        else:
+            raise NotFound("Artifact file is unavailable.")
     if hashlib.sha256(p.read_bytes()).hexdigest() != meta["sha256"]:
         raise NotFound("Artifact failed integrity verification (checksum mismatch).")
     meta["path"] = p

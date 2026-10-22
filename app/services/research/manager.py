@@ -159,8 +159,9 @@ class ResearchManager:
         task_id: str,
         queries: List[str],
         max_results_per_query: int = 5,
+        research_run_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Executes search queries and persists results within budget."""
+        """Executes search queries and persists results within budget and run scope (Finding F-09)."""
         budget = self.create_or_get_budget(project_id)
         start_time = time.time()
         all_results = []
@@ -169,7 +170,12 @@ class ResearchManager:
             if not budget.can_search():
                 logger.warning("Project %s search budget exhausted.", project_id)
                 break
-            res = self.search_manager.search(project_id, q, max_results=max_results_per_query, research_task_id=task_id)
+            res = self.search_manager.search(
+                project_id, q,
+                max_results=max_results_per_query,
+                research_task_id=task_id,
+                research_run_id=research_run_id,
+            )
             budget.queries_executed += 1
             all_results.extend(res.results)
 
@@ -181,7 +187,7 @@ class ResearchManager:
             task_id=task_id,
             duration_ms=duration_ms,
             bytes_processed=len(str(all_results)),
-            metadata={"queries_count": len(queries), "results_count": len(all_results)}
+            metadata={"queries_count": len(queries), "results_count": len(all_results), "research_run_id": research_run_id}
         )
 
         return {
@@ -196,8 +202,10 @@ class ResearchManager:
         task_id: str,
         search_results: List[Dict[str, Any]],
         use_browser_fallback: bool = True,
+        research_run_id: Optional[str] = None,
+        session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Retrieves web pages, extracts clean document content, and registers sources."""
+        """Retrieves web pages, extracts clean document content, and registers sources scoped to run."""
         budget = self.create_or_get_budget(project_id)
         start_time = time.time()
         ingested_sources = []
@@ -222,20 +230,43 @@ class ResearchManager:
 
             if fetch_res.status == "success":
                 doc = self.extractor.extract(fetch_res.content_bytes, content_type=fetch_res.content_type, base_url=fetch_res.final_url)
-                text_content = doc.text
-                title = doc.title or title
-                meta = doc.metadata
+                if doc.is_challenge_page:
+                    logger.warning("Challenge/interstitial detected via HTTP for %s: %s", url, doc.challenge_reason)
+                    if use_browser_fallback and budget.browsing_seconds_used < budget.max_browsing_seconds:
+                        b_start = time.time()
+                        b_res = self.browser.browse_and_extract(url)
+                        budget.browsing_seconds_used += (time.time() - b_start)
+                        if b_res.status == "success":
+                            from app.services.research.extraction import detect_challenge_page
+                            b_ch = detect_challenge_page(b_res.title, b_res.extracted_text, "")
+                            if not b_ch:
+                                text_content = b_res.extracted_text
+                                title = b_res.title or title
+                            else:
+                                logger.warning("Browser also hit challenge page for %s: %s", url, b_ch)
+                                continue
+                        else:
+                            continue
+                    else:
+                        continue
+                else:
+                    text_content = doc.text
+                    title = doc.title or title
+                    meta = doc.metadata
 
-                # Check if SPA fallback is needed
-                if doc.is_spa_placeholder and use_browser_fallback and budget.browsing_seconds_used < budget.max_browsing_seconds:
-                    logger.info("SPA detected for %s, falling back to headless browser...", url)
-                    b_start = time.time()
-                    b_res = self.browser.browse_and_extract(url)
-                    b_elapsed = time.time() - b_start
-                    budget.browsing_seconds_used += b_elapsed
-                    if b_res.status == "success":
-                        text_content = b_res.extracted_text
-                        title = b_res.title or title
+                    # Check if SPA fallback is needed
+                    if doc.is_spa_placeholder and use_browser_fallback and budget.browsing_seconds_used < budget.max_browsing_seconds:
+                        logger.info("SPA detected for %s, falling back to headless browser...", url)
+                        b_start = time.time()
+                        b_res = self.browser.browse_and_extract(url)
+                        b_elapsed = time.time() - b_start
+                        budget.browsing_seconds_used += b_elapsed
+                        if b_res.status == "success":
+                            from app.services.research.extraction import detect_challenge_page
+                            b_ch = detect_challenge_page(b_res.title, b_res.extracted_text, "")
+                            if not b_ch:
+                                text_content = b_res.extracted_text
+                                title = b_res.title or title
 
             elif use_browser_fallback and budget.browsing_seconds_used < budget.max_browsing_seconds:
                 # Direct browser fallback if HTTP returned 403 / JS barrier
@@ -244,14 +275,20 @@ class ResearchManager:
                 b_elapsed = time.time() - b_start
                 budget.browsing_seconds_used += b_elapsed
                 if b_res.status == "success":
-                    text_content = b_res.extracted_text
-                    title = b_res.title or title
+                    from app.services.research.extraction import detect_challenge_page
+                    b_ch = detect_challenge_page(b_res.title, b_res.extracted_text, "")
+                    if not b_ch:
+                        text_content = b_res.extracted_text
+                        title = b_res.title or title
+                    else:
+                        logger.warning("Direct browser fallback hit challenge page for %s: %s", url, b_ch)
+                        continue
 
             if not text_content or len(text_content.strip()) < 80:
                 logger.warning("Failed to obtain sufficient body content from %s", url)
                 continue
 
-            # Ingest into persistent project source library
+            # Ingest into persistent project source library with run and session scope
             source_rec = self.source_library.add_source(
                 project_id=project_id,
                 url=url,
@@ -264,6 +301,8 @@ class ResearchManager:
                 search_query=query,
                 search_provider=provider,
                 metadata=meta,
+                research_run_id=research_run_id,
+                session_id=session_id,
             )
 
             budget.documents_retrieved += 1
@@ -277,7 +316,7 @@ class ResearchManager:
             task_id=task_id,
             duration_ms=duration_ms,
             bytes_processed=sum(len(s.get("extracted_text", "")) for s in ingested_sources),
-            metadata={"retrieved_sources": len(ingested_sources)},
+            metadata={"retrieved_sources": len(ingested_sources), "research_run_id": research_run_id, "session_id": session_id},
         )
 
         return {
@@ -291,8 +330,12 @@ class ResearchManager:
         project_id: str,
         task_id: str,
         claims: List[Dict[str, Any]],
+        research_run_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        informed_tasks: Optional[List[str]] = None,
+        informed_requirements: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        """Validates factual claims against retrieved evidence in the EvidenceLedger."""
+        """Validates factual claims against retrieved evidence in the EvidenceLedger (Findings F-06, F-08, F-09)."""
         start_time = time.time()
         tracked_claims = []
 
@@ -302,8 +345,14 @@ class ResearchManager:
             if not c_text:
                 continue
 
-            claim = self.evidence_ledger.add_claim(project_id, c_text, claim_type=c_type)
-            # Add evidence associations
+            init_conf = c_data.get("confidence_score")
+            claim = self.evidence_ledger.add_claim(
+                project_id, c_text,
+                claim_type=c_type,
+                research_run_id=research_run_id,
+                confidence_score=init_conf,
+            )
+            # Add evidence associations with exact quote, spans, and lineage metadata
             for ev in c_data.get("evidence", []):
                 src_id = ev.get("source_id")
                 passage = ev.get("passage", "")
@@ -313,10 +362,18 @@ class ResearchManager:
                         claim_id=claim.claim_id,
                         source_id=src_id,
                         supporting_passage=passage,
-                        confidence_score=ev.get("confidence", 0.9),
+                        exact_quote=ev.get("exact_quote"),
+                        confidence_score=ev.get("confidence"),
+                        orchestration_run_id=research_run_id,
+                        research_session_id=session_id,
+                        source_version_id=ev.get("source_version_id"),
+                        is_heuristic=True,
+                        heuristic_label="HEURISTIC_ESTIMATE",
+                        informed_tasks=informed_tasks or ev.get("informed_tasks"),
+                        informed_requirements=informed_requirements or ev.get("informed_requirements"),
                     )
 
-            # Auto-corroborate
+            # Auto-corroborate with multi-source independent domain checking
             updated = self.evidence_ledger.corroborate_claim(claim.claim_id)
             tracked_claims.append(updated.to_dict())
 
@@ -326,7 +383,7 @@ class ResearchManager:
             project_id=project_id,
             task_id=task_id,
             duration_ms=duration_ms,
-            metadata={"claims_verified": len(tracked_claims)},
+            metadata={"claims_verified": len(tracked_claims), "research_run_id": research_run_id},
         )
 
         return {
@@ -341,13 +398,14 @@ class ResearchManager:
         task_id: str,
         objective: str,
         topic: str,
+        research_run_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Synthesizes structured research report and audits all citations."""
+        """Synthesizes structured research report and audits all citations within run scope (Findings F-07, F-09)."""
         start_time = time.time()
 
-        # 1. Fetch sources and verified claims from DB
-        sources = self.source_library.list_sources(project_id)
-        claims = self.evidence_ledger.list_claims(project_id)
+        # 1. Fetch sources and verified claims from DB scoped to research_run_id
+        sources = self.source_library.list_sources(project_id, research_run_id=research_run_id)
+        claims = self.evidence_ledger.list_claims(project_id, research_run_id=research_run_id)
 
         # 2. Synthesize initial report
         report_md = self.synthesizer.synthesize_report(
@@ -358,8 +416,10 @@ class ResearchManager:
             claims=claims,
         )
 
-        # 3. Deterministically audit citations
-        audit = self.citation_engine.validate_report_citations(project_id, report_md, sources)
+        # 3. Deterministically audit citations with zero-citation and grounding verification
+        audit = self.citation_engine.validate_report_citations(
+            project_id, report_md, sources=sources, research_run_id=research_run_id
+        )
 
         # 4. Record citations in DB
         self.citation_engine.record_citations(project_id, task_id, audit)

@@ -62,11 +62,37 @@ async def lifespan(app: FastAPI):
         orch_engine.stop_background()
     logger.info("Shutting down Qwen Collective Control Server.")
 
+from fastapi.responses import JSONResponse
+from app.services.upload_security import (
+    UploadSizeLimitMiddleware,
+    PayloadTooLargeError,
+    MalformedTransferMetadataError,
+)
+
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     lifespan=lifespan
 )
+
+# ASGI Transport-Layer Upload Size Enforcement (Task 8C.3)
+app.add_middleware(UploadSizeLimitMiddleware)
+
+@app.exception_handler(PayloadTooLargeError)
+async def payload_too_large_handler(request, exc: PayloadTooLargeError):
+    return JSONResponse(
+        status_code=413,
+        content={"detail": exc.message},
+        headers={"Connection": "close"},
+    )
+
+@app.exception_handler(MalformedTransferMetadataError)
+async def malformed_transfer_metadata_handler(request, exc: MalformedTransferMetadataError):
+    return JSONResponse(
+        status_code=400,
+        content={"detail": f"Malformed transfer metadata: {exc.message}"},
+        headers={"Connection": "close"},
+    )
 
 # Mount static assets
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -87,6 +113,42 @@ app.include_router(observatory.router)
 app.include_router(research.router)
 app.include_router(deliverables.router)
 app.include_router(settings_route.router)
+
+import os
+import subprocess
+from datetime import datetime, timezone
+
+_PROCESS_STARTED_AT = datetime.now(timezone.utc).isoformat()
+
+def get_runtime_revision() -> str:
+    env_rev = os.getenv("QC_GIT_REVISION")
+    if env_rev:
+        return env_rev.strip()
+    try:
+        rev = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=os.path.dirname(os.path.dirname(__file__)),
+            stderr=subprocess.DEVNULL,
+            text=True
+        ).strip()
+        if rev:
+            return rev
+    except Exception:
+        pass
+    return "unknown"
+
+
+@app.get("/health")
+@app.get("/api/v1/health")
+def health_check():
+    return {
+        "status": "healthy",
+        "app_name": settings.app_name,
+        "version": settings.app_version,
+        "git_revision": get_runtime_revision(),
+        "process_started_at": _PROCESS_STARTED_AT,
+    }
+
 
 if __name__ == "__main__":
     import os

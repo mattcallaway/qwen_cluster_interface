@@ -1,0 +1,84 @@
+{
+  "execution_start_utc": "2026-10-21T20:37:10.204087+00:00",
+  "execution_completed_utc": "2026-10-21T20:37:13.629384+00:00",
+  "disposable_root": "C:\\Users\\MATTC~1\\AppData\\Local\\Temp\\qc_stage09_phase2_8zylc0b3",
+  "total_phase2_scenarios": 3,
+  "passed": 3,
+  "failed": 0,
+  "blocked": 0,
+  "scenarios": {
+    "BB-18": {
+      "scenario_id": "BB-18",
+      "name": "Controller concurrency and progress under slow work",
+      "finding": "F-16",
+      "status": "PASS",
+      "elapsed_ms": 2228.2,
+      "details": {
+        "tick1_ms": 578.42,
+        "tick2_ms": 208.84,
+        "project_a_id": "prj-7e916802c6f749098613ca123604ae6c",
+        "project_b_id": "prj-5a0cf2073d5f413c91e5fd0b3fb850ec",
+        "task_a_final_state": "accepted",
+        "task_b_final_state": "accepted"
+      },
+      "evidence": {
+        "tick1_duration_ms": 578.4208999830298,
+        "tick2_duration_ms": 208.84279999881983,
+        "slow_step_started": true,
+        "slow_step_finished": true,
+        "independent_progress_verified": true
+      },
+      "error_message": "",
+      "timestamp": "2026-10-21T20:37:12.845154+00:00"
+    },
+    "BB-20": {
+      "scenario_id": "BB-20",
+      "name": "Missing telemetry detection & refusal to fabricate data",
+      "finding": "I-14",
+      "status": "PASS",
+      "elapsed_ms": 113.28,
+      "details": {
+        "gpu_supported": true,
+        "unmeasured_is_none": true,
+        "missing_telemetry_status": "BLOCKED",
+        "synthetic_estimate_blocked": true,
+        "genuine_telemetry_check_passed": true
+      },
+      "evidence": {
+        "empty_input_summary": "Deliverable 'Cluster Health & Telemetry Baseline' requires measured telemetry, but no telemetry evidence is available.",
+        "synthetic_summary": "Deliverable 'Cluster Health & Telemetry Baseline' requires measured telemetry, but no telemetry evidence is available.",
+        "checks": [
+          {
+            "name": "telemetry_measured",
+            "passed": false,
+            "detail": "no worker telemetry recorded for this run",
+            "layer": "goal"
+          }
+        ]
+      },
+      "error_message": "",
+      "timestamp": "2026-10-21T20:37:12.958497+00:00"
+    },
+    "BB-25": {
+      "scenario_id": "BB-25",
+      "name": "External dependency failure & offline degraded operation",
+      "finding": "I-14",
+      "status": "PASS",
+      "elapsed_ms": 671.66,
+      "details": {
+        "search_timeout_handled": true,
+        "search_fallback_recovered": true,
+        "offline_model_failure_class": "unsupported_capability",
+        "offline_task_state": "accepted"
+      },
+      "evidence": {
+        "search_failure_error": "Connection timed out after 5.0s (Simulated Egress Failure)",
+        "fallback_provider_used": "backup_mock",
+        "capability_gap_error": "no compatible node exists: worker-bb18-6b3b: no local inference runtime/models",
+        "bounded_failure": true
+      },
+      "error_message": "",
+      "timestamp": "2026-10-21T20:37:13.629384+00:00"
+    }
+  }
+}

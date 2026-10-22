@@ -11,11 +11,12 @@ Enforces:
 import base64
 import logging
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
-from app.auth import get_current_user
+from app.auth import get_current_user, verify_csrf
 from app.services import worker as worker_svc
+from app.services.upload_security import PayloadTooLargeError
 from app.services.observatory import alerting as obs_alerting
 from app.services.observatory import collector as obs_collector
 from app.services.observatory.models import TelemetrySamplePayload
@@ -32,6 +33,7 @@ router = APIRouter(prefix="/api/v1/worker", tags=["worker"])
 class ArtifactUploadRequest(BaseModel):
     filename: str = Field(..., min_length=1, max_length=255)
     content_base64: str = Field(..., min_length=1)
+    lease_id: Optional[str] = None
     expected_sha256: Optional[str] = None
     artifact_type: str = "general"
 
@@ -107,6 +109,23 @@ class TaskResultSubmission(BaseModel):
     result_payload: Dict[str, Any] = Field(default_factory=dict)
     deliverable_ids: List[str] = Field(default_factory=list)
     artifacts: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class TaskHeartbeatPayload(BaseModel):
+    additional_seconds: Optional[int] = 300
+    tool_name: Optional[str] = None
+    tool_args: Optional[Dict[str, Any]] = None
+    result_summary: Optional[Any] = None
+    error_category: Optional[str] = None
+    progress_milestone: Optional[bool] = None
+
+
+class TaskTelemetryPayload(BaseModel):
+    tool_name: str
+    tool_args: Optional[Dict[str, Any]] = None
+    result_summary: Optional[Any] = None
+    error_category: Optional[str] = None
+    progress_milestone: Optional[bool] = None
 
 
 # ---------------------------------------------------------------------------
@@ -197,8 +216,14 @@ def register_worker(
             )
         token_status = "provisioned"
 
-    # Case 3: Administrator session
+    # Case 3: Administrator session (requires CSRF verification)
     elif get_current_user(request):
+        csrf_token = request.headers.get("X-CSRF-Token")
+        if not verify_csrf(request, csrf_token):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Invalid or missing CSRF token for administrator registration.",
+            )
         token_status = "provisioned"
 
     # Case 4: No valid enrollment authorization
@@ -260,6 +285,9 @@ def create_enrollment_token(
     admin_user = get_current_user(request)
     if not admin_user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Administrator login required.")
+    csrf_token = request.headers.get("X-CSRF-Token")
+    if not verify_csrf(request, csrf_token):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid or missing CSRF token.")
 
     token_id, raw_token = worker_svc.create_enrollment_token(
         allowed_node_id=req.allowed_node_id,
@@ -291,6 +319,9 @@ def revoke_enrollment_token(token_id: str, request: Request):
     admin_user = get_current_user(request)
     if not admin_user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Administrator login required.")
+    csrf_token = request.headers.get("X-CSRF-Token")
+    if not verify_csrf(request, csrf_token):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid or missing CSRF token.")
 
     success = worker_svc.revoke_enrollment_token(token_id)
     if not success:
@@ -304,6 +335,9 @@ def revoke_worker_token_route(token_id: str, request: Request):
     admin_user = get_current_user(request)
     if not admin_user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Administrator login required.")
+    csrf_token = request.headers.get("X-CSRF-Token")
+    if not verify_csrf(request, csrf_token):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid or missing CSRF token.")
 
     success = worker_svc.revoke_worker_token(token_id)
     if not success:
@@ -425,16 +459,35 @@ def lease_task(
 @router.post("/tasks/{lease_id}/heartbeat")
 def extend_task_lease(
     lease_id: str,
-    additional_seconds: int = 300,
+    payload: Optional[TaskHeartbeatPayload] = Body(None),
+    additional_seconds: Optional[int] = None,
     worker: Dict[str, Any] = Depends(get_authenticated_worker),
 ):
     """
     Renew active task lease heartbeat to prevent abandonment timeout.
+    Optionally records tool operation telemetry and progress milestones.
     """
+    sec = 300
+    if payload and payload.additional_seconds is not None:
+        sec = payload.additional_seconds
+    elif additional_seconds is not None:
+        sec = additional_seconds
+
+    tool_name = payload.tool_name if payload else None
+    tool_args = payload.tool_args if payload else None
+    result_summary = payload.result_summary if payload else None
+    error_category = payload.error_category if payload else None
+    progress_milestone = payload.progress_milestone if payload else None
+
     success = worker_svc.renew_task_lease(
         worker_id=worker["node_id"],
         lease_id=lease_id,
-        additional_seconds=additional_seconds,
+        additional_seconds=sec,
+        tool_name=tool_name,
+        tool_args=tool_args,
+        result_summary=result_summary,
+        error_category=error_category,
+        progress_milestone=progress_milestone,
     )
     if not success:
         raise HTTPException(
@@ -442,6 +495,32 @@ def extend_task_lease(
             detail="Active lease not found or already expired/completed.",
         )
     return {"status": "renewed", "lease_id": lease_id}
+
+
+@router.post("/tasks/{lease_id}/telemetry")
+def submit_task_telemetry(
+    lease_id: str,
+    payload: TaskTelemetryPayload,
+    worker: Dict[str, Any] = Depends(get_authenticated_worker),
+):
+    """
+    Submit intermediate tool operation telemetry or progress milestones during task execution.
+    """
+    success = worker_svc.record_task_telemetry(
+        worker_id=worker["node_id"],
+        lease_id=lease_id,
+        tool_name=payload.tool_name,
+        arguments=payload.tool_args,
+        result=payload.result_summary,
+        error_category=payload.error_category,
+        progress_milestone=payload.progress_milestone,
+    )
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Active lease not found or already expired/completed.",
+        )
+    return {"status": "recorded", "lease_id": lease_id}
 
 
 @router.post("/tasks/{task_id}/submit")
@@ -452,6 +531,9 @@ def submit_task_result(
 ):
     """
     Submit completed task results with idempotency guard.
+    Enforces F-10:
+    - Authoritative task assignment and lease fencing validation
+    - Idempotent deduplication and conflict detection
     """
     if submission.task_id != task_id:
         raise HTTPException(
@@ -476,6 +558,8 @@ def submit_task_result(
             artifacts=submission.artifacts,
         )
         return result
+    except worker_svc.TaskAuthorizationError as tae:
+        raise HTTPException(status_code=tae.status_code, detail=tae.message)
     except PermissionError as pe:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(pe))
     except ValueError as ve:
@@ -483,26 +567,111 @@ def submit_task_result(
 
 
 @router.post("/tasks/{task_id}/artifacts")
-def upload_task_artifact(
+async def upload_task_artifact(
     task_id: str,
-    req: ArtifactUploadRequest,
+    request: Request,
     worker: Dict[str, Any] = Depends(get_authenticated_worker),
 ):
     """
     Upload a physical artifact produced by a worker task.
-    The controller independently stores the bytes in evidence storage and computes SHA256.
+    Enforces F-10 & Task 8C.3:
+    - Authoritative task assignment and lease fencing validation
+    - Support for both streaming multipart/form-data and Base64 JSON
+    - Incremental 25MB payload size enforcement (fails closed with 413 Payload Too Large)
+    - Independent controller-side SHA256 checksum computation
+    - Strict verification against expected worker checksum (fails closed with 400 Bad Request on mismatch)
+    - Path traversal sanitization and non-overwriting storage
     """
+    content_type = request.headers.get("content-type", "").lower()
+    
+    filename = None
+    expected_sha256 = None
+    lease_id = None
+    content_bytes = None
+    
+    if "multipart/form-data" in content_type:
+        try:
+            form = await request.form()
+        except PayloadTooLargeError:
+            raise
+        except Exception as ex:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid multipart form data: {ex}")
+            
+        file_obj = form.get("file")
+        if not file_obj:
+            for val in form.values():
+                if hasattr(val, "read"):
+                    file_obj = val
+                    break
+        if not file_obj:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing required 'file' field in multipart upload.")
+        
+        filename = form.get("filename") or getattr(file_obj, "filename", None) or "artifact.bin"
+        expected_sha256 = form.get("expected_sha256")
+        lease_id = form.get("lease_id")
+        
+        total_multipart_payload = 0
+        content_bytes = None
+        for val in form.values():
+            if hasattr(val, "read"):
+                try:
+                    part_bytes = await val.read()
+                    total_multipart_payload += len(part_bytes)
+                    if val is file_obj or content_bytes is None:
+                        content_bytes = part_bytes
+                finally:
+                    await val.close()
+                    
+        if total_multipart_payload > worker_svc.MAX_ARTIFACT_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Artifact exceeds maximum allowed size of {worker_svc.MAX_ARTIFACT_SIZE} bytes across multipart file parts."
+            )
+    elif "application/octet-stream" in content_type:
+        filename = request.headers.get("x-artifact-filename") or "artifact.bin"
+        expected_sha256 = request.headers.get("x-expected-sha256")
+        lease_id = request.headers.get("x-lease-id")
+        content_bytes = await request.body()
+    else:
+        # Default / application/json
+        try:
+            body = await request.json()
+            req = ArtifactUploadRequest(**body)
+            filename = req.filename
+            expected_sha256 = req.expected_sha256
+            lease_id = req.lease_id
+            content_bytes = base64.b64decode(req.content_base64, validate=True)
+        except (PayloadTooLargeError, HTTPException):
+            raise
+        except ValueError as ve:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
+        except Exception as ex:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid base64 encoding or JSON payload: {ex}")
+
+    # Enforce exact 25MB raw artifact payload limit (Task 8C.3)
+    if len(content_bytes) > worker_svc.MAX_ARTIFACT_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Artifact exceeds maximum allowed size of {worker_svc.MAX_ARTIFACT_SIZE} bytes."
+        )
+
+    # Enforce task authorization and active lease fencing (F-10)
     try:
-        content_bytes = base64.b64decode(req.content_base64)
-    except Exception as ex:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid base64 encoding: {ex}")
+        worker_svc.verify_worker_task_authorization(
+            worker_id=worker["node_id"],
+            task_id=task_id,
+            operation="upload",
+            lease_id=lease_id,
+        )
+    except worker_svc.TaskAuthorizationError as tae:
+        raise HTTPException(status_code=tae.status_code, detail=tae.message)
 
     try:
         stored = worker_svc.store_task_artifact(
             task_id=task_id,
-            filename=req.filename,
+            filename=filename,
             content_bytes=content_bytes,
-            expected_sha256=req.expected_sha256,
+            expected_sha256=expected_sha256,
             worker_id=worker["node_id"],
         )
         return {"status": "stored", "artifact": stored}
@@ -525,34 +694,22 @@ def download_task_artifact(
     """
     from fastapi.responses import FileResponse
     from app.services.artifacts import artifact_service
-    from app.database import get_db_connection
 
-    conn = get_db_connection()
     try:
-        trow = conn.execute("SELECT id, project_id, assigned_worker FROM tasks WHERE id = ?", (task_id,)).fetchone()
-        if not trow:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
+        auth_context = worker_svc.verify_worker_task_authorization(
+            worker_id=worker["node_id"],
+            task_id=task_id,
+            operation="artifact_download",
+        )
+    except worker_svc.TaskAuthorizationError as tae:
+        raise HTTPException(status_code=tae.status_code, detail=tae.message)
 
-        # Verify worker lease or assignment
-        active_lease = conn.execute(
-            "SELECT 1 FROM worker_task_leases WHERE task_id = ? AND worker_id = ? AND status IN ('leased', 'active')",
-            (task_id, worker["node_id"]),
-        ).fetchone()
-        if trow["assigned_worker"] != worker["node_id"] and not active_lease:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Worker '{worker['node_id']}' is not assigned or leased to task '{task_id}'.",
-            )
-
-        proj_id = trow["project_id"]
-        # Check project access to artifact
-        if not artifact_service.check_project_access(artifact_id, proj_id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Task project '{proj_id}' is not authorized to access artifact '{artifact_id}'.",
-            )
-    finally:
-        conn.close()
+    proj_id = auth_context["project_id"]
+    if not artifact_service.check_project_access(artifact_id, proj_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Task project '{proj_id}' is not authorized to access artifact '{artifact_id}'.",
+        )
 
     try:
         dl = artifact_service.resolve_download(artifact_id, version_number=version, project_id=proj_id)

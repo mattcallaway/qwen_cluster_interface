@@ -1,0 +1,55 @@
+{
+  "generated_utc": "2026-10-22T01:34:00Z",
+  "note": "All values measured from DB timestamps or direct probes unless marked derived. No estimates.",
+  "audit_rerun_run-ee1166ebb5eb4558": {
+    "project_created": "2026-10-22T01:10:20Z (run row); UI create ~01:10:33Z per operator log",
+    "first_plan_failed_race": "01:10:39Z",
+    "replanned_via_ui": "01:10:45Z",
+    "approved_via_ui": "01:12:08Z",
+    "started": "2026-10-22T01:12:11.624Z",
+    "approval_to_start_s": 6.58,
+    "tasks": [
+      {"step": "search_sources", "node": "controller-local", "model": null, "start": "01:12:12.253", "end": "01:12:27.749", "duration_s": 15.5},
+      {"step": "retrieve_content", "node": "controller-local", "model": null, "start": "01:12:30.968", "end": "01:12:39.676", "duration_s": 8.7},
+      {"step": "verify_claims", "node": "controller-local", "model": null, "start": "01:12:42.911", "end": "01:12:43.770", "duration_s": 0.86},
+      {"step": "synthesize_report", "node": "controller-local", "model": null, "start": "01:12:46.928", "end": "01:12:47.181", "duration_s": 0.25}
+    ],
+    "inter_task_dispatch_gap_s_derived": "~3.2 (engine tick)",
+    "completed": "2026-10-22T01:12:48.232Z",
+    "execution_duration_s": 36.6,
+    "model_calls": 0,
+    "web_searches": 7,
+    "relevant_sources": 0,
+    "deliverables_requested": 5,
+    "deliverables_created": 1
+  },
+  "original_user_run-08de085e97e84130": {
+    "run_created": "2026-10-22T00:53:09Z",
+    "started": "00:54:27.453Z",
+    "completed": "00:55:02.417Z",
+    "execution_duration_s": 35.0,
+    "model_calls": 0,
+    "web_searches": 7,
+    "relevant_sources": 0
+  },
+  "routing_probe_run-3ed0a2b98ea94cba": {
+    "pi_brain_qwen2.5_0.5b": {
+      "orphan_planning_s": 268.9,
+      "plan_repair_latency_s": 131.7,
+      "prompt_tokens": 1282,
+      "gen_tokens": 509,
+      "timeout_request_s": 290,
+      "replan_to_plan_proposed_s": 484
+    }
+  },
+  "preview_response": {
+    "live_detail_page": "HTTP 500 (see preview_repro_results.json for timings)",
+    "isolated_rc2": "see isolated_preview_results.json"
+  },
+  "worker_utilization": {
+    "controller-local": "8 controller_step tasks across 2 research runs",
+    "pi-brain": "3 planning inferences (1 orphaned, 1 timeout-but-executed, 1 completed)",
+    "desktop-worker-01": 0, "qwen-laptop": 0, "qwen-vps": 0
+  },
+  "independently_verified_claims_by_antigravity": "see AUTONOMOUS_RESEARCH_CAPABILITY_AUDIT.md external validation (labelled)"
+}

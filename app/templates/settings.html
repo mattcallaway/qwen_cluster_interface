@@ -155,11 +155,21 @@
       <span>Backup & Durability</span>
     </div>
     <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">
-      All persistent state lives in the <code>data/</code> folder. Backing up the system is as simple as copying this folder:
+      State is durably preserved across the SQLite database, Content-Addressed Storage (CAS) artifacts, Markdown Knowledge Vault, and research evidence. Use the Stage 8A operator utility:
     </p>
-    <div class="code-block"># Create atomic backup of database and knowledge notes
-sqlite3 data/qwen_collective.db ".backup data/backup_collective.db"
-tar -czvf qwen_collective_backup_$(date +%F).tar.gz data/knowledge data/backup_collective.db</div>
+    <div class="code-block"># Create atomic point-in-time recovery unit (DB, CAS blobs, Knowledge Vault, Evidence)
+python -m app.services.backup create --operator-id admin --comment "Scheduled Snapshot"
+
+# List and inspect existing recovery points
+python -m app.services.backup list
+python -m app.services.backup inspect &lt;archive.tar.gz&gt;
+
+# Verify archive integrity, checksums, and SQLite schema
+python -m app.services.backup verify &lt;archive.tar.gz&gt;
+
+# Perform safe dry-run or targeted restoration
+python -m app.services.backup restore &lt;archive.tar.gz&gt; --target-dir &lt;path&gt; --dry-run
+python -m app.services.backup restore &lt;archive.tar.gz&gt; --target-dir &lt;path&gt;</div>
   </div>
 </div>
 {% endblock %}
