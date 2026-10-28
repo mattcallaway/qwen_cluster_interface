@@ -181,15 +181,16 @@ Ensures AI agents plan tasks only on verified, capable hardware:
 - **Durable Task Leasing**: Atomic lease claims (`status = 'leased'`, `lease_expires_at = now + 300s`) with heartbeat renewals and idempotency keys.
 - **Local Disconnect Buffering**: If network connectivity drops, the VPS worker completes active tasks and buffers outputs in a local SQLite database (`vps_agent.db`) until connection is restored.
 
-### 3.6 Distributed Pipeline Parallelism & Searchable Paged KV Cache (`app/services/inference/`)
+### 3.6 Distributed Pipeline Parallelism & Searchable Paged KV Cache (`app/services/paged_kv/`, `app/services/pipeline_parallel/`)
 Scales model reasoning across heterogeneous nodes while eliminating RAM exhaustion:
-- **Searchable Paged KV Cache (`app/services/inference/paged_kv/`)**:
-  - **Virtual Block Paging**: Segments continuous attention states into fixed 16-token pages, mapping logical context sequences to physical blocks via virtual block tables.
-  - **Cryptographic Prefix Hashing**: Chains SHA-256 digests across token blocks. Shared system prompts, schemas, and workspace contexts are matched via Radix trees and attached with zero prompt prefill latency.
-  - **Tiered Memory Hierarchy**: Active blocks reside in Host/GPU RAM (Tier 1); idle contexts flush to local NVMe/mmap files (Tier 2); canonical blocks synchronize to central CAS/SQLite storage (Tier 3).
-- **Distributed Pipeline Parallelism (`app/services/inference/pipeline_parallel/`)**:
-  - **Inter-Node Layer Slicing**: Slices deep models (Qwen2.5-7B/14B) across sovereign machines (e.g. Stage 0 on low-power laptop CPU; Stage 1 on workstation/VPS).
-  - **Activation Streaming Protocol**: Passes compact FP16/BF16 hidden state activation vectors ($1 \times \text{hidden\_dim}$ per token, ~3–7 KB) over Tailscale with HMAC frame authentication and bounded timeouts.
+- **Searchable Paged KV Cache (`app/services/paged_kv/`)**:
+  - **Virtual Block Paging**: Segments continuous attention states into fixed 16-token pages, mapping logical context sequences to physical blocks via virtual block tables (`VirtualBlockTable`, `PhysicalBlockPool`).
+  - **Cryptographic Prefix Hashing & Radix Tree**: Chains SHA-256 digests across token blocks. Shared system prompts, schemas, and workspace contexts are matched via `PrefixRadixTree` and attached with zero prompt prefill latency.
+  - **Tiered Memory Hierarchy**: Active blocks reside in Host/GPU RAM (Tier 1); idle contexts flush to compressed disk storage (`data/kv_cache/{hash[:2]}/{hash}.bin.z`) (Tier 2); canonical blocks synchronize to SQLite storage (`kv_cache_pages`) (Tier 3).
+  - **Sidecar Inference Hook**: Deeply integrated into `app/services/inference.py` (`send_chat_completion`), automatically intercepting prompt requests to leverage Radix prefix matches before dispatching to backends, and caching output token continuations.
+- **Distributed Pipeline Parallelism (`app/services/pipeline_parallel/`)**:
+  - **Inter-Node Layer Slicing**: Slices deep models (Qwen2.5-7B/14B) across sovereign machines (e.g. Stage 0 on low-power laptop CPU; Stage 1 on workstation/VPS) with `PipelineTopology`.
+  - **Activation Streaming Protocol**: Passes compact FP16/BF16 hidden state activation vectors ($1 \times \text{hidden\_dim}$ per token, ~3–7 KB) over Tailscale with HMAC frame authentication (`ActivationProtocol`) and bounded timeouts.
   - **Disaggregated Stage Storage**: Each node allocates memory and paged KV caches strictly for its assigned layer subset.
 
 ---
