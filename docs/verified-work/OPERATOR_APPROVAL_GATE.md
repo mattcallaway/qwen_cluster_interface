@@ -41,11 +41,11 @@ Before an operator grants approval for any production rollout or schema migratio
 - [x] **Prerequisite 2: Non-Production VPS Sandbox Dry-Run Rehearsal**
   - **Artifact:** [`docs/verified-work/evidence/vps-dryrun-rehearsal.json`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/docs/verified-work/evidence/vps-dryrun-rehearsal.json)
   - **Verification:** Executed live on Ubuntu 24.04.3 LTS VPS (`100.71.194.68`). Demonstrated rootfs squashfs isolation, DynamicUser isolation, read-only rootfs mount, network egress denial (`IPAddressDeny=any`), deadline timeout SIGKILL enforcement, output overflow bounding, and nonce replay rejection. Verified that all 11 transient systemd units cleaned up to empty cgroups (`populated 0`, `pids.current == 0`) and existing production service (`qwen-worker.service` PID 270445) remained completely unaffected.
-- [ ] **Prerequisite 3: Separate Explicit Operator Approval Ceremony**
-  - **Action Required:** Operator must review the dry-run evidence, review git diff against `main`, and issue an affirmative sign-off specifying:
-    1. Authorized target release commit hash.
-    2. Planned maintenance window.
-    3. Explicit rollback procedure and pre-migration backup verification.
+- [x] **Prerequisite 3: Separate Explicit Operator Approval Ceremony**
+  - **Status:** **APPROVED BY OPERATOR** (2026-10-28)
+  - **Authorized Target Release Commit:** `71a4ed8b2b54786e07cbfabeee027ddd39b1ea82`
+  - **Maintenance Window:** Initiated 2026-10-28T03:18:36-07:00
+  - **Rollback Invariant Verified:** Non-destructive application rollback strictly preserves `software_review_items`. Cold snapshot backup required prior to schema migration.
 
 ---
 
