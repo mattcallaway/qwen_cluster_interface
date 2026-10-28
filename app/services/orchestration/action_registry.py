@@ -119,6 +119,7 @@ class ActionRegistry:
             ("research_synthesize", "Synthesize fact-based research summary with citation grounding."),
             ("research_citation_audit", "Audit citation coverage and reject zero-citation or ungrounded claims."),
             ("research_full_cycle", "Execute full multi-stage research cycle on the controller."),
+            ("pipeline_kv_diagnostics", "Execute Increment 17 distributed pipeline parallelism & searchable paged KV diagnostics."),
         ]
         for step_id, desc in controller_steps_def:
             self.register(ActionManifest(

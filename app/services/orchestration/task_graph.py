@@ -29,6 +29,7 @@ CONTROLLER_STEPS = (
     "research_synthesize",
     "research_citation_audit",
     "research_full_cycle",
+    "pipeline_kv_diagnostics",
 )
 ACCEPTANCE_KINDS = (
     "script_validator",

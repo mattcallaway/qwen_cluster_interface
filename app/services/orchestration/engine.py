@@ -1174,6 +1174,37 @@ def _execute_controller_step_payload(run: Dict[str, Any], ot: Dict[str, Any], ac
             ev = {"accepted": False, "checks": [{"name": "research_step", "passed": False, "detail": str(e)[:200]}], "result": {}}
         return ev
 
+    if step == "pipeline_kv_diagnostics":
+        try:
+            from app.services.orchestration.pipeline_kv_diagnostics import run_diagnostics
+            diag_res = run_diagnostics()
+            all_passed = diag_res.get("status") == "PASSED"
+            passed_cnt = diag_res.get("passed_tests", 0)
+            total_cnt = diag_res.get("total_tests", 0)
+            faults_cnt = diag_res.get("faults_trapped_and_contained", 0)
+            total_faults = diag_res.get("faults_injected", 0)
+            checks = [
+                {"name": "diagnostics_execution_passed", "passed": all_passed, "detail": f"{passed_cnt}/{total_cnt} tests passed"},
+                {"name": "fault_containment_verified", "passed": faults_cnt == total_faults and total_faults > 0, "detail": f"{faults_cnt}/{total_faults} adversarial faults contained"},
+            ]
+            ids = []
+            if all_passed:
+                aid = artifact_manager.write_controller_artifact(
+                    run, ot["id"], "pipeline_kv_diagnostics.json", json.dumps(diag_res, indent=2).encode("utf-8")
+                )
+                artifact_manager.set_validation(aid, "valid", f"All {total_cnt} tests passed; {faults_cnt} faults contained")
+                ids.append(aid)
+            ev = {
+                "accepted": all_passed,
+                "checks": checks,
+                "result": {"kind": "controller_generated", "artifacts": ids, "node": "controller-local", "data": diag_res} if all_passed else {},
+                "node": "controller-local",
+            }
+        except Exception as e:
+            logger.exception("Error executing pipeline_kv_diagnostics step")
+            ev = {"accepted": False, "checks": [{"name": "diagnostics_error", "passed": False, "detail": str(e)[:200]}], "result": {}}
+        return ev
+
     title = next((d["name"] for d in plan.get("deliverables", []) if d["produced_by"] == ot["plan_key"]), "Project Report")
     prov = [{"key": k, "node": v.get("node"), "attempts": by_key.get(k, {}).get("attempts"), "kind": v.get("kind")} for k, v in sorted(inputs.items())]
     try:
