@@ -141,3 +141,29 @@ Phase 5: Documentation & Map Updates
 3. **Prefix Hit Rate & Speedup:** Pre-computed prompts achieve 100% prefix hit rate on identical headers, reducing prefill token processing from $O(N)$ to $O(1)$ disk page attachment.
 4. **Activation Streaming Robustness:** Network disconnections, truncated tensors, or mismatched shapes during pipeline forwarding trigger immediate fail-closed error recovery without hang or memory leak.
 5. **Database Integrity:** Migration 19 applies cleanly with SQLite online backup verification; 100% backward compatibility preserved.
+
+---
+
+## 6. Live Multi-Node Pipeline Parallelism Trial (Tailscale WireGuard)
+
+Conducted on October 28, 2026 across heterogeneous nodes running authenticated activation streaming (`ActivationProtocol`, HMAC-SHA256, `QCACT1` frame).
+
+Artifact: [`docs/verified-work/INCREMENT_17_LIVE_PIPELINE_BENCHMARK.json`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/docs/verified-work/INCREMENT_17_LIVE_PIPELINE_BENCHMARK.json)
+
+### Summary Results
+
+| Link Topology | Hidden Dim & Dtype | Frame Size | Network RTT (p50) | Total Step (p50) | Inter-Node Throughput |
+|---|---|---|---|---|---|
+| **Desktop $\to$ Laptop** (LAN Mesh) | 1536 (`float32` - 1.5B) | 6.2 KB | **3.38 ms** | 7.17 ms | **130.7 tok/s** |
+| **Desktop $\to$ Laptop** (LAN Mesh) | 3584 (`float16` - 7B) | 7.2 KB | **3.52 ms** | 9.91 ms | **95.1 tok/s** |
+| **Desktop $\to$ Laptop** (LAN Mesh) | 4096 (`float16` - 14B) | 8.3 KB | **3.50 ms** | 10.94 ms | **86.8 tok/s** |
+| **Desktop $\to$ VPS** (WAN Mesh) | 1536 (`float32` - 1.5B) | 6.2 KB | **11.34 ms** | 13.72 ms | **72.9 tok/s** |
+| **Desktop $\to$ VPS** (WAN Mesh) | 3584 (`float16` - 7B) | 7.2 KB | **11.45 ms** | 16.36 ms | **60.3 tok/s** |
+| **Desktop $\to$ VPS** (WAN Mesh) | 4096 (`float16` - 14B) | 8.3 KB | **11.58 ms** | 17.45 ms | **57.0 tok/s** |
+| **Laptop $\to$ VPS** (Cross-Continent) | 3584 (`float16` - 7B) | 7.2 KB | **14.20 ms** | 19.67 ms | **46.4 tok/s** |
+
+### Key Takeaways
+- **Inter-Stage Handover Overhead**: Network RTT over Tailscale WireGuard is only **3.5 ms on LAN mesh** and **11.5 ms over cross-country WAN**, adding negligible delay relative to typical transformer layer compute times (15–40 ms).
+- **HMAC & Framing Overhead**: Packed encoding (`struct.pack` + HMAC-SHA256) consumes **0.13 ms to 0.38 ms**, maintaining wire-speed streaming without saturating CPU cores.
+- **Node Zero-Impact Guarantee**: The trial utilized an isolated high port (`9190`–`9194`) on the private Tailscale interface (`100.x.x.x`), leaving production databases and system services completely untouched with verified process cleanup.
+
