@@ -4,6 +4,23 @@
 {% block page_title %}Inference Management & Distributed Models{% endblock %}
 
 {% block content %}
+<!-- Section: Increment 17 Distributed Pipeline Parallelism & Searchable Paged KV Cache -->
+<div style="margin-bottom: 28px;">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+    <div>
+      <h2 style="font-size: 1.25rem; font-weight: 700; color: var(--text-main);">Distributed Execution & Virtual Memory</h2>
+      <p style="font-size: 0.85rem; color: var(--text-muted);">
+        Real-time telemetry for searchable Paged KV virtual block tables and inter-node pipeline parallelism over Tailscale WireGuard.
+      </p>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 20px;">
+    {% include "inference/pipeline_widget.html" %}
+    {% include "inference/paged_kv_widget.html" %}
+  </div>
+</div>
+
 <!-- Section A: Active & Configured Inference Backends -->
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
   <div>

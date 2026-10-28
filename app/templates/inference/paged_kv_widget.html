@@ -1,0 +1,90 @@
+<!-- Paged KV Cache Virtual Memory Live HTMX Partial -->
+<div class="card" id="paged-kv-widget-container" hx-get="/inference/paged-kv/widget" hx-trigger="every 5s" hx-swap="outerHTML">
+  <div class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--primary);">
+        <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+        <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+        <line x1="6" y1="6" x2="6.01" y2="6"></line>
+        <line x1="6" y1="18" x2="6.01" y2="18"></line>
+      </svg>
+      <span>Searchable Paged KV Cache Virtual Memory</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 6px;">
+      <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); font-weight: 600;">
+        <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #10b981; margin-right: 4px;"></span>
+        Tiered Zero-Copy RAM
+      </span>
+      <span class="badge" style="background: #1e293b; color: #94a3b8; font-size: 0.75rem;">16-Token Pages</span>
+    </div>
+  </div>
+
+  <div class="card-subtitle" style="margin-bottom: 16px;">
+    Cryptographic prefix matching chains SHA-256 digests across 16-token pages. Shared system prompts and schemas bypass prompt prefill passes entirely.
+  </div>
+
+  <!-- Primary Meter: Prefix Hit Rate -->
+  <div style="background: #0f172a; border-radius: 8px; padding: 16px; margin-bottom: 16px; border: 1px solid #1e293b;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font-size: 0.85rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">
+        Prefix Cache Hit Rate
+      </span>
+      <span style="font-size: 1.4rem; font-weight: 700; color: #38bdf8; font-family: var(--font-mono);">
+        {{ paged_kv_metrics.prefix_hit_rate_percent or 0.0 }}%
+      </span>
+    </div>
+    <div style="width: 100%; height: 8px; background: #334155; border-radius: 4px; overflow: hidden;">
+      <div style="width: {{ paged_kv_metrics.prefix_hit_rate_percent or 0.0 }}%; height: 100%; background: linear-gradient(90deg, #0ea5e9, #10b981); border-radius: 4px; transition: width 0.4s ease;"></div>
+    </div>
+    <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: #64748b; margin-top: 6px;">
+      <span>0% Cold Ingestion</span>
+      <span>Target: &gt;66% (Multi-turn conversations & schemas)</span>
+      <span>100% Zero-Prefill</span>
+    </div>
+  </div>
+
+  <!-- Metric Counters Grid -->
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px;">
+    <div style="background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+      <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Queries Ingested</div>
+      <div style="font-size: 1.3rem; font-weight: 700; color: var(--text-main); font-family: var(--font-mono); margin-top: 4px;">
+        {{ paged_kv_metrics.total_queries or 0 }}
+      </div>
+    </div>
+
+    <div style="background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+      <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Tokens Evaluated</div>
+      <div style="font-size: 1.3rem; font-weight: 700; color: var(--text-main); font-family: var(--font-mono); margin-top: 4px;">
+        {{ paged_kv_metrics.total_evaluated_tokens or 0 }}
+      </div>
+    </div>
+
+    <div style="background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+      <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Prefill Reused</div>
+      <div style="font-size: 1.3rem; font-weight: 700; color: var(--status-online); font-family: var(--font-mono); margin-top: 4px;">
+        {{ paged_kv_metrics.total_matched_tokens or 0 }} <span style="font-size: 0.75rem; font-weight: 500;">tok</span>
+      </div>
+    </div>
+
+    <div style="background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+      <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Tier 1 RAM Working Set</div>
+      <div style="font-size: 1.3rem; font-weight: 700; color: #0284c7; font-family: var(--font-mono); margin-top: 4px;">
+        {{ paged_kv_metrics.current_ram_pages or 0 }} <span style="font-size: 0.8rem; color: var(--text-muted);">/ {{ paged_kv_metrics.max_ram_blocks or 128 }} pgs</span>
+      </div>
+    </div>
+
+    <div style="background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+      <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Tier 2 Disk Evictions</div>
+      <div style="font-size: 1.3rem; font-weight: 700; color: #f59e0b; font-family: var(--font-mono); margin-top: 4px;">
+        {{ paged_kv_metrics.total_evictions or 0 }}
+      </div>
+    </div>
+
+    <div style="background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+      <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Pool Free Slots</div>
+      <div style="font-size: 1.3rem; font-weight: 700; color: var(--text-main); font-family: var(--font-mono); margin-top: 4px;">
+        {{ paged_kv_metrics.free_physical_blocks or 0 }}
+      </div>
+    </div>
+  </div>
+</div>

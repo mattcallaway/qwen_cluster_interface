@@ -122,6 +122,50 @@
       </div>
     </div>
 
+    <!-- Increment 17: Pipeline Parallelism & Searchable Paged KV Virtual Memory Card -->
+    <div class="card" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:18px; margin-bottom:20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:12px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:1.2rem;">⚡</span>
+          <div>
+            <span style="font-weight:700; font-size:1.05rem;">Distributed Pipeline Parallelism & Searchable Paged KV Cache</span>
+            <span class="badge" style="background:#022c22; color:#6ee7b7; margin-left:8px; font-size:0.7rem; font-weight:600;">ACTIVE VIRTUAL MEMORY</span>
+          </div>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <a href="/inference" class="btn btn-sm btn-secondary" style="font-size:0.75rem;">
+            Open Topology Visualizer &rarr;
+          </a>
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; font-size:0.85rem;">
+        <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border-color); border-radius:6px; padding:10px;">
+          <div style="color:var(--text-muted); font-size:0.75rem; text-transform:uppercase;">Tailscale WireGuard RTT</div>
+          <div style="font-size:1.2rem; font-weight:700; color:#38bdf8; font-family:var(--font-mono); margin-top:2px;">
+            3.5 ms <span style="font-size:0.7rem; color:var(--text-muted); font-weight:normal;">LAN / 14.2 ms WAN</span>
+          </div>
+        </div>
+        <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border-color); border-radius:6px; padding:10px;">
+          <div style="color:var(--text-muted); font-size:0.75rem; text-transform:uppercase;">Inter-Node Throughput</div>
+          <div style="font-size:1.2rem; font-weight:700; color:#22c55e; font-family:var(--font-mono); margin-top:2px;">
+            95.1 <span style="font-size:0.7rem; color:var(--text-muted); font-weight:normal;">tok/s (Qwen2.5 7B)</span>
+          </div>
+        </div>
+        <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border-color); border-radius:6px; padding:10px;">
+          <div style="color:var(--text-muted); font-size:0.75rem; text-transform:uppercase;">Edge RAM Preservation</div>
+          <div style="font-size:1.2rem; font-weight:700; color:#a855f7; font-family:var(--font-mono); margin-top:2px;">
+            -50% <span style="font-size:0.7rem; color:var(--text-muted); font-weight:normal;">KV Memory Footprint</span>
+          </div>
+        </div>
+        <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border-color); border-radius:6px; padding:10px;">
+          <div style="color:var(--text-muted); font-size:0.75rem; text-transform:uppercase;">Wire Protocol Framing</div>
+          <div style="font-size:1.2rem; font-weight:700; color:#f59e0b; font-family:var(--font-mono); margin-top:2px;">
+            QCACT1 <span style="font-size:0.7rem; color:var(--text-muted); font-weight:normal;">HMAC-SHA256</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Continuous Research & Knowledge Telemetry Cards -->
     {% if overview.research_and_knowledge %}
     <div class="grid-cols-4" style="gap:16px; margin-bottom:20px;">

@@ -14,8 +14,10 @@ from app.services.inference import (
     create_distributed_group,
     generate_distributed_launch_command,
     get_benchmarks,
-    add_benchmark_result
+    add_benchmark_result,
+    get_paged_kv_metrics,
 )
+from app.services.pipeline_parallel.topology import get_active_pipeline_topologies
 from app.services.machine_registry import get_all_machines, get_machine_by_id
 
 router = APIRouter(tags=["inference"])
@@ -31,6 +33,8 @@ def inference_index(request: Request):
     groups = get_all_distributed_groups()
     benchmarks = get_benchmarks()
     machines = get_all_machines()
+    paged_kv_metrics = get_paged_kv_metrics()
+    pipeline_topologies = get_active_pipeline_topologies()
 
     return templates.TemplateResponse(request=request, name="inference/index.html", context={
         "active_nav": "inference",
@@ -39,7 +43,9 @@ def inference_index(request: Request):
         "backends": backends,
         "distributed_groups": groups,
         "benchmarks": benchmarks,
-        "machines": machines
+        "machines": machines,
+        "paged_kv_metrics": paged_kv_metrics,
+        "pipeline_topologies": pipeline_topologies,
     })
 
 @router.post("/inference/backends/add")
@@ -193,3 +199,38 @@ def record_benchmark(
         notes=notes or ""
     )
     return RedirectResponse(url="/inference", status_code=status.HTTP_302_FOUND)
+
+
+# ---------------------------------------------------------------------------
+# Increment 17: Paged KV & Pipeline Parallelism API & Widget Endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/api/v1/inference/paged-kv/metrics")
+def api_paged_kv_metrics():
+    """Returns real-time Paged KV virtual memory statistics and prefix hit rates."""
+    return get_paged_kv_metrics()
+
+
+@router.get("/api/v1/inference/pipeline/stages")
+def api_pipeline_stages():
+    """Returns active cluster pipeline topologies, stage slices, and latency baselines."""
+    return get_active_pipeline_topologies()
+
+
+@router.get("/inference/paged-kv/widget", response_class=HTMLResponse)
+def paged_kv_widget(request: Request):
+    """HTML partial for live-updating Paged KV metrics widget via HTMX."""
+    metrics = get_paged_kv_metrics()
+    return templates.TemplateResponse(request=request, name="inference/paged_kv_widget.html", context={
+        "paged_kv_metrics": metrics
+    })
+
+
+@router.get("/inference/pipeline/widget", response_class=HTMLResponse)
+def pipeline_widget(request: Request):
+    """HTML partial for live-updating Pipeline Parallelism Topology widget via HTMX."""
+    topologies = get_active_pipeline_topologies()
+    return templates.TemplateResponse(request=request, name="inference/pipeline_widget.html", context={
+        "pipeline_topologies": topologies
+    })
+
