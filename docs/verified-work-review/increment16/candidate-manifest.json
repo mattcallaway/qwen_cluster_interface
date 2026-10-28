@@ -328,6 +328,11 @@
       "candidate_sha256": "0e7b71290c54c1926f230240d4a0ac37159eebbb9389f4c0260b1d985ad98707"
     },
     {
+      "path": "docs/verified-work/evidence/ANTIGRAVITY_HANDOFF_PROMPT.md",
+      "original_sha256": null,
+      "candidate_sha256": "9d2efd10aa8449a6619602766d8b0add37cbe87fcfb0d64dc7b770812b55e1d2"
+    },
+    {
       "path": "docs/verified-work/evidence/candidate-tests.txt",
       "original_sha256": null,
       "candidate_sha256": "f1e731d048d8592620f99908d4066ad189bdff74df7cbd6038db79b8300a3439"
@@ -335,7 +340,7 @@
     {
       "path": "docs/verified-work/evidence/documentation-checks.json",
       "original_sha256": null,
-      "candidate_sha256": "eb722db16b01c2cb2f4eedf30a751fc63263214c15b96d7d98ab3f810cc96f89"
+      "candidate_sha256": "25917b1c2a438e124f33130c172315969f05e37dfae7938717c95b3cf1cf0304"
     },
     {
       "path": "docs/verified-work/evidence/increment10-focused-tests.txt",

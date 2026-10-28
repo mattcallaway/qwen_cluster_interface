@@ -6,12 +6,12 @@
   },
   {
     "path": "candidate-manifest.json",
-    "sha256": "2a8e974ea5702446374022155ff5d7575f0fc33fbb0ca5c363582f19f6fdd63b",
-    "size": 32987
+    "sha256": "2740a4a45651ad07d213ec72792ec829eab9f102753a4ff4025353e9e744822a",
+    "size": 33204
   },
   {
     "path": "credential-review-check.json",
-    "sha256": "9e9e2017f7a2e0b9d3dce5e2c6db83f55dd6b9118b838bcbbcbd6d2a96b422a7",
+    "sha256": "0eb7ff21f694a96d50a7df8f2b1619ca364c636cf5760379d84ab5ea58f112b6",
     "size": 120
   },
   {
@@ -81,8 +81,8 @@
   },
   {
     "path": "qwen-containment.patch",
-    "sha256": "1a1611d5759c9918d4e7cb59cb3f42ae442e84d8c564e07932f73a64197cc854",
-    "size": 1267382
+    "sha256": "4fa80326ac1aaa691897405830e3983db31adab0e400179e43171ea0da3a2bc2",
+    "size": 1278555
   },
   {
     "path": "README.md",
@@ -91,7 +91,7 @@
   },
   {
     "path": "SYNC_BEFORE_PUBLICATION.json",
-    "sha256": "db2d546d281f94b4daa0b109bd3357ac4e60e6101ada3c547cc6b48b985fb1f9",
-    "size": 955
+    "sha256": "06ddca931a179eaf1c3ee257859808b4591ffbf1188b4e572f85bdafbfc492f6",
+    "size": 1050
   }
 ]
