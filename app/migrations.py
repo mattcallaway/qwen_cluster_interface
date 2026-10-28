@@ -2191,6 +2191,50 @@ _M18: List[str] = [
     "CREATE INDEX IF NOT EXISTS idx_knowledge_conflicts_records ON knowledge_conflicts(record_a_id, record_b_id);",
 ]
 
+# ---------------------------------------------------------------------------
+# Migration 19 — Paged KV Cache Storage and Pipeline Cluster Topology (Increment 17)
+# ---------------------------------------------------------------------------
+_M19: List[str] = [
+    """
+    CREATE TABLE IF NOT EXISTS kv_cache_pages (
+        page_hash TEXT PRIMARY KEY,
+        parent_page_hash TEXT,
+        model_name TEXT NOT NULL,
+        layer_start INTEGER NOT NULL,
+        layer_end INTEGER NOT NULL,
+        token_count INTEGER NOT NULL CHECK (token_count BETWEEN 1 AND 128),
+        tokens_json TEXT NOT NULL,
+        storage_path TEXT NOT NULL,
+        byte_size INTEGER NOT NULL,
+        tensor_dtype TEXT NOT NULL DEFAULT 'float16',
+        compression TEXT NOT NULL DEFAULT 'none',
+        access_count INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        last_accessed_at TEXT NOT NULL
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_kv_parent_hash ON kv_cache_pages(parent_page_hash);",
+    "CREATE INDEX IF NOT EXISTS idx_kv_model_layers ON kv_cache_pages(model_name, layer_start, layer_end);",
+    "CREATE INDEX IF NOT EXISTS idx_kv_last_accessed ON kv_cache_pages(last_accessed_at);",
+    """
+    CREATE TABLE IF NOT EXISTS pipeline_cluster_stages (
+        stage_id TEXT PRIMARY KEY,
+        pipeline_name TEXT NOT NULL,
+        stage_index INTEGER NOT NULL,
+        node_id TEXT NOT NULL REFERENCES machines(id),
+        model_name TEXT NOT NULL,
+        layer_start INTEGER NOT NULL,
+        layer_end INTEGER NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+        endpoint_url TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(pipeline_name, stage_index)
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_pipeline_active ON pipeline_cluster_stages(is_active);",
+]
+
 MIGRATIONS: List[Migration] = [
     (1, "project intelligence foundation", _M1),
     (2, "execution and evidence", _M2),
@@ -2210,6 +2254,7 @@ MIGRATIONS: List[Migration] = [
     (16, "canonical content-addressed storage and explicit artifact reuse", _M16),
     (17, "artifact packaging, lineage actions, and link typing", _M17),
     (18, "knowledge vault trust tiers, review governance, and conflict ledger", _M18),
+    (19, "paged kv cache storage and pipeline cluster topology", _M19),
 ]
 
 
