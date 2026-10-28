@@ -49,7 +49,10 @@ class PagedKVStore:
         Verifies cryptographic integrity against block_hash on disk retrieval.
         """
         if block_hash in self._ram_cache:
-            return self._ram_cache[block_hash]
+            # Move to end of OrderedDict/dict for LRU tracking
+            val = self._ram_cache.pop(block_hash)
+            self._ram_cache[block_hash] = val
+            return val
 
         disk_path = self._get_disk_path(block_hash)
         if not disk_path.exists():

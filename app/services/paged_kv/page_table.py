@@ -57,6 +57,19 @@ class PhysicalBlockPool:
             return block
 
         if not self.free_block_ids:
+            # Under high churn, recycle the least recently accessed block
+            lru_candidates = self.get_lru_blocks(count=1)
+            if lru_candidates:
+                victim = lru_candidates[0]
+                if victim.block_hash and victim.block_hash in self.hash_to_block_id:
+                    del self.hash_to_block_id[victim.block_hash]
+                victim.block_hash = block_hash
+                victim.ref_count = 1
+                victim.is_free = False
+                victim.touch()
+                if block_hash:
+                    self.hash_to_block_id[block_hash] = victim.block_id
+                return victim
             raise MemoryError("PhysicalBlockPool exhausted: no free memory blocks available")
 
         bid = self.free_block_ids.pop(0)

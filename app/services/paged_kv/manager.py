@@ -122,6 +122,14 @@ class PagedKVManager:
                 if self.store.evict_from_ram(b.block_hash):
                     evicted += 1
 
+        # Fallback guarantee: if cache still exceeds max_ram_blocks, evict oldest entries
+        while self.store.get_ram_page_count() > self.max_ram_blocks:
+            oldest_hash = next(iter(self.store._ram_cache))
+            if self.store.evict_from_ram(oldest_hash):
+                evicted += 1
+            else:
+                break
+
         self.total_evictions += evicted
         return evicted
 
