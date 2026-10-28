@@ -4,7 +4,7 @@ The controller provisions an authenticated grant and a private per-run key over
 a trusted transport. Only the public input is mounted inside each service.
 This process and the controller, not submitted stdout, decide case outcomes.
 """
-import hashlib,hmac,json,os,re,stat,uuid
+import hashlib,hmac,json,math,os,re,stat,uuid
 from datetime import datetime,timezone
 from pathlib import Path
 from .linux_sandbox import LinuxSpec,run_linux_candidate,hex_digest
@@ -20,6 +20,46 @@ def strict(raw):
             result[key]=value
         return result
     return json.loads(raw,object_pairs_hook=pairs,parse_constant=lambda _: (_ for _ in ()).throw(ValueError('Nonfinite JSON')))
+
+
+def strict_json_equal(actual,expected,depth=0,max_depth=16):
+    """Recursive, contract-defined strict JSON comparison.
+    
+    Invariants:
+    1. Booleans must not equal integers (False != 0, True != 1).
+    2. Integers must not silently equal floats (4 != 4.0).
+    3. Dict keys must match exactly with no extra or missing keys.
+    4. Arrays must match exactly in ordered sequence.
+    5. Nonfinite numbers (NaN, Inf) and values exceeding limits are rejected.
+    """
+    if depth>max_depth: return False
+    if type(actual) is not type(expected): return False
+    if isinstance(expected,dict):
+        if len(actual)>256 or len(actual)!=len(expected): return False
+        if set(actual.keys())!=set(expected.keys()): return False
+        for k in expected:
+            if not isinstance(k,str) or len(k)>256: return False
+            if not strict_json_equal(actual[k],expected[k],depth=depth+1,max_depth=max_depth): return False
+        return True
+    elif isinstance(expected,list):
+        if len(actual)>256 or len(actual)!=len(expected): return False
+        for a,e in zip(actual,expected):
+            if not strict_json_equal(a,e,depth=depth+1,max_depth=max_depth): return False
+        return True
+    elif isinstance(expected,bool):
+        return actual is expected
+    elif isinstance(expected,int):
+        if abs(expected)>10**14 or abs(actual)>10**14: return False
+        return actual==expected
+    elif isinstance(expected,float):
+        if not math.isfinite(actual) or not math.isfinite(expected): return False
+        return actual==expected
+    elif isinstance(expected,str):
+        if len(actual)>65536 or len(expected)>65536: return False
+        return actual==expected
+    elif expected is None:
+        return actual is None
+    return False
 
 
 def cases_from(raw,requirement_ids):
@@ -118,7 +158,7 @@ def evaluate_observations(cases,observations):
                 answer=strict(observation['stdout'])
                 if isinstance(answer,dict) and set(answer)=={'value'} and type(answer['value']) is int and type(case['expected']) is int and answer['value']==case['expected']:
                     passed=True
-                elif type(answer) is type(case['expected']) and answer==case['expected']:
+                elif strict_json_equal(answer,case['expected']):
                     passed=True
             except (ValueError,TypeError): pass
         results.append({'case_id':case['id'],'requirement_id':case['requirement_id'],'passed':passed})

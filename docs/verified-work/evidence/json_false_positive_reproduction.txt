@@ -1,0 +1,53 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-9.1.1, pluggy-1.6.0
+rootdir: C:\Users\Matt C\.gemini\antigravity-ide\scratch\qwen-collective-integration
+plugins: anyio-4.15.1
+collected 1 item
+
+tests\test_json_false_positive_reproduction.py F                         [100%]
+
+================================== FAILURES ===================================
+_____________ test_reproduce_nested_type_coercion_false_positive ______________
+
+    def test_reproduce_nested_type_coercion_false_positive():
+        cases = [{
+            'id': 'case_nominal',
+            'requirement_id': 'text_analyzer',
+            'input': {'text': 'hello world from qwen'},
+            'expected': {'valid': True, 'words': 4, 'length': 21, 'preview': 'hello worl'}
+        }]
+    
+        # Hostile / mutated observation with coerced types: 1 for True, 4.0 for 4, 21.0 for 21
+        counterexample_stdout = json.dumps({
+            'valid': 1,
+            'words': 4.0,
+            'length': 21.0,
+            'preview': 'hello worl'
+        })
+    
+        observations = [{
+            'case_id': 'case_nominal',
+            'executed': True,
+            'reason': 'completed',
+            'exit_code': 0,
+            'cleanup_confirmed': True,
+            'stdout': counterexample_stdout,
+            'unit': 'qc-sandbox-0123456789abcdef0123456789abcdef.service'
+        }]
+    
+        results = evaluate_observations(cases, observations)
+        assert len(results) == 1
+        # STRICT CONTRACT: 1 is not True, 4.0 is not 4, 21.0 is not 21.
+        # The test MUST fail (passed: False).
+        # On unfixed code, this assert will fail because results[0]['passed'] is incorrectly True!
+>       assert results[0]['passed'] is False, (
+            f"FALSE POSITIVE DETECTED! Verifier accepted coerced types: "
+            f"actual={counterexample_stdout} vs expected={cases[0]['expected']}"
+        )
+E       AssertionError: FALSE POSITIVE DETECTED! Verifier accepted coerced types: actual={"valid": 1, "words": 4.0, "length": 21.0, "preview": "hello worl"} vs expected={'valid': True, 'words': 4, 'length': 21, 'preview': 'hello worl'}
+E       assert True is False
+
+tests\test_json_false_positive_reproduction.py:51: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_json_false_positive_reproduction.py::test_reproduce_nested_type_coercion_false_positive
+============================== 1 failed in 0.81s ==============================

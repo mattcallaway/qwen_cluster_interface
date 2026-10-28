@@ -67,3 +67,30 @@ Executed across the real controller → task → lease → worker → model infe
 - Strict consume-before-execute root nonce replay rejection and controller stale-binding denial.
 - Timeout cancellation with confirmed cgroup and process cleanup.
 - Host integrity verified: unchanged service PIDs, temporary test policy removed. Evidence saved in docs/verified-work/evidence/laptop-native-canary-f706a49af04d4182a27a5887d1f9fc85.json.
+
+## Increment 16: Verification & Repair Cycle (Strict Comparator, Test Adequacy, Migration Safety & Broader JSON I/O Canary)
+
+Updated 2026-10-28. Full pre-repair acceptance criteria documented in [Acceptance Matrix](ACCEPTANCE_MATRIX.md).
+
+1. **Reproduction of JSON False Positive:**
+   - Evaluated verifier against counterexample `{"valid": 1, "words": 4.0, ...}` vs expected `{"valid": true, ...}`.
+   - Confirmed defect on unfixed code in [`tests/test_json_false_positive_reproduction.py`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/tests/test_json_false_positive_reproduction.py). Evidence captured in `evidence/json_false_positive_reproduction.txt`.
+2. **Recursive Strict JSON Comparator:**
+   - Implemented `strict_json_equal` in [`vps_agent/independent_verifier.py`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/vps_agent/independent_verifier.py). Enforces scalar identity (`bool != int`, `int != float`), recursive dict key/value checks, exact array ordering, finite floats, bounded payload size (64KB), and bounded recursion depth (<=16).
+   - Validated across 10 adversarial suites in [`tests/test_strict_json_comparator.py`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/tests/test_strict_json_comparator.py).
+3. **Independent Test Adequacy & Mutation Verification:**
+   - Implemented [`tests/test_independent_test_adequacy_mutations.py`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/tests/test_independent_test_adequacy_mutations.py) testing 7 deliberate mutants (constant answers, unhandled crashes, whitespace logic, byte-vs-char unicode, coerced types, forged flags, missing fields).
+   - Achieved 100% kill rate (7 of 7 mutants killed; reference implementation 6/6 passed).
+4. **Database Migration & Concurrency Audit:**
+   - Implemented [`tests/test_migration_robustness_and_backup.py`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/tests/test_migration_robustness_and_backup.py).
+   - Rehearsed online atomic backup with `PRAGMA integrity_check`, 50 concurrent transactions (25 reads, 25 writes) during DDL migration (0 errors, <1ms latency), trigger immutability (`software_review_no_update`, `no_delete`), and non-destructive application rollback preserving the `software_review_items` audit table.
+5. **Fresh Native Leased-Model Canary on Broader JSON I/O:**
+   - Executed live canary (`qwen2.5:1.5b`) across real controller $\rightarrow$ task $\rightarrow$ lease $\rightarrow$ worker $\rightarrow$ model path.
+   - Evaluated 6 independent test cases (nominal, empty, unicode, malformed type, missing key, boundary spaces).
+   - Demonstration 1: Initial naive model code failed independent edge cases (`CASES_FAILED`).
+   - Demonstration 2: Bounded revision without test oracle leakage passed all 6 cases (`CASES_PASSED`, `behavior_verified=True`).
+   - Demonstration 3: Consumed nonce replay denied by root verifier (`FileExistsError`).
+   - Demonstration 4: Process deadline cancellation and confirmed cgroup cleanup.
+   - Host services intact with unchanged PIDs (`qwen-worker.service`, `ollama.service`, `qc-ollama-ts.service`).
+   - Evidence preserved in `evidence/laptop-native-canary-json-io-a2c5c1c06d0e4130a637855d070f6877.json`.
+

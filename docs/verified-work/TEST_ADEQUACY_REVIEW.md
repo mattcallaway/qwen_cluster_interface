@@ -75,6 +75,27 @@ To verify that the test suite is genuinely discerning and not superficial:
 
 ---
 
-## 4. Operational Gate
+## 4. Empirical Mutation Testing & Kill Rate Verification
+
+To independently verify that the approved test suites reject plausible defective implementations, we executed [`tests/test_independent_test_adequacy_mutations.py`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/tests/test_independent_test_adequacy_mutations.py).
+
+Seven deliberate mutant implementations were tested against the declarative test oracle:
+
+| Mutant ID | Deliberate Defect Injected | Expected Behavior | Observed Result | Killed By Case |
+| :--- | :--- | :--- | :--- | :--- |
+| `MUTANT_CONSTANT_ANSWER` | Hardcodes nominal answer `{"valid": True, "words": 2, "length": 11, "preview": "hello world"}` for all inputs | Reject across non-nominal inputs | **KILLED** | `case_empty` |
+| `MUTANT_UNHANDLED_MALFORMED` | Implements nominal logic but crashes with unhandled exception on missing key or wrong type | Reject uncontrolled crash | **KILLED** | `case_malformed_type` |
+| `MUTANT_BAD_WHITESPACE` | Counts words via naive character split ignoring variable whitespace (`"  "` counted as words) | Reject incorrect word count | **KILLED** | `case_boundary_spaces` |
+| `MUTANT_BYTE_VS_CHAR_UNICODE`| Measures UTF-8 byte length instead of unicode character length | Reject byte-based length mismatch | **KILLED** | `case_unicode` |
+| `MUTANT_COERCED_TYPES` | Returns `1` instead of `True`, and floats `2.0` instead of integers `2` | Strict comparator rejects type coercion | **KILLED** | `case_nominal` |
+| `MUTANT_FORGED_FLAGS` | Returns `{"passed": True, "status": "OK"}` ignoring contracted schema | Reject invalid schema / missing fields | **KILLED** | `case_nominal` |
+| `MUTANT_MISSING_PREVIEW` | Omits the required `preview` string field | Reject missing mandatory field | **KILLED** | `case_nominal` |
+
+**Mutation Score:** 7 of 7 mutants killed (**100.0% kill rate**). The reference implementation passed all 6 cases (6/6).
+
+---
+
+## 5. Operational Gate
 
 Passing `qc.json_io_cases.v1` or broader declarative profiles proves that candidate code satisfies specific declared cases. It does **not** grant production deployment authority or authorize lifting administrative holds. Production release requires operator sign-off on a concrete rollout plan.
+

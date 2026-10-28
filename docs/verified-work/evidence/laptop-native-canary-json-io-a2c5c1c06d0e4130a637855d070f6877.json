@@ -1,0 +1,132 @@
+{
+  "schema": "qc.json_io_native_canary.v1",
+  "batch_id": "a2c5c1c06d0e4130a637855d070f6877",
+  "started_at": "2026-10-28T09:20:57.344131+00:00",
+  "worker_id": "canary-worker-b8110d11",
+  "project_id": "prj-65e63ceaed654bfda3d51a6b37881209",
+  "run_id": "run-canary-json-536bcb5e",
+  "plan_revision_1": "rev-canary-1-36527d",
+  "contract": {
+    "schema": "qc.software_contract.v1",
+    "requirements": [
+      {
+        "id": "text_analyzer",
+        "description": "Read JSON from /run/qc-input.json with string field 'text'. Output JSON: {'valid': true, 'words': count, 'length': len, 'preview': preview}. If input is not an object or 'text' is not a string, output {'valid': false, 'words': 0, 'length': 0, 'preview': ''}."
+      }
+    ],
+    "allowed_files": [
+      "src/main.py"
+    ],
+    "test_artifact_id": "art-6a5263ecab1b42dc",
+    "test_version": 1,
+    "test_sha256": "e7c7fe1efb43ba84e9f0c8a0f41b6edf7065afdf4c5833f5442d5d6cbe6cf46b"
+  },
+  "scenarios": {
+    "initial_failure": {
+      "task_id": "task-7158b4c6",
+      "lease_id": "lease_72d6146a6f2e",
+      "model_response_sha256": "e59a2a0989f44ff99d69ab781f727e297341784ee588a5cb912cf0f012a41968",
+      "review_id": "6d7414e1e02e19a3f4c4ce07b3687e4b00db2aa9258566401ecefad980b77a9b",
+      "grant_id": "24a39ae829451253cc33b5c0d27717d7b8db8c690f4aebdc076d2a0a88a6eba9",
+      "decision": "CASES_FAILED",
+      "behavior_verified": false,
+      "cases": [
+        {
+          "case_id": "case_nominal",
+          "requirement_id": "text_analyzer",
+          "passed": true
+        },
+        {
+          "case_id": "case_empty",
+          "requirement_id": "text_analyzer",
+          "passed": true
+        },
+        {
+          "case_id": "case_unicode",
+          "requirement_id": "text_analyzer",
+          "passed": true
+        },
+        {
+          "case_id": "case_malformed_type",
+          "requirement_id": "text_analyzer",
+          "passed": false
+        },
+        {
+          "case_id": "case_malformed_missing",
+          "requirement_id": "text_analyzer",
+          "passed": false
+        },
+        {
+          "case_id": "case_boundary_spaces",
+          "requirement_id": "text_analyzer",
+          "passed": true
+        }
+      ],
+      "raw_code": "import json\n\nwith open('/run/qc-input.json', 'r') as file:\n    data = json.load(file)\n\nwords = len(data['text'].split())\nlength = len(data['text'])\npreview = data['text'][:10]\n\nprint(json.dumps({'valid': True, 'words': words, 'length': length, 'preview': preview}, indent=2))"
+    },
+    "bounded_revision_pass": {
+      "task_id": "task-587df293",
+      "lease_id": "lease_a4979ad405d2",
+      "model_response_sha256": "e3b393ae0b7f6c7dbb8fa85a97b0cd032af168750aa0b6823bb346e821269fd4",
+      "review_id": "228226197cb21d7f0a7e1714b38d5f290291a14972d6b762aef9a996ab6af63e",
+      "grant_id": "477ee3e868d085b9c7ef6aec13693440c0e60bc8631db2c8acf443a68741361f",
+      "decision": "CASES_PASSED",
+      "behavior_verified": true,
+      "cases": [
+        {
+          "case_id": "case_nominal",
+          "requirement_id": "text_analyzer",
+          "passed": true
+        },
+        {
+          "case_id": "case_empty",
+          "requirement_id": "text_analyzer",
+          "passed": true
+        },
+        {
+          "case_id": "case_unicode",
+          "requirement_id": "text_analyzer",
+          "passed": true
+        },
+        {
+          "case_id": "case_malformed_type",
+          "requirement_id": "text_analyzer",
+          "passed": true
+        },
+        {
+          "case_id": "case_malformed_missing",
+          "requirement_id": "text_analyzer",
+          "passed": true
+        },
+        {
+          "case_id": "case_boundary_spaces",
+          "requirement_id": "text_analyzer",
+          "passed": true
+        }
+      ],
+      "raw_code": "import json\n\ntry:\n    with open('/run/qc-input.json', 'r') as file:\n        data = json.load(file)\n    text = data['text']\n    if not isinstance(text, str):\n        raise ValueError\n    words = len(text.split())\n    length = len(text)\n    preview = text[:10]\n    print(json.dumps({'valid': True, 'words': words, 'length': length, 'preview': preview}))\nexcept Exception:\n    print(json.dumps({'valid': False, 'words': 0, 'length': 0, 'preview': ''}))\n\n"
+    },
+    "nonce_replay_denied": true,
+    "timeout_cleanup": {
+      "reasons": [
+        "timeout",
+        "timeout",
+        "timeout",
+        "timeout",
+        "timeout",
+        "timeout"
+      ],
+      "all_cleanup_confirmed": true
+    }
+  },
+  "post_test_host_integrity": {
+    "services": {
+      "qwen-worker.service": "MainPID=554427; ActiveState=active; SubState=running",
+      "ollama.service": "MainPID=1432; ActiveState=active; SubState=running",
+      "qc-ollama-ts.service": "MainPID=519545; ActiveState=active; SubState=running"
+    },
+    "policy_exists": false
+  },
+  "completed_at": "2026-10-28T09:21:49.569660+00:00",
+  "passed": true
+}

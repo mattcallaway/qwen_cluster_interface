@@ -1,0 +1,12 @@
+{
+  "migration_duration_ms": 0.0,
+  "concurrent_writes": 25,
+  "concurrent_reads": 24,
+  "mean_write_latency_ms": 0.64,
+  "errors": 0,
+  "pre_backup_sha256": "9e939bb0a703cda31ab94ebc9519804e486cf0c61c7bdbb679a9d56e1f68d2ab",
+  "post_migration_integrity": "ok",
+  "restoration_integrity": "ok",
+  "append_only_enforced": true,
+  "audit_history_preserved_on_rollback": true
+}

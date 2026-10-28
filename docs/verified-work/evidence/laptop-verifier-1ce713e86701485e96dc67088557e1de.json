@@ -1,0 +1,231 @@
+{
+  "schema": "qc.protected_verifier_live_test.v1",
+  "services_before": {
+    "qwen-worker.service": "MainPID=554427\nActiveState=active\nSubState=running",
+    "ollama.service": "MainPID=1432\nActiveState=active\nSubState=running",
+    "qc-ollama-ts.service": "MainPID=519545\nActiveState=active\nSubState=running"
+  },
+  "batch_id": "a2c5c1c06d0e4130a637855d070f6877",
+  "started_at": "2026-10-28T09:21:36.596710+00:00",
+  "native_binding": {
+    "proposal": {
+      "artifact_id": "art-050c625b233b484f",
+      "version": 1,
+      "sha256": "ff01751f7d03cb47d78a9902796bd0260a4faa3e92e39b280dc5c7021df81ec9",
+      "cas_hash": "ff01751f7d03cb47d78a9902796bd0260a4faa3e92e39b280dc5c7021df81ec9",
+      "task_id": "task-6dec2dee",
+      "worker_id": "canary-worker-b8110d11",
+      "attempt": 3
+    },
+    "approved_tests": {
+      "artifact_id": "art-6a5263ecab1b42dc",
+      "version": 1,
+      "sha256": "e7c7fe1efb43ba84e9f0c8a0f41b6edf7065afdf4c5833f5442d5d6cbe6cf46b",
+      "cas_hash": "e7c7fe1efb43ba84e9f0c8a0f41b6edf7065afdf4c5833f5442d5d6cbe6cf46b",
+      "task_id": null,
+      "worker_id": null,
+      "attempt": 1
+    },
+    "plan_revision_id": "rev-canary-2-bac44e",
+    "plan_sha256": "c11177b5b1a62cceba15e455b9351f86e9b57a57db79f187b4f7119621166df5",
+    "contract_sha256": "976f64113d15d3994d411d28b5349c0647ef2dee2ddd9fd15dcaba11cffbfc06",
+    "requirement_ids": [
+      "text_analyzer"
+    ],
+    "review_id": "bca48b9cdbcf73289f6dd2334d556b102436845b20ea1d5e96d70c23fcf8d2f4",
+    "project_id": "prj-65e63ceaed654bfda3d51a6b37881209",
+    "run_id": "run-canary-json-536bcb5e",
+    "image_sha256": "43b057aa6a7133de2bbed57a8caaeecd07aea9228fa7cb6bec1608286b967b61",
+    "native_execution_id": "exec_802945d3dedd",
+    "native_lease_id": "lease_dc044075d332",
+    "native_idempotency_key": "idem_f29a7ba393d84452"
+  },
+  "nonce": "1ce713e86701485e96dc67088557e1de",
+  "units": [
+    {
+      "unit": "qc-sandbox-23c5d0fa1365433999ede2a2579a1f4d.service",
+      "empty": true,
+      "main_pid": "0",
+      "owned": true,
+      "safe": true
+    },
+    {
+      "unit": "qc-sandbox-c58b140122894a6bb843f267a5594659.service",
+      "empty": true,
+      "main_pid": "0",
+      "owned": true,
+      "safe": true
+    },
+    {
+      "unit": "qc-sandbox-c249a7e9bc304874bb0c7f663b596cfb.service",
+      "empty": true,
+      "main_pid": "0",
+      "owned": true,
+      "safe": true
+    },
+    {
+      "unit": "qc-sandbox-92150e3b68fd4e9188c730431aafbf28.service",
+      "empty": true,
+      "main_pid": "0",
+      "owned": true,
+      "safe": true
+    },
+    {
+      "unit": "qc-sandbox-25fae23bc7ec4e86be308ec4b5820a80.service",
+      "empty": true,
+      "main_pid": "0",
+      "owned": true,
+      "safe": true
+    },
+    {
+      "unit": "qc-sandbox-d6c116bb5ae845e3b3beeb43ed1d289d.service",
+      "empty": true,
+      "main_pid": "0",
+      "owned": true,
+      "safe": true
+    }
+  ],
+  "evidence_class": "reviewed synthetic source, native database fixture, actual protected Linux execution",
+  "backend_sha256": "933a950c6fe7774ad28a09a071f05bf851c037b9af1e9984ed44407e50f24c68",
+  "verifier_sha256": "735915d6219e700a9a1f38798c350d4505a6f608901139822706e09f7c206228",
+  "production_approved": false,
+  "accepted": false,
+  "certification_eligible": false,
+  "cases": [
+    {
+      "case_id": "case_nominal",
+      "requirement_id": "text_analyzer",
+      "passed": false
+    },
+    {
+      "case_id": "case_empty",
+      "requirement_id": "text_analyzer",
+      "passed": false
+    },
+    {
+      "case_id": "case_unicode",
+      "requirement_id": "text_analyzer",
+      "passed": false
+    },
+    {
+      "case_id": "case_malformed_type",
+      "requirement_id": "text_analyzer",
+      "passed": false
+    },
+    {
+      "case_id": "case_malformed_missing",
+      "requirement_id": "text_analyzer",
+      "passed": false
+    },
+    {
+      "case_id": "case_boundary_spaces",
+      "requirement_id": "text_analyzer",
+      "passed": false
+    }
+  ],
+  "root_nonce_replay_denied": true,
+  "policy_absent": true,
+  "services_after": {
+    "qwen-worker.service": "MainPID=554427\nActiveState=active\nSubState=running",
+    "ollama.service": "MainPID=1432\nActiveState=active\nSubState=running",
+    "qc-ollama-ts.service": "MainPID=519545\nActiveState=active\nSubState=running"
+  },
+  "existing_services_unchanged": true,
+  "receipt": {
+    "body": {
+      "schema": "qc.protected_verifier_receipt.v1",
+      "grant_sha256": "060adc660c1ea1985952e855177ee842911dc07d3d42fa44478d9252fc2aec0c",
+      "nonce": "1ce713e86701485e96dc67088557e1de",
+      "binding": {
+        "proposal": {
+          "artifact_id": "art-050c625b233b484f",
+          "version": 1,
+          "sha256": "ff01751f7d03cb47d78a9902796bd0260a4faa3e92e39b280dc5c7021df81ec9",
+          "cas_hash": "ff01751f7d03cb47d78a9902796bd0260a4faa3e92e39b280dc5c7021df81ec9",
+          "task_id": "task-6dec2dee",
+          "worker_id": "canary-worker-b8110d11",
+          "attempt": 3
+        },
+        "approved_tests": {
+          "artifact_id": "art-6a5263ecab1b42dc",
+          "version": 1,
+          "sha256": "e7c7fe1efb43ba84e9f0c8a0f41b6edf7065afdf4c5833f5442d5d6cbe6cf46b",
+          "cas_hash": "e7c7fe1efb43ba84e9f0c8a0f41b6edf7065afdf4c5833f5442d5d6cbe6cf46b",
+          "task_id": null,
+          "worker_id": null,
+          "attempt": 1
+        },
+        "plan_revision_id": "rev-canary-2-bac44e",
+        "plan_sha256": "c11177b5b1a62cceba15e455b9351f86e9b57a57db79f187b4f7119621166df5",
+        "contract_sha256": "976f64113d15d3994d411d28b5349c0647ef2dee2ddd9fd15dcaba11cffbfc06",
+        "requirement_ids": [
+          "text_analyzer"
+        ],
+        "review_id": "bca48b9cdbcf73289f6dd2334d556b102436845b20ea1d5e96d70c23fcf8d2f4",
+        "project_id": "prj-65e63ceaed654bfda3d51a6b37881209",
+        "run_id": "run-canary-json-536bcb5e",
+        "image_sha256": "43b057aa6a7133de2bbed57a8caaeecd07aea9228fa7cb6bec1608286b967b61",
+        "native_execution_id": "exec_802945d3dedd",
+        "native_lease_id": "lease_dc044075d332",
+        "native_idempotency_key": "idem_f29a7ba393d84452"
+      },
+      "observations": [
+        {
+          "case_id": "case_nominal",
+          "executed": true,
+          "reason": "timeout",
+          "exit_code": null,
+          "cleanup_confirmed": true,
+          "stdout": "",
+          "unit": "qc-sandbox-23c5d0fa1365433999ede2a2579a1f4d.service"
+        },
+        {
+          "case_id": "case_empty",
+          "executed": true,
+          "reason": "timeout",
+          "exit_code": null,
+          "cleanup_confirmed": true,
+          "stdout": "",
+          "unit": "qc-sandbox-c58b140122894a6bb843f267a5594659.service"
+        },
+        {
+          "case_id": "case_unicode",
+          "executed": true,
+          "reason": "timeout",
+          "exit_code": null,
+          "cleanup_confirmed": true,
+          "stdout": "",
+          "unit": "qc-sandbox-c249a7e9bc304874bb0c7f663b596cfb.service"
+        },
+        {
+          "case_id": "case_malformed_type",
+          "executed": true,
+          "reason": "timeout",
+          "exit_code": null,
+          "cleanup_confirmed": true,
+          "stdout": "",
+          "unit": "qc-sandbox-92150e3b68fd4e9188c730431aafbf28.service"
+        },
+        {
+          "case_id": "case_malformed_missing",
+          "executed": true,
+          "reason": "timeout",
+          "exit_code": null,
+          "cleanup_confirmed": true,
+          "stdout": "",
+          "unit": "qc-sandbox-25fae23bc7ec4e86be308ec4b5820a80.service"
+        },
+        {
+          "case_id": "case_boundary_spaces",
+          "executed": true,
+          "reason": "timeout",
+          "exit_code": null,
+          "cleanup_confirmed": true,
+          "stdout": "",
+          "unit": "qc-sandbox-d6c116bb5ae845e3b3beeb43ed1d289d.service"
+        }
+      ]
+    },
+    "signature": "52f88550ab8f5b01e79487698c8974e03cafae9116fdeb1aebc325fba503b3ab"
+  }
+}
