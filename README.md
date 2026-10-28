@@ -42,10 +42,12 @@ It bridges the gap between **autonomous reasoning** and **safe, deterministic re
 +--------------------------------------------+     +--------------------------------------------+
 |         LOCAL INFERENCE CLUSTER            |     |        REMOTE EXECUTION ENVIRONMENT        |
 |    Linux Compute Nodes / Laptops           |     |             Cloud VPS Companion            |
-|  - Quantized Qwen2.5 (0.5B - 7B Q4_K_M)    |     |  - Lightweight Python Worker Agent         |
-|  - Ollama & llama.cpp RPC workers          |     |  - Sandboxed Python & Shell Execution      |
-|  - Defensive Read-Only Hardware Probes     |     |  - Systemd Services & Timers (Independent) |
-|  - Local reasoning & proposal drafting     |     |  - Disconnect-Resilient Result Buffering   |
+|  - Quantized Qwen2.5 (0.5B - 14B Q4_K_M)   |     |  - Lightweight Python Worker Agent         |
+|  - Distributed Pipeline Parallelism (Mesh) |     |  - Intermediate Pipeline Compute Stage     |
+|  - Searchable Paged KV Virtual Memory      |     |  - Sandboxed Python & Shell Execution      |
+|  - Ollama & llama.cpp RPC workers          |     |  - Systemd Services & Timers (Independent) |
+|  - Defensive Read-Only Hardware Probes     |     |  - Disconnect-Resilient Result Buffering   |
+|  - Local reasoning & proposal drafting     |     |                                            |
 +--------------------------------------------+     +--------------------------------------------+
 ```
 
@@ -81,7 +83,12 @@ It bridges the gap between **autonomous reasoning** and **safe, deterministic re
 - **15 Structured Categories**: AI Inference, Web Retrieval, Search, Browser Automation, Python Execution, Approved Shell, File Processing, Document Extraction, Data Transformation, API Integrations, Scheduled Execution, Persistent Services, Monitoring, Software Deployment, and Reporting.
 - **Token-Budgeted Context Packets**: Dynamically synthesizes hardware facts into token-budgeted prompt packets (500 to 4,000 tokens) with priority pruning for small local models.
 
-### 6. Zero-Trust Security Architecture
+### 6. Distributed Pipeline Parallelism & Searchable Paged KV Cache
+- **Searchable Paged KV Virtual Memory**: Segments attention sequences into 16-token virtual pages mapped via virtual block tables. Cryptographic prefix hash chains enable instant Radix tree lookup of system prompts and workspace schemas, eliminating redundant prefill passes.
+- **Tiered Memory Offloading**: Active tokens execute in high-speed RAM/VRAM while idle contexts flush to local NVMe/mmap files, preventing OOM aborts under long contexts (16k–32k+).
+- **Cluster Pipeline Parallelism**: Partitions deep models (Qwen2.5-7B/14B) across heterogeneous cluster nodes (laptop CPU + workstation/VPS) via authenticated, bounded activation streaming over Tailscale.
+
+### 7. Zero-Trust Security Architecture
 - **Dedicated Worker Identities**: Granular Bearer tokens per machine; no shared administrative secrets.
 - **Secret Scrubbing**: Automatic redaction of passwords, tokens, and keys from AI prompts, execution logs, and knowledge notes.
 - **Prompt Injection Defense**: Untrusted user inputs, search results, and extracted documents are wrapped in boundary markers (`<<<OBJECTIVE...OBJECTIVE>>>`) and scanned for injection attempts.

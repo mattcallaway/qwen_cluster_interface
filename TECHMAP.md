@@ -29,10 +29,12 @@ Qwen Collective is a **sovereign, distributed AI coordination and execution plat
 |  Linux Laptops / Workstations      |           |   Cloud VPS Execution Companion    |
 |                                    |           |                                    |
 | - Low-Power Compute Nodes (4GB RAM)|           | - Dedicated Python Worker Agent    |
-| - Quantized Qwen2.5 (0.5B - 7B)    |           | - Outbound Pull-Based Task Leasing |
-| - llama.cpp / Ollama / llama-server|           | - Sandboxed Python/Shell Jobs      |
-| - Read-Only Diagnostic Probes (SSH)|           | - Systemd Services & Timers        |
-| - Reasoning & Planning Sub-agents  |           | - Offline Disconnect Result Buffer |
+| - Quantized Qwen2.5 (0.5B - 14B)   |           | - Outbound Pull-Based Task Leasing |
+| - Distributed Pipeline Parallelism |           | - Sandboxed Python/Shell Jobs      |
+| - Searchable Paged KV Virtual Mem  |           | - Systemd Services & Timers        |
+| - llama.cpp / Ollama / llama-server|           | - Offline Disconnect Result Buffer |
+| - Read-Only Diagnostic Probes (SSH)|           | - Intermediate Pipeline Runner     |
+| - Reasoning & Planning Sub-agents  |           |                                    |
 +------------------------------------+           +------------------------------------+
                                          ^
                                          | (Ingests Context & Emits Verified Assets)
@@ -129,6 +131,16 @@ M10 (Unified Deliverables & Artifact System)
   ├── artifact_reviews (Human and automated quality validations, status, notes)
   ├── artifact_access_audit (Access, download, preview, and reuse logging)
   └── artifact_search_fts (Virtual FTS5 full-text table for content/metadata search)
+
+M11 – M18 (Web Research, Persistent Knowledge & Audit Containment)
+  ├── research_runs & research_sources (Source provenance, session tracking, lineage)
+  ├── content_addressed_blobs (CAS storage engine, cryptographic verification)
+  ├── knowledge_vault_governance (Trust tiers, review ledger, conflict resolution)
+  └── software_review_items (Append-only out-of-process verification ledger with immutability triggers)
+
+M19 (Distributed Pipeline Parallelism & Searchable Paged KV Cache)
+  ├── kv_cache_pages (Cryptographic page hashes, model/layer bindings, token chunks, storage paths)
+  └── pipeline_cluster_stages (Cluster pipeline topologies, layer allocation ranges, active endpoints)
 ```
 
 ---
@@ -168,6 +180,17 @@ Ensures AI agents plan tasks only on verified, capable hardware:
 - **Outbound Pull-Based Model**: The cloud VPS worker connects inbound to the controller over private Tailscale WireGuard. No open ports on the controller.
 - **Durable Task Leasing**: Atomic lease claims (`status = 'leased'`, `lease_expires_at = now + 300s`) with heartbeat renewals and idempotency keys.
 - **Local Disconnect Buffering**: If network connectivity drops, the VPS worker completes active tasks and buffers outputs in a local SQLite database (`vps_agent.db`) until connection is restored.
+
+### 3.6 Distributed Pipeline Parallelism & Searchable Paged KV Cache (`app/services/inference/`)
+Scales model reasoning across heterogeneous nodes while eliminating RAM exhaustion:
+- **Searchable Paged KV Cache (`app/services/inference/paged_kv/`)**:
+  - **Virtual Block Paging**: Segments continuous attention states into fixed 16-token pages, mapping logical context sequences to physical blocks via virtual block tables.
+  - **Cryptographic Prefix Hashing**: Chains SHA-256 digests across token blocks. Shared system prompts, schemas, and workspace contexts are matched via Radix trees and attached with zero prompt prefill latency.
+  - **Tiered Memory Hierarchy**: Active blocks reside in Host/GPU RAM (Tier 1); idle contexts flush to local NVMe/mmap files (Tier 2); canonical blocks synchronize to central CAS/SQLite storage (Tier 3).
+- **Distributed Pipeline Parallelism (`app/services/inference/pipeline_parallel/`)**:
+  - **Inter-Node Layer Slicing**: Slices deep models (Qwen2.5-7B/14B) across sovereign machines (e.g. Stage 0 on low-power laptop CPU; Stage 1 on workstation/VPS).
+  - **Activation Streaming Protocol**: Passes compact FP16/BF16 hidden state activation vectors ($1 \times \text{hidden\_dim}$ per token, ~3–7 KB) over Tailscale with HMAC frame authentication and bounded timeouts.
+  - **Disaggregated Stage Storage**: Each node allocates memory and paged KV caches strictly for its assigned layer subset.
 
 ---
 
