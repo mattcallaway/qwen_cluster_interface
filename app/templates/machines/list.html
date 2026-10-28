@@ -1,19 +1,41 @@
 {% extends "base.html" %}
 
 {% block title %}Machines - Qwen Collective{% endblock %}
-{% block page_title %}Machine Registry{% endblock %}
+{% block page_title %}Physical Fleet & Machine Registry{% endblock %}
 
 {% block content %}
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 14px;">
+{% set cur_view = (request.query_params.get('view') if request.query_params.get('view') else (view if (view is defined and view) else 'active')) %}
+
+{# Partition machines into active and retired #}
+{% set active_list = [] %}
+{% set retired_list = [] %}
+{% for m in machines %}
+  {% if '[RETIRED' in (m.notes or '') or m.connection_status == 'retired' %}
+    {% set _ = retired_list.append(m) %}
+  {% else %}
+    {% set _ = active_list.append(m) %}
+  {% endif %}
+{% endfor %}
+
+{% set displayed_machines = (active_list if cur_view == 'active' else retired_list) %}
+{% set m_reg = (metrics.registered_physical if (metrics is defined and metrics) else active_list|length) %}
+{% set m_reach = (metrics.currently_reachable if (metrics is defined and metrics) else (active_list|selectattr('connection_status', 'equalto', 'online')|list|length)) %}
+{% set m_enabled = (metrics.administratively_enabled if (metrics is defined and metrics) else (active_list|selectattr('is_admin_enabled', 'equalto', true)|list|length)) %}
+{% set m_sched = (metrics.scheduler_eligible if (metrics is defined and metrics) else 0) %}
+{% set m_work = (metrics.executing_work if (metrics is defined and metrics) else 0) %}
+{% set m_ret = (metrics.retired_count if (metrics is defined and metrics) else retired_list|length) %}
+{% set c_node = (controller_node if (controller_node is defined and controller_node) else None) %}
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 14px;">
   <div>
-    <h2 style="font-size: 1.25rem; font-weight: 600;">Registered Compute Nodes</h2>
-    <p style="font-size: 0.85rem; color: var(--text-muted);">
-      Computers participating in the collective. Standalone nodes and distributed inference workers.
+    <h2 style="font-size: 1.25rem; font-weight: 600; margin: 0 0 4px 0;">Physical Fleet Registry</h2>
+    <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">
+      Verified physical compute machines participating in the collective, separated from internal controller identities and quarantined test fixtures.
     </p>
   </div>
   <div style="display: flex; gap: 10px;">
-    <a href="/inference" class="btn btn-secondary">
-      Distributed Groups
+    <a href="/infrastructure?tab=workers" class="btn btn-secondary">
+      Infrastructure Map
     </a>
     <a href="/machines/add" class="btn btn-primary">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
@@ -22,27 +44,122 @@
   </div>
 </div>
 
-{% if machines %}
+{# Top Fleet KPI Metric Cards: 5 Distinct Fleet Dimensions #}
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 20px;">
+  <div class="stat-widget">
+    <div class="stat-label">Registered Physical</div>
+    <div class="stat-value" style="color: var(--primary);">{{ m_reg }}</div>
+    <div class="stat-sub">Verified physical hardware nodes</div>
+  </div>
+
+  <div class="stat-widget">
+    <div class="stat-label">Currently Reachable</div>
+    <div class="stat-value" style="{% if m_reach > 0 %}color: #22c55e;{% else %}color: var(--text-muted);{% endif %}">
+      {{ m_reach }}
+    </div>
+    <div class="stat-sub">{{ (m_reg - m_reach) if m_reg >= m_reach else 0 }} offline / unreachable</div>
+  </div>
+
+  <div class="stat-widget">
+    <div class="stat-label">Admin Enabled</div>
+    <div class="stat-value" style="{% if m_enabled > 0 %}color: #06b6d4;{% else %}color: #ef4444;{% endif %}">
+      {{ m_enabled }}
+    </div>
+    <div class="stat-sub">Authoritative registry enabled</div>
+  </div>
+
+  <div class="stat-widget">
+    <div class="stat-label">Scheduler-Eligible</div>
+    <div class="stat-value" style="{% if m_sched > 0 %}color: #3b82f6;{% else %}color: var(--text-muted);{% endif %}">
+      {{ m_sched }}
+    </div>
+    <div class="stat-sub">Online + Enabled + Authenticated</div>
+  </div>
+
+  <div class="stat-widget">
+    <div class="stat-label">Executing Work</div>
+    <div class="stat-value" style="{% if m_work > 0 %}color: #eab308;{% else %}color: var(--text-muted);{% endif %}">
+      {{ m_work }}
+    </div>
+    <div class="stat-sub">Active task leases</div>
+  </div>
+</div>
+
+{# Dedicated Controller Identity Card #}
+<div class="card" style="margin-bottom: 20px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-left: 4px solid var(--primary);">
+  <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
+    <div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span class="badge" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3);">
+          INTERNAL CONTROLLER IDENTITY
+        </span>
+        <span class="badge badge-accepted">LOCAL SERVICE LIVE</span>
+        <span class="badge badge-offline" title="Not available for worker task leasing">TASK LEASING INELIGIBLE</span>
+      </div>
+      <h3 style="font-size: 1.1rem; font-weight: 600; margin: 8px 0 4px 0;">
+        {{ c_node.name if c_node else "Windows Controller (DESKTOP-44H6QVP)" }}
+        <span style="font-size: 0.8rem; font-family: var(--font-mono); color: var(--text-muted); font-weight: normal;">(controller-local)</span>
+      </h3>
+      <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">
+        Central orchestrator and state coordinator running locally on Windows. Excluded from distributed compute worker pools.
+      </p>
+    </div>
+    <div style="font-size: 0.8rem; font-family: var(--font-mono); color: var(--text-muted); text-align: right;">
+      <div>Binding: <code>127.0.0.1:8000</code></div>
+      <div>Host: <code>desktop-worker-01</code></div>
+      <div>Platform: Windows 10/11 (AMD64)</div>
+    </div>
+  </div>
+</div>
+
+{# View Navigation Tabs #}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+  <div style="display: flex; gap: 8px;">
+    <a href="/machines?view=active" class="btn btn-sm {% if cur_view == 'active' %}btn-primary{% else %}btn-secondary{% endif %}" id="tab-active-fleet">
+      Active Physical Fleet ({{ m_reg }})
+    </a>
+    <a href="/machines?view=archived" class="btn btn-sm {% if cur_view == 'archived' %}btn-primary{% else %}btn-secondary{% endif %}" id="tab-archived-fleet">
+      Archived & Quarantined ({{ m_ret }})
+    </a>
+  </div>
+  {% if cur_view == 'archived' %}
+  <span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3);">
+    Quarantine Active: Zero Scheduling Impact
+  </span>
+  {% endif %}
+</div>
+
+{% if cur_view == 'archived' %}
+<div class="alert" style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25); color: var(--text-main); margin-bottom: 16px; border-radius: 6px; padding: 12px 16px; font-size: 0.85rem;">
+  <strong>Notice:</strong> The records below represent retired test fixtures and legacy machine identities. They have been administratively disabled, had all authentication tokens revoked, and are strictly excluded from scheduler eligibility, planning inventory, and capacity statistics. Historical task execution logs and artifact provenance remain preserved.
+</div>
+{% endif %}
+
+{% if displayed_machines %}
   <div class="card" style="padding: 0;">
     <div class="table-container">
       <table class="data-table">
         <thead>
           <tr>
             <th>Status</th>
-            <th>Display Name & ID</th>
-            <th>Address</th>
-            <th>Assigned Role</th>
-            <th>Hardware Specs</th>
+            <th>Machine Identity</th>
+            <th>Network Endpoint</th>
+            <th>Verified Role</th>
+            <th>Enablement & Scheduling</th>
+            <th>Installed Models & Runtimes</th>
+            <th>Current Task</th>
             <th>Last Checked</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
-          {% for m in machines %}
+          {% for m in displayed_machines %}
             <tr>
               <td>
-                {% if m.connection_status == 'online' %}
+                {% if m.connection_status == 'online' and not ('[RETIRED' in (m.notes or '')) %}
                   <span class="badge badge-online">Online</span>
+                {% elif m.connection_status == 'retired' or '[RETIRED' in (m.notes or '') %}
+                  <span class="badge" style="background: #374151; color: #9ca3af; border: 1px solid #4b5563;">Retired</span>
                 {% elif m.connection_status == 'unreachable' or m.connection_status == 'offline' %}
                   <span class="badge badge-offline">Offline</span>
                 {% elif m.connection_status == 'auth_failed' or m.connection_status == 'error' %}
@@ -56,6 +173,9 @@
                   {{ m.display_name }}
                 </a>
                 <div style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">{{ m.id }}</div>
+                {% if m.os_info %}
+                  <div style="font-size: 0.75rem; color: var(--text-muted);">{{ m.os_info }}</div>
+                {% endif %}
               </td>
               <td>
                 <code>{{ m.ip_address }}</code>
@@ -68,16 +188,56 @@
                   {{ m.role|replace('_', ' ')|title }}
                 </span>
               </td>
-              <td style="font-size: 0.85rem;">
-                {% if m.ram_total_mb %}
-                  <strong>{{ m.ram_total_mb }} MB RAM</strong>
-                  {% if m.cpu_info %}
-                    <div style="font-size: 0.75rem; color: var(--text-muted); max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                      {{ m.cpu_info }}
-                    </div>
-                  {% endif %}
+              <td>
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <div>
+                    {% if m.is_enabled and not ('[RETIRED' in (m.notes or '')) %}
+                      <span class="badge badge-accepted" style="font-size: 0.7rem;">Admin: Enabled</span>
+                    {% else %}
+                      <span class="badge badge-offline" style="font-size: 0.7rem;">Admin: Disabled</span>
+                    {% endif %}
+                  </div>
+                  <div>
+                    {% if m.is_scheduler_eligible or (m.is_enabled and m.connection_status == 'online' and not ('[RETIRED' in (m.notes or ''))) %}
+                      <span class="badge" style="background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); font-size: 0.7rem;">
+                        Eligible
+                      </span>
+                    {% else %}
+                      <span class="badge" style="background: rgba(107, 114, 128, 0.15); color: #9ca3af; border: 1px solid rgba(107, 114, 128, 0.3); font-size: 0.7rem;">
+                        Ineligible
+                      </span>
+                    {% endif %}
+                  </div>
+                </div>
+              </td>
+              <td style="font-size: 0.8rem; max-width: 220px;">
+                {% if m.available_models %}
+                  <div style="margin-bottom: 4px; display: flex; flex-wrap: wrap; gap: 3px;">
+                    {% for mod in m.available_models %}
+                      <span class="badge" style="background: rgba(59, 130, 246, 0.12); color: #93c5fd; border: 1px solid rgba(59, 130, 246, 0.3); font-size: 0.7rem; font-family: var(--font-mono);">
+                        {{ mod }}
+                      </span>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+                {% if m.installed_runtimes %}
+                  <div style="color: var(--text-muted); font-size: 0.72rem;">
+                    {{ m.installed_runtimes|join(', ') }}
+                  </div>
+                {% elif not m.available_models %}
+                  <span style="color: var(--text-muted);">None</span>
+                {% endif %}
+              </td>
+              <td style="font-size: 0.8rem;">
+                {% if m.current_task %}
+                  <span class="badge" style="background: rgba(234, 179, 8, 0.15); color: #facc15; border: 1px solid rgba(234, 179, 8, 0.3);">
+                    Task #{{ m.current_task.task_id }}
+                  </span>
+                  <div style="font-size: 0.72rem; color: var(--text-muted); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    {{ m.current_task.task_title }}
+                  </div>
                 {% else %}
-                  <span style="color: var(--text-muted);">Unknown Specs</span>
+                  <span style="color: var(--text-muted); font-style: italic;">Idle</span>
                 {% endif %}
               </td>
               <td style="font-size: 0.8rem; color: var(--text-muted);">
@@ -86,10 +246,12 @@
               <td>
                 <div style="display: flex; gap: 6px;">
                   <a href="/machines/{{ m.id }}" class="btn btn-secondary btn-sm">Inspect</a>
+                  {% if cur_view == 'active' %}
                   <form action="/machines/{{ m.id }}/test-connection" method="post" style="display:inline;">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <button type="submit" class="btn btn-secondary btn-sm" title="Test Reachability">Ping</button>
                   </form>
+                  {% endif %}
                 </div>
               </td>
             </tr>
@@ -100,11 +262,19 @@
   </div>
 {% else %}
   <div class="empty-state">
-    <h3 class="empty-state-title">No Machines Registered Yet</h3>
+    <h3 class="empty-state-title">
+      {% if cur_view == 'archived' %}No Archived Records Found{% else %}No Active Machines Registered Yet{% endif %}
+    </h3>
     <p class="empty-state-text">
-      The collective needs compute nodes. Connect your older Linux laptops or local servers to begin running standalone or distributed models.
+      {% if cur_view == 'archived' %}
+        There are currently no quarantined or retired test fixtures in the database.
+      {% else %}
+        The collective needs compute nodes. Connect your older Linux laptops or local servers to begin running standalone or distributed models.
+      {% endif %}
     </p>
-    <a href="/machines/add" class="btn btn-primary">Start Machine Registration Wizard</a>
+    {% if cur_view != 'archived' %}
+      <a href="/machines/add" class="btn btn-primary">Start Machine Registration Wizard</a>
+    {% endif %}
   </div>
 {% endif %}
 {% endblock %}

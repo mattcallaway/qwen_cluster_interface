@@ -1,0 +1,10 @@
+...................................F.......                              [100%]
+================================== FAILURES ===================================
+________ test_changed_bindings_require_revalidation[failed_execution] _________
+tests\test_code_proposals.py:107: in test_changed_bindings_require_revalidation
+    if change=='failed_execution': c.execute('UPDATE worker_executions SET exit_code=1 WHERE task_id=?',(f['task_id'],))
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   sqlite3.IntegrityError: worker_executions is append-only
+=========================== short test summary info ===========================
+FAILED tests/test_code_proposals.py::test_changed_bindings_require_revalidation[failed_execution]
+1 failed, 42 passed in 9.65s

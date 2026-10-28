@@ -20,7 +20,18 @@ def now():
     return datetime.now(timezone.utc).isoformat()
 
 
+def _assert_test_isolation():
+    from app.config import settings
+    from pathlib import Path
+    resolved_data_dir = str(Path(settings.data_dir).resolve()).lower()
+    if ".qwen-collective" in resolved_data_dir:
+        raise RuntimeError(
+            f"CRITICAL TEST ISOLATION FAILURE: test helper cannot be invoked against persistent production storage: {settings.data_dir}"
+        )
+
+
 def register_node(node_id, role="vps_worker", models=None, runtimes=None, token=True, health="online", ram=2000, enabled=1, verified=True):
+    _assert_test_isolation()
     runtimes = runtimes if runtimes is not None else (["python-3.12", "ollama"] if models else ["python-3.12"])
     with db_transaction() as c:
         c.execute("DELETE FROM worker_auth_tokens WHERE node_id=?", (node_id,))
@@ -72,6 +83,7 @@ _disabled_by_us = set()
 
 
 def disable_other_nodes(keep):
+    _assert_test_isolation()
     with db_transaction() as c:
         for r in c.execute(f"SELECT id FROM infrastructure_nodes WHERE is_enabled=1 AND id NOT IN ({','.join('?' * len(keep))})", list(keep)).fetchall():
             _disabled_by_us.add(r["id"])
@@ -81,6 +93,7 @@ def disable_other_nodes(keep):
 
 
 def restore_nodes():
+    _assert_test_isolation()
     with db_transaction() as c:
         c.execute("UPDATE infrastructure_nodes SET is_enabled=0 WHERE id LIKE 't-%'")
         for nid in list(_disabled_by_us):
@@ -99,6 +112,7 @@ def _art(name, data: bytes):
 def worker_step(node_id, models=None, mode="ok", response="Node A has 600 MiB free memory and low load. Node B is similar.",
                 health=None):
     """Lease one task as ``node_id`` and submit a result. Returns the lease dict or None."""
+    _assert_test_isolation()
     lease = W.lease_task_for_worker(node_id, supported_categories=["python_execution", "inference", "general"],
                                     available_models=models or [], available_ram_mb=2000)
     if not lease:

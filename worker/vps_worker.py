@@ -66,7 +66,8 @@ IMPLEMENTED_CAPABILITIES: List[str] = [
     "network_probe"
 ]
 
-app = FastAPI(title="Qwen Collective VPS Companion Worker", version=os.getenv("QC_APP_VERSION", "1.0.0-rc.2"))
+from app.version import __version__ as APP_VERSION
+app = FastAPI(title="Qwen Collective VPS Companion Worker", version=os.getenv("QC_APP_VERSION", APP_VERSION))
 
 def verify_token(authorization: Optional[str] = Header(None)):
     if not authorization:

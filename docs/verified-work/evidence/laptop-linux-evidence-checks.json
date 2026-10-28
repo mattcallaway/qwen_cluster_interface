@@ -1,0 +1,77 @@
+{
+  "schema": "qc.manual_linux_evidence.v1",
+  "evidence_class": "MANUAL_REVIEWED_FIXTURES",
+  "checks": [
+    {
+      "name": "pinned_image_consistent",
+      "passed": true
+    },
+    {
+      "name": "tested_backend_matches_candidate",
+      "passed": true
+    },
+    {
+      "name": "non_root_smoke",
+      "passed": true
+    },
+    {
+      "name": "seven_isolation_denials",
+      "passed": true
+    },
+    {
+      "name": "deadline_stops_with_cleanup",
+      "passed": true
+    },
+    {
+      "name": "stream_budget_enforced",
+      "passed": true
+    },
+    {
+      "name": "zero_exit_cannot_hide_descendant",
+      "passed": true
+    },
+    {
+      "name": "memory_cap_kernel_and_oom",
+      "passed": true
+    },
+    {
+      "name": "pid_cap_kernel_and_denial",
+      "passed": true
+    },
+    {
+      "name": "service_deadline_survives_client_loss",
+      "passed": true
+    },
+    {
+      "name": "swap_and_cpu_policy_readback",
+      "passed": true
+    },
+    {
+      "name": "all_ten_test_cgroups_empty",
+      "passed": true
+    },
+    {
+      "name": "temporary_permission_removed",
+      "passed": true
+    },
+    {
+      "name": "existing_services_not_restarted",
+      "passed": true
+    }
+  ],
+  "all_checks_passed": true,
+  "input_sha256": {
+    "linux-candidate-inventory.json": "9515e27a93d3f422309d2dcb20eef57b732f328c9809ea18bd022077b49fcc62",
+    "laptop-linux-isolation-tests.json": "bf385449755f7a7b0aef49ae684ffb2114cafd5902138f2c322ebf97119c660e",
+    "laptop-linux-resource-tests.json": "0238e247ef3738f1ab9703f0e92ac88d67af221548b0df459e860e8d64162e3d",
+    "laptop-linux-final-state.json": "d0c6b2dae85bfc2a483b02b1266b8b09366c01134eb71c9fb97502802f5385d2"
+  },
+  "backend_verified_for_generated_code": false,
+  "certification_eligible": false,
+  "production_approved": false,
+  "limits": [
+    "Selected fixed fixtures on the laptop, not a native generated-code project.",
+    "CPU quota readback is not a CPU stress benchmark; broad escape testing is incomplete.",
+    "These file hashes are integrity checks, not independent cryptographic attestations."
+  ]
+}

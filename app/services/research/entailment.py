@@ -87,6 +87,9 @@ def _stem(w: str) -> str:
 def normalize_sentence(s: str) -> str:
     """Normalize whitespace and strip citation markers like [1], [src-1]."""
     cleaned = re.sub(r"\[(?:\d+|src-[a-zA-Z0-9_\-]+)\]", "", s)
+    cleaned = re.sub(r"^\s*[-*•\d+.)]+\s*", "", cleaned)
+    cleaned = cleaned.replace("\u2019", "'").replace("\u2018", "'").replace("\u201c", '"').replace("\u201d", '"')
+    cleaned = cleaned.replace("\xa0", " ").replace("\u2013", "-").replace("\u2014", "-")
     return " ".join(cleaned.split()).strip()
 
 
@@ -111,7 +114,7 @@ def extract_numbers_and_metrics(text: str) -> List[Tuple[str, str]]:
 
 def has_negation(text: str) -> bool:
     """Check whether text contains a negation marker modifying the clause."""
-    t_lower = text.lower()
+    t_lower = re.sub(r"\bnot[\s-]to[\s-]exceed\b", "maximum", text.lower())
     for neg in _NEGATION_TERMS:
         if re.search(r"\b" + re.escape(neg) + r"\b", t_lower):
             return True
@@ -136,7 +139,8 @@ def verify_claim_against_source(claim_text: str, source_text: str) -> ClaimEntai
             evidence_strength="none",
         )
 
-    clean_source = source_text.strip()
+    clean_source = source_text.replace("\u2019", "'").replace("\u2018", "'").replace("\u201c", '"').replace("\u201d", '"')
+    clean_source = clean_source.replace("\xa0", " ").replace("\u2013", "-").replace("\u2014", "-").strip()
 
     # 1. Exact Substring Match Check
     clean_claim_no_punct = clean_claim.strip(".?! \n\t")
@@ -176,8 +180,8 @@ def verify_claim_against_source(claim_text: str, source_text: str) -> ClaimEntai
     claim_negated = has_negation(clean_claim)
     claim_metrics = extract_numbers_and_metrics(clean_claim)
 
-    claim_has_increase = any(w in claim_words for w in _INCREASE_WORDS)
-    claim_has_decrease = any(w in claim_words for w in _DECREASE_WORDS)
+    claim_has_increase = any(re.search(r"\b" + re.escape(w) + r"\b", clean_claim, re.IGNORECASE) for w in _INCREASE_WORDS) or bool(re.search(r"\bincreas", clean_claim, re.IGNORECASE))
+    claim_has_decrease = any(re.search(r"\b" + re.escape(w) + r"\b", clean_claim, re.IGNORECASE) for w in _DECREASE_WORDS) or bool(re.search(r"\bdecreas|\breduc", clean_claim, re.IGNORECASE))
 
     claim_is_past_completed = any(p.search(clean_claim) for p in _COMPLETED_PAST_PATTERNS)
     claim_is_future_expected = any(p.search(clean_claim) for p in _SPECULATIVE_OR_FUTURE_PATTERNS)
@@ -218,8 +222,8 @@ def verify_claim_against_source(claim_text: str, source_text: str) -> ClaimEntai
                 )
 
             # Check C: Directional conflict (Test B)
-            src_has_increase = any(re.search(r"\b" + re.escape(w) + r"\b", src_sent, re.IGNORECASE) for w in _INCREASE_WORDS)
-            src_has_decrease = any(re.search(r"\b" + re.escape(w) + r"\b", src_sent, re.IGNORECASE) for w in _DECREASE_WORDS)
+            src_has_increase = any(re.search(r"\b" + re.escape(w) + r"\b", src_sent, re.IGNORECASE) for w in _INCREASE_WORDS) or bool(re.search(r"\bincreas", src_sent, re.IGNORECASE))
+            src_has_decrease = any(re.search(r"\b" + re.escape(w) + r"\b", src_sent, re.IGNORECASE) for w in _DECREASE_WORDS) or bool(re.search(r"\bdecreas|\breduc", src_sent, re.IGNORECASE))
             if (claim_has_increase and src_has_decrease) or (claim_has_decrease and src_has_increase):
                 return ClaimEntailmentResult(
                     status="CONTRADICTED",
@@ -246,12 +250,15 @@ def verify_claim_against_source(claim_text: str, source_text: str) -> ClaimEntai
                 claim_pcts = [v for v, u in claim_metrics if u in ("%", "percent")]
                 src_pcts = [v for v, u in src_metrics if u in ("%", "percent")]
                 if claim_pcts and src_pcts and set(claim_pcts) != set(src_pcts):
-                    return ClaimEntailmentResult(
-                        status="CONTRADICTED",
-                        reason=f"Numeric percentage mismatch: claim asserts {claim_pcts}% but source states {src_pcts}% in '{src_sent}'",
-                        conflicting_excerpt=src_sent,
-                        evidence_strength="strong",
-                    )
+                    doc_metrics = extract_numbers_and_metrics(clean_source)
+                    doc_pcts = {v for v, u in doc_metrics if u in ("%", "percent")}
+                    if not set(claim_pcts).intersection(doc_pcts):
+                        return ClaimEntailmentResult(
+                            status="CONTRADICTED",
+                            reason=f"Numeric percentage mismatch: claim asserts {claim_pcts}% but source states {src_pcts}% in '{src_sent}'",
+                            conflicting_excerpt=src_sent,
+                            evidence_strength="strong",
+                        )
                 # If claim has currency/amount and source has different currency amount
                 claim_currs = [v for v, u in claim_metrics if v.startswith("$")]
                 src_currs = [v for v, u in src_metrics if v.startswith("$")]

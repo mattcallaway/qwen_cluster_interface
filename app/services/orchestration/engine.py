@@ -36,6 +36,47 @@ WAIT_FOR_WORKER_LIMIT_S = 600
 INFLIGHT_GRACE_S = 90
 MAX_INTAKE_FIELD = 4000
 ACTIVE_STATES = ("PLANNING", "REPLANNING", "RUNNING", "EVALUATING", "PAUSED")
+_NATIVE_RETRIEVAL_VERIFIER = None
+_PROTECTED_CODE_TRANSPORT = None
+
+
+def configure_protected_code_verifier(transport=None):
+    """Explicit isolated controller injection; no route, startup or worker flag.
+
+    This development bridge never enables generated-code worker dispatch or
+    changes the evaluator's independent software certification hold.
+    """
+    if transport is not None and not callable(transport):
+        raise ValueError('Trusted protected-verifier transport required')
+    global _PROTECTED_CODE_TRANSPORT
+    _PROTECTED_CODE_TRANSPORT=transport
+
+
+def verify_native_code_proposal(project_id,run_id,deliverable_key,artifact_id,image_sha256,*,seconds=5):
+    """Controller service API: native evidence -> pinned tests -> protected runner.
+
+    Deliberately opt-in and separate from scheduler ticks until a live leased
+    model canary and deployment review authorize automatic dispatch.
+    """
+    if _PROTECTED_CODE_TRANSPORT is None or os.environ.get('QC_ENV')!='development':
+        raise ValueError('Native code verification held; isolated development transport required')
+    from .code_proposals import CodeProposalReview
+    from .protected_verification import ProtectedVerification
+    c=get_db_connection()
+    try:
+        reviewer=CodeProposalReview(c,project_id,run_id)
+        if artifact_id is None:
+            artifact_id=reviewer.capture_native_response(deliverable_key)
+        review=reviewer.review(deliverable_key,artifact_id); c.commit()
+        return ProtectedVerification(reviewer,_PROTECTED_CODE_TRANSPORT,nonproduction=True).verify(
+            review['id'],image_sha256,seconds=seconds)
+    finally: c.close()
+
+
+def configure_native_retrieval_verifier(verifier):
+    """Explicit controller startup injection. Never loads keys or enables nodes."""
+    global _NATIVE_RETRIEVAL_VERIFIER
+    _NATIVE_RETRIEVAL_VERIFIER=verifier
 
 # Bounded capacity and execution pool for asynchronous controller step execution (Finding F-13 & Stage 3 Safety)
 MAX_CONTROLLER_WORKERS = 4
@@ -295,12 +336,12 @@ def tick(run_id: str, manual: bool = False) -> Dict[str, Any]:
     _collect(run, nodes)
     run = get_run(run_id)
     if run["state"] == "RUNNING":
-        if _escalate_if_failed(run):
-            return get_run(run_id)
         if run["autonomy_level"] > 0 or manual:
             _dispatch(run, nodes, manual)
         run = get_run(run_id)
         if run["state"] == "RUNNING":
+            if _escalate_if_failed(run):
+                return get_run(run_id)
             _maybe_finish(run)
     elif run["state"] == "EVALUATING":
         _evaluate_deliverables(run)
@@ -382,6 +423,33 @@ def _collect_one(run: Dict[str, Any], ot: Dict[str, Any], nodes: List[Dict[str, 
     t = T.get_task_by_id(tid) if tid else None
     if t is None:
         return _fail(run, ot, "controller_restart", "underlying task missing")
+    if action.get('type')=='research_fetch':
+        if t['status']=='completed':
+            if _NATIVE_RETRIEVAL_VERIFIER is None:
+                return _fail(run,ot,'task_execution_failure','Controller retrieval verifier is not configured')
+            try:
+                from app.services.research.manager import ResearchManager
+                c=get_db_connection()
+                try:
+                    rr=c.execute('SELECT id FROM research_runs WHERE orchestration_run_id=? AND project_id=?',
+                        (run['id'],run['project_id'])).fetchall()
+                    receipts=c.execute('SELECT id FROM worker_executions WHERE task_id=? AND status=? AND exit_code=0',
+                        (tid,'success')).fetchall()
+                finally: c.close()
+                if len(rr)!=1 or len(receipts)!=1: raise ValueError('Native retrieval scope is ambiguous')
+                manager=ResearchManager(feedback_only=True)
+                result=manager.prepare_native_retrieval_feedback(run['project_id'],rr[0]['id'],receipts[0]['id'],
+                    _NATIVE_RETRIEVAL_VERIFIER)
+                if not result.get('snapshot_id'): raise ValueError('Retrieval budget exhausted')
+                return _decide_result(run,ot,{'accepted':True,'node':ot['dispatched_node'],
+                    'checks':[{'name':'controller_observed_retrieval','passed':True,'detail':'Source claims remain unverified'}],
+                    'result':result},tid)
+            except Exception as exc:
+                return _fail(run,ot,'task_execution_failure',str(exc)[:400])
+        if t['status'] in ('failed','cancelled'):
+            return _fail(run,ot,'task_execution_failure','Worker retrieval failed')
+        dispatched=parse_ts(ot['dispatched_at']) or now_dt()
+        return _check_inflight(run,ot,t,nodes,(now_dt()-dispatched).total_seconds())
     dispatched = parse_ts(ot["dispatched_at"]) or now_dt()
     elapsed = (now_dt() - dispatched).total_seconds()
     if action["type"] == "inference":
@@ -506,34 +574,66 @@ def _fresh(orch_task_id: str) -> Dict[str, Any]:
 
 
 def _escalate_if_failed(run: Dict[str, Any]) -> bool:
-    failed = [t for t in _orch_tasks(run["id"]) if t["state"] == "failed"]
+    rows = _orch_tasks(run["id"])
+    failed = [t for t in rows if t["state"] == "failed"]
     if not failed:
         return False
+
+    deps = _deps(run["id"])
+    state_by_id = {r["id"]: r["state"] for r in rows}
+    now = now_dt()
+
+    # If independent deliverable synthesis tasks exist, allow remaining eligible ones to complete
+    deliverable_tasks = [t for t in rows if t["plan_key"].startswith("synthesize_")]
+    if deliverable_tasks:
+        deliverable_in_flight = [t for t in deliverable_tasks if t["state"] == "dispatched"]
+        deliverable_eligible = [
+            t for t in deliverable_tasks
+            if t["state"] == "pending"
+            and all(state_by_id.get(d) == "accepted" for d in deps.get(t["id"], []))
+            and not (parse_ts(t.get("backoff_until")) and parse_ts(t.get("backoff_until")) > now)
+        ]
+        if deliverable_in_flight or deliverable_eligible:
+            return False
+
     t = failed[0]
-    reason = f"Task '{t['title']}' failed ({t['failure_class']}): {t['last_error'][:200]}. Human decision required: retry, edit, or replan."
+    accepted_tasks = [t for t in rows if t["state"] == "accepted"]
+    failed_names = ", ".join(t["title"] for t in failed)
+    reason = (
+        f"Task '{t['title']}' failed ({t['failure_class']}): {t['last_error'][:200]}. "
+        f"Independent deliverable failure isolation: {len(accepted_tasks)} of {len(rows)} tasks accepted. "
+        f"Failed tasks: {failed_names}. Meaningful partial deliverables preserved. "
+        "Human decision required: retry, edit, or replan."
+    )
     meta = jload(run["analysis_json"])
+    meta["partial_completion"] = {
+        "accepted_tasks_count": len(accepted_tasks),
+        "failed_tasks_count": len(failed),
+        "total_tasks_count": len(rows),
+        "failed_tasks": [t["plan_key"] for t in failed],
+        "isolated_at": now_iso(),
+    }
+    with db_transaction() as c:
+        c.execute("UPDATE orchestration_runs SET analysis_json=? WHERE id=?", (jdump(meta), run["id"]))
+
+    record_event(run["id"], "independent_failure_isolated", "orchestrator", reason,
+                 detail={"accepted_count": len(accepted_tasks), "failed_count": len(failed)})
+
     from app.services.orchestration.research_checkpoint import execute_research_checkpoint
     try:
         execute_research_checkpoint(
             project_id=run["project_id"],
             run_id=run["id"],
             stage_phase="replanning",
-            stage_name="Replanning Checkpoint",
+            stage_name="Failure Isolation Checkpoint",
             objective=jload(run["intake_json"]).get("objective", ""),
-            context_input={"failure_reason": reason}
+            context_input={"failure_reason": reason, "partial_deliverables_preserved": True}
         )
     except Exception as ex:
-        logger.warning("Replanning research checkpoint failed: %s", ex)
+        logger.warning("Failure isolation research checkpoint failed: %s", ex)
 
-    if run["autonomy_level"] == 3 and meta.get("auto_replans", 0) < 1:
-        meta["auto_replans"] = meta.get("auto_replans", 0) + 1
-        with db_transaction() as c:
-            c.execute("UPDATE orchestration_runs SET analysis_json=? WHERE id=?", (jdump(meta), run["id"]))
-        states.transition(run["id"], "REPLANNING", "auto_replan", "orchestrator", "Level 3 autonomous replan after failure: " + reason[:200])
-        planner.generate_plan(run["id"], "orchestrator", mode="auto")
-        return True
-    states.transition(run["id"], "BLOCKED", "escalated", "orchestrator", reason, set_fields={"block_reason": reason[:1000]},
-                      expected_state="RUNNING")
+    states.transition(run["id"], "BLOCKED", "escalated", "orchestrator", reason,
+                      set_fields={"block_reason": reason[:1000]}, expected_state="RUNNING")
     return True
 
 
@@ -546,7 +646,8 @@ def _dispatch(run: Dict[str, Any], nodes: List[Dict[str, Any]], manual: bool) ->
         cp = c.execute("SELECT id FROM stage_research_checkpoints WHERE run_id=? AND stage_phase='execution'", (run["id"],)).fetchone()
     finally:
         c.close()
-    if not cp:
+    analysis = jload(run.get("analysis_json") or "{}")
+    if not cp and (analysis.get("research_match") or analysis.get("research_recommended")):
         from app.services.orchestration.research_checkpoint import execute_research_checkpoint
         try:
             execute_research_checkpoint(
@@ -578,8 +679,9 @@ def _dispatch(run: Dict[str, Any], nodes: List[Dict[str, Any]], manual: bool) ->
         bu = parse_ts(ot["backoff_until"])
         if bu and bu > now:
             continue
-        action = jload(ot["action_json"])
-        if action["type"] == "controller_step":
+        action = jload(ot["action_json"]) or {}
+        act_type = action.get("type") if isinstance(action, dict) else None
+        if act_type == "controller_step":
             # 1. Backpressure check: bound maximum outstanding controller tasks across the engine
             with _FUTURES_LOCK:
                 total_active = len(_ACTIVE_FUTURES)
@@ -597,16 +699,16 @@ def _dispatch(run: Dict[str, Any], nodes: List[Dict[str, Any]], manual: bool) ->
                 logger.info("Controller dispatch deferred for run %s: per-run fairness limit reached (%s/%s)", run["id"], run_active, MAX_CONTROLLER_TASKS_PER_RUN)
                 continue
 
-        if action["type"] != "controller_step" and in_flight >= budget["max_concurrent"]:
+        if act_type != "controller_step" and in_flight >= budget["max_concurrent"]:
             continue
-        ok, why = telemetry.check_budget(run["id"], will_add_task=True, will_add_inference=action["type"] == "inference",
+        ok, why = telemetry.check_budget(run["id"], will_add_task=True, will_add_inference=act_type == "inference",
                                          elapsed_runtime_seconds=_elapsed(run))
         if not ok:
             _block_for_budget(run, why)
             return
         if not _approval_gate(run, ot, manual):
             continue
-        if action["type"] == "controller_step":
+        if act_type == "controller_step":
             _dispatch_controller_step(run, ot, action, sync=manual)
             if manual:
                 return
@@ -642,7 +744,7 @@ def _block_for_budget(run: Dict[str, Any], why: str) -> None:
 
 def _approval_gate(run: Dict[str, Any], ot: Dict[str, Any], manual: bool) -> bool:
     level = run["autonomy_level"]
-    forced = ot["approval_mode"] == "required" or ot["risk"] == "high"
+    forced = ot["approval_mode"] == "required" or ot["risk"] == "high" or jload(ot['action_json']).get('type')=='research_fetch'
     with db_transaction() as c:
         if forced or level == 1 or (level == 0 and not manual):
             if has_task_approval(c, run["id"], ot["id"]):
@@ -749,6 +851,38 @@ def _dispatch_one(run, ot, action, node, model) -> None:
         finally:
             c.close()
         telemetry.record_usage(run["id"], tasks=1)
+    elif action['type']=='research_fetch':
+        from app.services.worker import check_worker_leasing_authority
+        from app.services.research.feedback import ProjectEvidenceFeedback
+        if _NATIVE_RETRIEVAL_VERIFIER is None:
+            raise ValidationError('Controller retrieval verifier is not configured')
+        c=get_db_connection()
+        try:
+            if not has_task_approval(c,run['id'],ot['id']):
+                raise ValidationError('Explicit retrieval-task approval required')
+            check_worker_leasing_authority(c,node['id'],['research_fetch'])
+            rev=c.execute('''SELECT rev.plan_json FROM orchestration_runs r
+                JOIN orchestration_plan_revisions rev ON rev.id=r.current_revision_id
+                WHERE r.id=? AND rev.id=? AND rev.status='approved' ''',(run['id'],ot['revision_id'])).fetchone()
+            if not rev or not any(t.get('key')==ot['plan_key'] and t.get('action')==action
+                    for t in jload(rev['plan_json']).get('tasks',[])):
+                raise ValidationError('Retrieval must match the current approved plan')
+            rr=c.execute('SELECT id FROM research_runs WHERE orchestration_run_id=? AND project_id=? AND status=?',
+                (run['id'],run['project_id'],'active')).fetchall()
+            if len(rr)!=1: raise ValidationError('Missing or ambiguous active research run')
+            ledger=ProjectEvidenceFeedback(c,run['project_id'],rr[0]['id'])
+            if not any(p['id']==action.get('feedback_path_id') for p in ledger.items('path')):
+                raise ValidationError('Missing scoped feedback proposal')
+        finally: c.close()
+        t=T.create_task(title=ot['title'],task_type='research_fetch',assigned_worker=node['id'],
+            input_data={'url':action['url'],'feedback_path_id':action['feedback_path_id']},idempotency_key=key,
+            project_id=ctx['project_id'],path_id=ctx['path_id'],stage_id=ctx['stage_id'],
+            purpose=ctx['purpose'],expected_output=ctx['expected_output'],completion_criteria=ctx['completion_criteria'])
+        if t['status']=='awaiting_approval': T.approve_task(t['id'])
+        t=T.get_task_by_id(t['id'])
+        if t['status']!='queued': raise ValidationError('Native retrieval could not be queued')
+        task_id=t['id']
+        telemetry.record_usage(run['id'],tasks=1)
     else:
         if action.get("script_id") not in script_library.LIBRARY:
             raise ValidationError(f"Unknown library script '{action.get('script_id')}'.")
@@ -892,6 +1026,45 @@ def _run_research_controller_step(run, ot, action, plan, inputs) -> Dict[str, An
         ev["node"] = "controller-local"
         return ev
 
+    elif step in ("research_coverage", "research_evidence_coverage"):
+        contracts = []
+        raw_contracts = plan.get("deliverable_contracts", [])
+        if raw_contracts:
+            from app.services.orchestration.contract import DeliverableRequirementContract
+            for c in raw_contracts:
+                contracts.append(DeliverableRequirementContract(**c) if isinstance(c, dict) else c)
+        else:
+            from app.services.orchestration.contract import decompose_deliverable_requirements
+            for d in plan.get("deliverables", []):
+                contracts.append(decompose_deliverable_requirements(
+                    {"objective": objective, "instructions": plan.get("overview", {}).get("scope", "")},
+                    d.get("name", ""),
+                    d.get("key", "")
+                ))
+
+        res = mgr.execute_coverage_step(
+            project_id=project_id,
+            task_id=ot["id"],
+            contracts=contracts,
+            project_objective=objective,
+            research_run_id=research_run_id,
+        )
+        ev = evaluator.evaluate_research_step(step, res)
+        ids = []
+        if ev["accepted"]:
+            assessment_data = res.get("assessment", {})
+            aid = artifact_manager.write_controller_artifact(
+                run, ot["id"], "evidence_sufficiency_assessment.json",
+                json.dumps(assessment_data, indent=2).encode("utf-8")
+            )
+            artifact_manager.set_validation(
+                aid, "valid", f"Evidence coverage assessed: {assessment_data.get('overall_status')}"
+            )
+            ids.append(aid)
+        ev["result"] = {"kind": "controller_generated", "artifacts": ids, "node": "controller-local", "data": res}
+        ev["node"] = "controller-local"
+        return ev
+
     elif step in ("research_synthesize", "research_citation_audit"):
         deliv_name = next((d["name"] for d in plan.get("deliverables", []) if d.get("produced_by") == ot.get("plan_key")), None)
         topic = deliv_name or plan.get("overview", {}).get("objective") or "Research Deliverable"
@@ -900,13 +1073,40 @@ def _run_research_controller_step(run, ot, action, plan, inputs) -> Dict[str, An
         filename = expected_md or f"{ot.get('plan_key', 'research_report')}.md"
         audit_filename = f"citation_audit_{ot.get('plan_key', 'report')}.json"
 
+        ai_inputs = [v for v in inputs.values() if isinstance(v, dict) and (v.get("kind") == "model_output" or v.get("role") == "model_output")]
+
+        coverage_data = None
+        for v in inputs.values():
+            if isinstance(v, dict) and "data" in v and isinstance(v["data"], dict) and "assessment" in v["data"]:
+                coverage_data = v["data"]["assessment"]
+                break
+            elif isinstance(v, dict) and "overall_status" in v:
+                coverage_data = v
+                break
+
+        deliv_obj = next((d for d in plan.get("deliverables", []) if d.get("produced_by") == ot.get("plan_key")), None)
+        deliv_contract = None
+        if deliv_obj:
+            from app.services.orchestration.contract import decompose_deliverable_requirements
+            deliv_contract = decompose_deliverable_requirements(
+                {"objective": objective, "instructions": plan.get("overview", {}).get("scope", "")},
+                deliv_obj.get("name", ""),
+                deliv_obj.get("key", "")
+            )
+
         res = mgr.execute_synthesis_and_citation_step(
-            project_id, ot["id"], objective, topic, research_run_id=research_run_id
+            project_id, ot["id"], objective, topic,
+            research_run_id=research_run_id,
+            ai_inputs=ai_inputs,
+            deliverable_contract=deliv_contract,
+            coverage_assessment=coverage_data,
         )
         ev = evaluator.evaluate_research_step(step, res)
         ids = []
         if ev["accepted"]:
             rep_md = res.get("report_markdown", "")
+            if "## Provenance" not in rep_md and "Provenance" not in rep_md:
+                rep_md += f"\n\n## Provenance\n\n| Attribute | Value |\n| :--- | :--- |\n| Project ID | {project_id} |\n| Orchestration Run | {run['id']} |\n| Generating Node | controller-local |\n| Upstream Sources | {len(res.get('audit', {}).get('resolved_sources', []))} verified sources |\n| Evaluation Status | Objective Verified |\n"
             aid1 = artifact_manager.write_controller_artifact(
                 run, ot["id"], filename, rep_md.encode("utf-8")
             )
@@ -1142,6 +1342,35 @@ def _maybe_finish(run: Dict[str, Any]) -> None:
 
 # --- deliverable evaluation / completion ----------------------------------------------------------------------------------
 
+def _block_deliverable_evaluation(run, deliverable_key, reason, reason_code, evaluation=None):
+    """Commit blocked state and its diagnostics together; never certify a precheck.
+
+    Re-read metadata in the write transaction so other recorded findings survive.
+    A stale evaluation must not overwrite a paused/cancelled/completed run.
+    """
+    with db_transaction() as c:
+        current = get_run(run["id"], c)
+        if current["state"] == "BLOCKED":
+            return current
+        meta = jload(current.get("analysis_json"))
+        finding = {
+            "substantively_fulfilled": False,
+            "substantive_status": "BLOCKED",
+            "fulfillment_score": 0.0,
+            "evaluation_scope": "deliverable_precheck",
+            "objective_evaluation_performed": False,
+            "deliverable_key": deliverable_key,
+            "reason_code": reason_code,
+            "gap_summary": reason,
+            "checks": (evaluation or {}).get("checks", []),
+            "recorded_at": now_iso(),
+        }
+        meta["substantive_evaluation"] = finding
+        return states.transition(run["id"], "BLOCKED", "deliverable_validation_blocked",
+            "orchestrator-evaluator", reason, expected_state="EVALUATING", conn=c,
+            set_fields={"block_reason": reason, "analysis_json": jdump(meta)}, detail=finding)
+
+
 def _evaluate_deliverables(run: Dict[str, Any]) -> None:
     meta = jload(run["analysis_json"])
     dmap = meta.get("deliverable_map", {})
@@ -1234,8 +1463,7 @@ def _evaluate_deliverables(run: Dict[str, Any]) -> None:
         if not valid and (d.get("terminal") or d.get("required", True)):
             all_accepted = False
             reason = f"Required artifact for deliverable '{d['name']}' is missing from storage."
-            record_event(run["id"], "deliverable_validation_blocked", "orchestrator-evaluator", f"{d['key']}: {reason}")
-            states.transition(run["id"], "BLOCKED", "escalated", "orchestrator-evaluator", reason, set_fields={"block_reason": reason})
+            _block_deliverable_evaluation(run, d["key"], reason, "REQUIRED_ARTIFACT_MISSING")
             return
 
         # 3-Layer Acceptance Evaluation (Finding F-12)
@@ -1257,8 +1485,7 @@ def _evaluate_deliverables(run: Dict[str, Any]) -> None:
         if decision == "BLOCKED":
             all_accepted = False
             reason = eval_report.get("summary") or f"Deliverable '{d['name']}' is blocked on missing evidence."
-            record_event(run["id"], "deliverable_validation_blocked", "orchestrator-evaluator", f"{d['key']}: {reason}")
-            states.transition(run["id"], "BLOCKED", "escalated", "orchestrator-evaluator", reason, set_fields={"block_reason": reason})
+            _block_deliverable_evaluation(run, d["key"], reason, "DELIVERABLE_EVIDENCE_BLOCKED", eval_report)
             return
 
         if decision == "REJECTED":
@@ -1270,7 +1497,7 @@ def _evaluate_deliverables(run: Dict[str, Any]) -> None:
                     D.review_deliverable(did, "rejected", "orchestrator-evaluator", reason)
                 except Exception:
                     pass
-            states.transition(run["id"], "BLOCKED", "escalated", "orchestrator-evaluator", reason, set_fields={"block_reason": reason})
+            _block_deliverable_evaluation(run, d["key"], reason, "DELIVERABLE_ACCEPTANCE_REJECTED", eval_report)
             return
 
         # Prepare references for submission
@@ -1384,18 +1611,46 @@ def _evaluate_deliverables(run: Dict[str, Any]) -> None:
                 "criteria_tested": d.get("acceptance_criteria") or {},
                 "evidence_satisfied": [{"id": a["id"], "filename": a["filename"], "sha256": a["sha256"]} for a in p_arts],
             })
+
+        # Level 3 Substantive Objective Fulfillment Evaluation (Phase 6)
+        coverage_data = None
+        cov_art = next((a for a in arts if a.get("filename") == "evidence_sufficiency_assessment.json"), None)
+        if cov_art:
+            try:
+                raw_bytes = artifact_manager.read_artifact_bytes(cov_art["id"])
+                coverage_data = json.loads(raw_bytes.decode("utf-8"))
+            except Exception:
+                coverage_data = None
+
+        fulfillment = evaluator.evaluate_project_objective_fulfillment(
+            project_id=run["project_id"],
+            run=run,
+            plan=plan,
+            intake=jload(run["intake_json"]),
+            coverage_assessment=coverage_data,
+            deliverables_tested=tested_summary,
+        )
+
         meta = jload(run["analysis_json"])
         meta["acceptance_summary"] = {
             "completed_at": now_iso(),
             "deliverables_tested": tested_summary,
         }
+        meta["substantive_evaluation"] = fulfillment
         with db_transaction() as c:
             c.execute("UPDATE orchestration_runs SET analysis_json=? WHERE id=?", (jdump(meta), run["id"]))
 
         _write_index(run, plan, dmap)
-        states.transition(run["id"], "COMPLETED", "completed", "orchestrator", "all deliverables accepted with verified criteria and evidence", expected_state="EVALUATING")
-        record_event(run["id"], "run_completed", "orchestrator", "Run completed: all deliverables accepted with verified criteria and evidence",
-                     detail={"deliverables_tested": tested_summary})
+
+        if fulfillment["substantively_fulfilled"]:
+            states.transition(run["id"], "COMPLETED", "completed", "orchestrator", "all deliverables accepted with verified criteria and objective fulfilled", expected_state="EVALUATING")
+            record_event(run["id"], "run_completed", "orchestrator", "Run completed: all deliverables accepted and objective fulfilled",
+                         detail={"deliverables_tested": tested_summary, "fulfillment": fulfillment})
+        else:
+            block_reason = f"Substantive objective unfulfilled: {fulfillment.get('gap_summary', 'Required evidence or criteria unmet')}"
+            states.transition(run["id"], "BLOCKED", "blocked", "orchestrator", block_reason[:500], expected_state="EVALUATING")
+            record_event(run["id"], "run_blocked", "orchestrator", f"Run blocked from premature completion: {block_reason}",
+                         detail={"deliverables_tested": tested_summary, "fulfillment": fulfillment})
 
 
 def assemble_deliverables_index(run: Dict[str, Any], plan: Optional[Dict[str, Any]] = None, dmap: Optional[Dict[str, Any]] = None) -> Optional[str]:

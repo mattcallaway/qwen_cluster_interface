@@ -13,7 +13,7 @@ from app.services.projects import NotFound, ValidationError
 router = APIRouter(tags=["infrastructure"])
 templates = Jinja2Templates(directory="app/templates")
 
-TABS = ("overview", "workers", "capabilities", "reconciliation", "architecture")
+TABS = ("overview", "workers", "capabilities", "reconciliation", "architecture", "archived")
 
 
 def _to(tab: str = "overview", err: str = "", msg: str = "") -> RedirectResponse:
@@ -69,6 +69,8 @@ def infrastructure_dashboard(
     infra_svc.sync_from_existing_machines_and_vps()
 
     nodes = infra_svc.list_nodes()
+    all_nodes = infra_svc.list_nodes(include_retired=True)
+    archived_nodes = [n for n in all_nodes if str(n.get("notes", "")).startswith("[RETIRED")]
     capabilities = infra_svc.list_capabilities()
     reconciliations = infra_svc.list_reconciliations()
     context_packet = infra_svc.build_architecture_context_packet(
@@ -88,6 +90,7 @@ def infrastructure_dashboard(
             "csrf_token": get_csrf_token(request),
             "tab": tab,
             "nodes": nodes,
+            "archived_nodes": archived_nodes,
             "online_nodes": online_nodes,
             "capabilities": capabilities,
             "verified_caps": verified_caps,

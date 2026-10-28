@@ -53,6 +53,9 @@ def _setup_workers_and_tasks(db_conn):
 
     worker_svc.register_worker_node(node_id="worker-A", name="Node A", role="vps_worker")
     worker_svc.register_worker_node(node_id="worker-B", name="Node B", role="vps_worker")
+    db_conn.execute("UPDATE infrastructure_nodes SET is_enabled = 1, notes = '', health_status = 'online' WHERE id IN ('worker-A', 'worker-B')")
+    db_conn.execute("UPDATE machines SET is_enabled = 1, notes = '', connection_status = 'online' WHERE id IN ('worker-A', 'worker-B')")
+    db_conn.commit()
 
     token_id_a, raw_token_a = worker_svc.create_worker_token("worker-A")
     token_id_b, raw_token_b = worker_svc.create_worker_token("worker-B")
@@ -217,6 +220,8 @@ def test_worker_cannot_upload_to_unassigned_task(client, db_conn):
     )
     assert r.status_code == 403
     assert "unassigned" in r.json()["detail"].lower()
+    db_conn.execute("DELETE FROM tasks WHERE id = ?", (unassigned_task_id,))
+    db_conn.commit()
 
 
 def test_worker_cannot_obtain_execution_authority_solely_without_lease(client, db_conn):

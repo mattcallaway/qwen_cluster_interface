@@ -221,6 +221,10 @@ class EvidenceLedger:
         """Record a factual assertion to be verified against source evidence."""
         claim_id = f"clm-{uuid.uuid4().hex[:12]}"
         now = _now_iso()
+        valid_cats = {'fact', 'inference', 'estimate', 'opinion', 'unknown'}
+        norm_cat = (category or "fact").lower().strip()
+        if norm_cat not in valid_cats:
+            norm_cat = "estimate" if "stat" in norm_cat or "num" in norm_cat else "fact"
         init_conf = confidence_score if confidence_score is not None else 0.0
         conn = get_db_connection()
         try:
@@ -231,7 +235,7 @@ class EvidenceLedger:
                     verification_status, confidence_score, created_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, 'unverified', ?, ?, ?)
                 """,
-                (claim_id, project_id, research_run_id, claim_text.strip(), category, init_conf, now, now),
+                (claim_id, project_id, research_run_id, claim_text.strip(), norm_cat, init_conf, now, now),
             )
             conn.commit()
             return self.get_claim(project_id, claim_id)

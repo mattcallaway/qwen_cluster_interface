@@ -1,0 +1,168 @@
+{
+  "schema": "qc.protected_verifier_live_test.v1",
+  "services_before": {
+    "qwen-worker.service": "MainPID=554427\nActiveState=active\nSubState=running",
+    "ollama.service": "MainPID=1432\nActiveState=active\nSubState=running",
+    "qc-ollama-ts.service": "MainPID=519545\nActiveState=active\nSubState=running"
+  },
+  "batch_id": "dc601e1e6f674a5290fd8e548caf7625",
+  "started_at": "2026-10-28T05:15:50.601503+00:00",
+  "native_binding": {
+    "proposal": {
+      "artifact_id": "art-623171239c024192",
+      "version": 1,
+      "sha256": "15807ed76d4fd9eee182b4e49c3fe06301f94520637ffc6ea81655c6b5bab395",
+      "cas_hash": "15807ed76d4fd9eee182b4e49c3fe06301f94520637ffc6ea81655c6b5bab395",
+      "task_id": "task-4d009747",
+      "worker_id": "worker-fixture-202e7c00fd804993ae0b611441169b91",
+      "attempt": 1
+    },
+    "approved_tests": {
+      "artifact_id": "art-6bce8aa5069c4898",
+      "version": 1,
+      "sha256": "c142e29efa01e910d769d6eb4ec574985d5e0486d4620fa389c05d37881db4f1",
+      "cas_hash": "c142e29efa01e910d769d6eb4ec574985d5e0486d4620fa389c05d37881db4f1",
+      "task_id": null,
+      "worker_id": null,
+      "attempt": 1
+    },
+    "plan_revision_id": "rev-fixture-202e7c00fd804993ae0b611441169b91-software-blackbox",
+    "plan_sha256": "34c941c848874f92ef75e5e76338586d30327537e87d3e005ec2faeda2e342fb",
+    "contract_sha256": "95abe81c306104d72b5d57aa60c780691015f193f424d82bae51846e72934f6e",
+    "requirement_ids": [
+      "addition"
+    ],
+    "review_id": "c2a5e15fdc4089977c9e297cff5ca82b8b5010450a1e139cc0dd4854f182c8b8",
+    "project_id": "prj-dfd915269b244c8881bdc0a81964db51",
+    "run_id": "run-fixture-202e7c00fd804993ae0b611441169b91",
+    "image_sha256": "43b057aa6a7133de2bbed57a8caaeecd07aea9228fa7cb6bec1608286b967b61",
+    "native_execution_id": "exec-202e7c00fd804993ae0b611441169b91-0",
+    "native_lease_id": "lease-202e7c00fd804993ae0b611441169b91-0",
+    "native_idempotency_key": "key-202e7c00fd804993ae0b611441169b91-0"
+  },
+  "nonce": "2e88f8a8a1234e40bc1c754d894fe160",
+  "units": [
+    {
+      "unit": "qc-sandbox-23406dbcae104d39a4a67121e10bab4a.service",
+      "empty": true,
+      "main_pid": "0",
+      "owned": false,
+      "safe": true
+    },
+    {
+      "unit": "qc-sandbox-2e82898dd5ae4299beb83572235bc865.service",
+      "empty": true,
+      "main_pid": "0",
+      "owned": false,
+      "safe": true
+    },
+    {
+      "unit": "qc-sandbox-5577e5f9cee941c281cba00f71c01fa8.service",
+      "empty": true,
+      "main_pid": "0",
+      "owned": false,
+      "safe": true
+    }
+  ],
+  "evidence_class": "reviewed synthetic source, native database fixture, actual protected Linux execution",
+  "backend_sha256": "933a950c6fe7774ad28a09a071f05bf851c037b9af1e9984ed44407e50f24c68",
+  "verifier_sha256": "b150bf228b5e00f0e0d211c8babefcd2a79e2ef828b5e5a1c3ba039c4f1e5044",
+  "production_approved": false,
+  "accepted": false,
+  "certification_eligible": false,
+  "cases": [
+    {
+      "case_id": "positive",
+      "requirement_id": "addition",
+      "passed": false
+    },
+    {
+      "case_id": "negative",
+      "requirement_id": "addition",
+      "passed": false
+    },
+    {
+      "case_id": "zero",
+      "requirement_id": "addition",
+      "passed": false
+    }
+  ],
+  "root_nonce_replay_denied": true,
+  "policy_absent": true,
+  "services_after": {
+    "qwen-worker.service": "MainPID=554427\nActiveState=active\nSubState=running",
+    "ollama.service": "MainPID=1432\nActiveState=active\nSubState=running",
+    "qc-ollama-ts.service": "MainPID=519545\nActiveState=active\nSubState=running"
+  },
+  "existing_services_unchanged": true,
+  "receipt": {
+    "body": {
+      "schema": "qc.protected_verifier_receipt.v1",
+      "grant_sha256": "a051cd6b633cf3e073fb1304c30ad167587963b6cc818a8feeb32954b787e538",
+      "nonce": "2e88f8a8a1234e40bc1c754d894fe160",
+      "binding": {
+        "proposal": {
+          "artifact_id": "art-623171239c024192",
+          "version": 1,
+          "sha256": "15807ed76d4fd9eee182b4e49c3fe06301f94520637ffc6ea81655c6b5bab395",
+          "cas_hash": "15807ed76d4fd9eee182b4e49c3fe06301f94520637ffc6ea81655c6b5bab395",
+          "task_id": "task-4d009747",
+          "worker_id": "worker-fixture-202e7c00fd804993ae0b611441169b91",
+          "attempt": 1
+        },
+        "approved_tests": {
+          "artifact_id": "art-6bce8aa5069c4898",
+          "version": 1,
+          "sha256": "c142e29efa01e910d769d6eb4ec574985d5e0486d4620fa389c05d37881db4f1",
+          "cas_hash": "c142e29efa01e910d769d6eb4ec574985d5e0486d4620fa389c05d37881db4f1",
+          "task_id": null,
+          "worker_id": null,
+          "attempt": 1
+        },
+        "plan_revision_id": "rev-fixture-202e7c00fd804993ae0b611441169b91-software-blackbox",
+        "plan_sha256": "34c941c848874f92ef75e5e76338586d30327537e87d3e005ec2faeda2e342fb",
+        "contract_sha256": "95abe81c306104d72b5d57aa60c780691015f193f424d82bae51846e72934f6e",
+        "requirement_ids": [
+          "addition"
+        ],
+        "review_id": "c2a5e15fdc4089977c9e297cff5ca82b8b5010450a1e139cc0dd4854f182c8b8",
+        "project_id": "prj-dfd915269b244c8881bdc0a81964db51",
+        "run_id": "run-fixture-202e7c00fd804993ae0b611441169b91",
+        "image_sha256": "43b057aa6a7133de2bbed57a8caaeecd07aea9228fa7cb6bec1608286b967b61",
+        "native_execution_id": "exec-202e7c00fd804993ae0b611441169b91-0",
+        "native_lease_id": "lease-202e7c00fd804993ae0b611441169b91-0",
+        "native_idempotency_key": "key-202e7c00fd804993ae0b611441169b91-0"
+      },
+      "observations": [
+        {
+          "case_id": "positive",
+          "executed": true,
+          "reason": "completed",
+          "exit_code": 0,
+          "cleanup_confirmed": true,
+          "stdout": "{\"value\":999}\n",
+          "unit": "qc-sandbox-23406dbcae104d39a4a67121e10bab4a.service"
+        },
+        {
+          "case_id": "negative",
+          "executed": true,
+          "reason": "completed",
+          "exit_code": 0,
+          "cleanup_confirmed": true,
+          "stdout": "{\"value\":999}\n",
+          "unit": "qc-sandbox-2e82898dd5ae4299beb83572235bc865.service"
+        },
+        {
+          "case_id": "zero",
+          "executed": true,
+          "reason": "completed",
+          "exit_code": 0,
+          "cleanup_confirmed": true,
+          "stdout": "{\"value\":999}\n",
+          "unit": "qc-sandbox-5577e5f9cee941c281cba00f71c01fa8.service"
+        }
+      ]
+    },
+    "signature": "65c74cf0d390263af6b01c994d054389bff86f8d1d96ed2f95917d5e0bf532a8"
+  }
+}

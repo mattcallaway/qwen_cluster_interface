@@ -21,10 +21,14 @@ LAPTOP_MODELS = ["qwen2.5:1.5b", "llama3.2:1b"]
 
 @pytest.fixture(autouse=True)
 def clean_orchestration_state():
-    yield
     from app.database import get_db_connection
     with get_db_connection() as conn:
-        conn.execute("UPDATE tasks SET status='cancelled' WHERE status IN ('queued', 'running', 'in_progress', 'awaiting_approval')")
+        conn.execute("UPDATE tasks SET status='cancelled' WHERE status IN ('queued', 'pending', 'running', 'in_progress', 'awaiting_approval')")
+        conn.execute("UPDATE worker_task_leases SET status='completed' WHERE status IN ('leased', 'active') AND worker_id LIKE 't-%'")
+        conn.commit()
+    yield
+    with get_db_connection() as conn:
+        conn.execute("UPDATE tasks SET status='cancelled' WHERE status IN ('queued', 'pending', 'running', 'in_progress', 'awaiting_approval')")
         conn.execute("UPDATE worker_task_leases SET status='completed' WHERE status IN ('leased', 'active') AND worker_id LIKE 't-%'")
         conn.commit()
 

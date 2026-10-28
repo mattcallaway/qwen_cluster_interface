@@ -172,11 +172,11 @@ def ensure_controller_node() -> Dict[str, Any]:
 
 
 def sync_from_existing_machines_and_vps() -> None:
-    """Synchronize nodes from legacy machines and vps_nodes tables into infrastructure_nodes."""
+    """Synchronize verified physical nodes between infrastructure_nodes and legacy machines table."""
     now = _now()
     with db_transaction() as conn:
-        # 1. Sync from vps_nodes
-        vps_rows = conn.execute("SELECT * FROM vps_nodes").fetchall()
+        # 1. Sync from vps_nodes (restricted to verified physical nodes)
+        vps_rows = conn.execute("SELECT * FROM vps_nodes WHERE id IN ('qwen-vps')").fetchall()
         for v in vps_rows:
             v_id = v["id"]
             existing = conn.execute("SELECT id FROM infrastructure_nodes WHERE id = ?", (v_id,)).fetchone()
@@ -195,11 +195,13 @@ def sync_from_existing_machines_and_vps() -> None:
                 """, (v_id, v["name"], v["endpoint_url"], health, v["last_checked_at"], v["last_checked_at"], now, now))
                 ensure_default_capabilities(v_id)
 
-        # 2. Sync from machines table
-        mach_rows = conn.execute("SELECT * FROM machines WHERE role <> 'control_server'").fetchall()
+        # 2. Sync from machines table (RESTRICTED strictly to verified physical nodes)
+        mach_rows = conn.execute(
+            "SELECT * FROM machines WHERE id IN ('desktop-worker-01', 'qwen-laptop', 'pi-brain', 'qwen-vps') AND notes NOT LIKE '[RETIRED%'"
+        ).fetchall()
         for m in mach_rows:
             m_id = m["id"]
-            existing = conn.execute("SELECT id FROM infrastructure_nodes WHERE id = ?", (m_id,)).fetchone()
+            existing = conn.execute("SELECT id, is_enabled FROM infrastructure_nodes WHERE id = ?", (m_id,)).fetchone()
             node_role = "inference_node" if "inference" in m["role"] else "compute_worker"
             m_health = "online" if m["connection_status"] == "online" else "offline" if m["connection_status"] == "offline" else "unknown"
             if not existing:
@@ -220,16 +222,21 @@ def sync_from_existing_machines_and_vps() -> None:
                 ))
                 ensure_default_capabilities(m_id)
             else:
+                # Fail closed: if EITHER table has disabled the node, the hold MUST prevail.
+                # Never silently re-enable a node during synchronization.
+                effective_enabled = 1 if (bool(m["is_enabled"]) and bool(existing["is_enabled"])) else 0
                 conn.execute("""
                     UPDATE infrastructure_nodes SET
                         is_enabled = ?, updated_at = ?
-                    WHERE id = ?
-                """, (m["is_enabled"], now, m_id))
+                    WHERE id = ? AND notes NOT LIKE '[RETIRED%'
+                """, (effective_enabled, now, m_id))
 
-        # 3. Sync from infrastructure_nodes back to machines table
-        infra_nodes = conn.execute("SELECT * FROM infrastructure_nodes WHERE id <> 'controller-local'").fetchall()
+        # 3. Sync from infrastructure_nodes back to machines table (Authoritative -> Legacy projection)
+        infra_nodes = conn.execute(
+            "SELECT * FROM infrastructure_nodes WHERE id <> 'controller-local' AND notes NOT LIKE '[RETIRED%'"
+        ).fetchall()
         for node in infra_nodes:
-            m_exists = conn.execute("SELECT id FROM machines WHERE id = ?", (node["id"],)).fetchone()
+            m_exists = conn.execute("SELECT id, is_enabled FROM machines WHERE id = ?", (node["id"],)).fetchone()
             role_mapping = "distributed_worker" if node["role"] in ("inference_node", "compute_worker") else "vps_worker"
             ip_val = node["tailscale_ip"] or node["ip_address"] or "127.0.0.1"
             if not m_exists:
@@ -249,12 +256,16 @@ def sync_from_existing_machines_and_vps() -> None:
                     node["installed_runtimes_json"] or "[]", node["notes"] or "", node["is_enabled"], now, now
                 ))
             else:
+                # Fail closed: hold prevails across tables
+                effective_enabled = 1 if (bool(node["is_enabled"]) and bool(m_exists["is_enabled"])) else 0
                 conn.execute("""
                     UPDATE machines SET
                         display_name = ?, connection_status = ?, last_checked_at = ?,
                         ram_avail_mb = ?, is_enabled = ?, updated_at = ?
                     WHERE id = ?
-                """, (node["name"], node["health_status"], node["last_contact_at"], node["available_ram_mb"], node["is_enabled"], now, node["id"]))
+                """, (node["name"], node["health_status"], node["last_contact_at"], node["available_ram_mb"], effective_enabled, now, node["id"]))
+
+sync_infrastructure_and_machines = sync_from_existing_machines_and_vps
 
 
 def register_or_update_node(
@@ -277,9 +288,10 @@ def register_or_update_node(
     available_models: Optional[List[str]] = None,
     health_status: str = "unknown",
     notes: str = "",
-    is_enabled: bool = True
+    is_enabled: bool = True,
+    override_hold: bool = False,
 ) -> Dict[str, Any]:
-    """Register a new infrastructure node or update an existing one."""
+    """Register a new infrastructure node or update an existing one. Never overrides administrative holds unless override_hold is True."""
     clean_id = _clean(node_id, "Node ID", 64, required=True)
     clean_name = _clean(name, "Name", NAME_MAX, required=True)
     if role not in NODE_ROLES:
@@ -293,37 +305,46 @@ def register_or_update_node(
     models_json = json.dumps(available_models or [])
 
     with db_transaction() as conn:
-        existing = conn.execute("SELECT id FROM infrastructure_nodes WHERE id = ?", (clean_id,)).fetchone()
+        existing = conn.execute("SELECT id, is_enabled FROM infrastructure_nodes WHERE id = ?", (clean_id,)).fetchone()
         if existing:
+            current_enabled = bool(existing["is_enabled"])
+            if not override_hold and not current_enabled:
+                # Operator administrative hold is preserved: do not silently re-enable
+                final_enabled = 0
+            else:
+                final_enabled = 1 if is_enabled else 0
+
+            contact_val = now if health_status == "online" else None
             conn.execute("""
                 UPDATE infrastructure_nodes SET
                     name = ?, role = ?, hostname = ?, ip_address = ?, tailscale_ip = ?,
                     os_name = ?, os_version = ?, architecture = ?, cpu_info = ?,
                     installed_ram_mb = ?, available_ram_mb = ?, storage_total_gb = ?, storage_free_gb = ?,
                     installed_runtimes_json = ?, registered_services_json = ?, available_models_json = ?,
-                    health_status = ?, notes = ?, is_enabled = ?, updated_at = ?
+                    health_status = ?, last_contact_at = COALESCE(?, last_contact_at), notes = ?, is_enabled = ?, updated_at = ?
                 WHERE id = ?
             """, (
                 clean_name, role, hostname.strip(), ip_address.strip(), tailscale_ip.strip(),
                 os_name.strip(), os_version.strip(), architecture.strip(), cpu_info.strip(),
                 installed_ram_mb, available_ram_mb, storage_total_gb, storage_free_gb,
-                runtimes_json, services_json, models_json, health_status, notes.strip(),
-                1 if is_enabled else 0, now, clean_id
+                runtimes_json, services_json, models_json, health_status, contact_val, notes.strip(),
+                final_enabled, now, clean_id
             ))
         else:
+            contact_val = now if health_status == "online" else None
             conn.execute("""
                 INSERT INTO infrastructure_nodes (
                     id, name, role, hostname, ip_address, tailscale_ip,
                     os_name, os_version, architecture, cpu_info,
                     installed_ram_mb, available_ram_mb, storage_total_gb, storage_free_gb,
                     installed_runtimes_json, registered_services_json, available_models_json,
-                    health_status, notes, is_enabled, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    health_status, last_contact_at, notes, is_enabled, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 clean_id, clean_name, role, hostname.strip(), ip_address.strip(), tailscale_ip.strip(),
                 os_name.strip(), os_version.strip(), architecture.strip(), cpu_info.strip(),
                 installed_ram_mb, available_ram_mb, storage_total_gb, storage_free_gb,
-                runtimes_json, services_json, models_json, health_status, notes.strip(),
+                runtimes_json, services_json, models_json, health_status, contact_val, notes.strip(),
                 1 if is_enabled else 0, now, now
             ))
 
@@ -347,13 +368,15 @@ def get_node(node_id: str) -> Optional[Dict[str, Any]]:
         return d
 
 
-def list_nodes(role: Optional[str] = None) -> List[Dict[str, Any]]:
-    """List all infrastructure nodes ordered by role and name."""
+def list_nodes(role: Optional[str] = None, include_retired: bool = False) -> List[Dict[str, Any]]:
+    """List infrastructure nodes ordered by role and name, excluding retired fixtures by default."""
     with get_db_connection() as conn:
+        retired_filter = "" if include_retired else "WHERE notes NOT LIKE '[RETIRED%'"
         if role:
-            rows = conn.execute("SELECT * FROM infrastructure_nodes WHERE role = ? ORDER BY name ASC", (role,)).fetchall()
+            clause = f"WHERE role = ? {'AND notes NOT LIKE \"[RETIRED%\"' if not include_retired else ''}"
+            rows = conn.execute(f"SELECT * FROM infrastructure_nodes {clause} ORDER BY name ASC", (role,)).fetchall()
         else:
-            rows = conn.execute("SELECT * FROM infrastructure_nodes ORDER BY CASE WHEN role='controller' THEN 0 ELSE 1 END, name ASC").fetchall()
+            rows = conn.execute(f"SELECT * FROM infrastructure_nodes {retired_filter} ORDER BY CASE WHEN role='controller' THEN 0 ELSE 1 END, name ASC").fetchall()
         res = []
         for r in rows:
             d = dict(r)

@@ -27,7 +27,9 @@ def node_inventory() -> List[Dict[str, Any]]:
     """Derive per-node capabilities from persisted facts (see docs: declared capabilities are not stored)."""
     conn = get_db_connection()
     try:
-        nodes = [dict(r) for r in conn.execute("SELECT * FROM infrastructure_nodes").fetchall()]
+        nodes = [dict(r) for r in conn.execute(
+            "SELECT * FROM infrastructure_nodes WHERE health_status != 'retired' AND notes NOT LIKE '[RETIRED%'"
+        ).fetchall()]
         tokens = {r["node_id"] for r in conn.execute(
             "SELECT DISTINCT node_id FROM worker_auth_tokens WHERE revoked = 0").fetchall()}
         load: Dict[str, int] = {}
@@ -110,6 +112,12 @@ def eligible_nodes(task: Dict[str, Any], nodes: List[Dict[str, Any]],
             if typ == "library_script":
                 if "python_execution" not in n["capabilities"]:
                     why = "no python runtime"
+            elif typ=='research_fetch':
+                restrictions=n.get('restrictions') or {}
+                if (restrictions.get('allow_web_fetch') is not True
+                        or typ not in restrictions.get('allowed_task_types',[])
+                        or restrictions.get('operational_hold',False)):
+                    why='web retrieval not explicitly authorized'
             elif typ == "inference":
                 if "inference" not in n["capabilities"]:
                     why = "no local inference runtime/models"
@@ -294,7 +302,7 @@ class WorkerOllamaProvider(InferenceProvider):
                       (rid, run_id, orch_task_id, purpose, node_id, model, t["id"], len(prompt), now_iso()))
         return rid
 
-    def poll(self, request_id: str, timeout_seconds: int = 300) -> Dict[str, Any]:
+    def poll(self, request_id: str, timeout_seconds: int = 300, queue_timeout_seconds: int = 120) -> Dict[str, Any]:
         from app.services import tasks as T
         conn = get_db_connection()
         try:
@@ -324,10 +332,17 @@ class WorkerOllamaProvider(InferenceProvider):
             from app.services.orchestration.recovery import classify_task_failure
             return self._finish(req, "cancelled" if st == "cancelled" else "failed",
                                 error_class=classify_task_failure(t))
+        now = now_dt()
         created = parse_ts(req["created_at"])
-        if created and (now_dt() - created).total_seconds() > timeout_seconds:
-            self.cancel(request_id)
-            return self._finish(req, "timeout", error_class="model_timeout")
+        updated = parse_ts(t.get("updated_at")) or created
+        if st == "running":
+            if updated and (now - updated).total_seconds() > timeout_seconds:
+                self.cancel(request_id)
+                return self._finish(req, "timeout", error_class="model_timeout", timeout_type="execution_timeout")
+        else:
+            if created and (now - created).total_seconds() > queue_timeout_seconds:
+                self.cancel(request_id)
+                return self._finish(req, "timeout", error_class="model_timeout", timeout_type="queue_timeout")
         return {"status": "submitted", "task_status": st, "node_id": req["node_id"], "model": req["model"],
                 "task_id": req["task_id"]}
 
@@ -339,15 +354,20 @@ class WorkerOllamaProvider(InferenceProvider):
                                (request_id,)).fetchone()
         finally:
             conn.close()
-        if req and req["status"] == "submitted" and req["task_id"]:
-            try:
-                T.cancel_task(req["task_id"])
-            except Exception as e:  # task may already be finished/leased
-                logger.info("cancel_task(%s) not applied: %s", req["task_id"], e)
+        if req and req["status"] == "submitted":
+            if req["task_id"]:
+                try:
+                    T.cancel_task(req["task_id"])
+                except Exception as e:  # task may already be finished/leased
+                    logger.info("cancel_task(%s) not applied: %s", req["task_id"], e)
+            with db_transaction() as c:
+                c.execute("UPDATE model_inference_requests SET status = 'cancelled', completed_at = ? WHERE id = ? AND status = 'submitted'",
+                          (now_iso(), request_id))
 
     def _finish(self, req: Dict[str, Any], status: str, response: Optional[str] = None, error_class: Optional[str] = None,
                 gen_tokens: Optional[int] = None, prompt_tokens: Optional[int] = None,
-                latency_s: Optional[float] = None, model_returned: Optional[str] = None) -> Dict[str, Any]:
+                latency_s: Optional[float] = None, model_returned: Optional[str] = None,
+                timeout_type: Optional[str] = None) -> Dict[str, Any]:
         with db_transaction() as c:
             cur = c.execute("""UPDATE model_inference_requests SET status=?, response_text=?, error_class=?, gen_tokens=?,
                        prompt_tokens=?, latency_s=?, completed_at=? WHERE id=? AND status='submitted'""",
@@ -357,9 +377,9 @@ class WorkerOllamaProvider(InferenceProvider):
             from app.services.orchestration.telemetry import record_usage
             if req.get("run_id"):
                 record_usage(req["run_id"], inference_requests=1, tokens=(gen_tokens or 0) + (prompt_tokens or 0))
-        return {"status": status, "response": response, "error_class": error_class, "gen_tokens": gen_tokens,
-                "prompt_tokens": prompt_tokens, "latency_s": latency_s, "node_id": req["node_id"],
-                "model": model_returned or req["model"], "task_id": req["task_id"]}
+        return {"status": status, "response": response, "error_class": error_class, "timeout_type": timeout_type,
+                "gen_tokens": gen_tokens, "prompt_tokens": prompt_tokens, "latency_s": latency_s,
+                "node_id": req["node_id"], "model": model_returned or req["model"], "task_id": req["task_id"]}
 
 
 _provider = WorkerOllamaProvider()

@@ -1,3 +1,5 @@
+> **Development review overlay â€” 2026-10-27.** [Current verified-work overlay (canonical map remains TECHMAP.md)](docs/verified-work/TECHMAP.md). Candidate changes are not deployed. Existing production-readiness claims below are historical; they do not override the current holds or evidence limitations.
+
 # Technical Architecture Map (TECH_MAP)
 
 > **Note:** The comprehensive, updated Technical Architecture Map has been consolidated in **[TECHMAP.md](TECHMAP.md)**.

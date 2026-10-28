@@ -17,21 +17,127 @@ from app.services.machine_registry import (
 )
 from app.services.hardware_probe import test_tcp_reachability, probe_remote_ssh
 
+import json
+from app.database import get_db_connection
+
 router = APIRouter(tags=["machines"])
 templates = Jinja2Templates(directory="app/templates")
 
 @router.get("/machines", response_class=HTMLResponse)
-def machines_list(request: Request):
+def machines_list(request: Request, view: str = "active"):
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/auth/login", status_code=status.HTTP_302_FOUND)
 
-    machines = get_all_machines()
+    conn = get_db_connection()
+    try:
+        # 1. Fetch controller-local identity
+        ctrl_row = conn.execute("SELECT * FROM infrastructure_nodes WHERE id = 'controller-local'").fetchone()
+        controller_node = dict(ctrl_row) if ctrl_row else None
+        if controller_node:
+            controller_node["installed_runtimes"] = json.loads(controller_node.get("installed_runtimes_json") or "[]")
+            controller_node["available_models"] = json.loads(controller_node.get("available_models_json") or "[]")
+
+        # 2. Fetch active tasks per worker
+        active_tasks = {}
+        for r in conn.execute(
+            """SELECT l.worker_id, t.id as task_id, t.title as task_title, t.task_type, l.status as lease_status
+               FROM worker_task_leases l
+               JOIN tasks t ON t.id = l.task_id
+               WHERE l.status IN ('leased', 'active')"""
+        ).fetchall():
+            active_tasks[r["worker_id"]] = dict(r)
+
+        # 3. Fetch models, runtimes, and enablement from infrastructure_nodes for machines
+        infra_map = {}
+        for r in conn.execute(
+            """SELECT id, name, available_models_json, installed_runtimes_json,
+                      capability_restrictions_json, last_contact_at, notes,
+                      ip_address, hostname, role, is_enabled, health_status
+               FROM infrastructure_nodes"""
+        ).fetchall():
+            infra_map[r["id"]] = {
+                "name": r["name"],
+                "models": json.loads(r["available_models_json"] or "[]"),
+                "runtimes": json.loads(r["installed_runtimes_json"] or "[]"),
+                "restrictions": json.loads(r["capability_restrictions_json"] or "{}"),
+                "last_contact_at": r["last_contact_at"],
+                "notes": r["notes"] or "",
+                "ip_address": r["ip_address"] or "",
+                "hostname": r["hostname"] or "",
+                "role": r["role"] or "",
+                "is_enabled": bool(r["is_enabled"]),
+                "health_status": r["health_status"] or "unknown",
+            }
+
+        # 4. Fetch valid token set
+        tokens = {r["node_id"] for r in conn.execute("SELECT DISTINCT node_id FROM worker_auth_tokens WHERE revoked = 0").fetchall()}
+    finally:
+        conn.close()
+
+    all_active = get_all_machines(include_retired=False)
+    active_machines = [m for m in all_active if m["id"] != "controller-local"]
+
+    for m in active_machines:
+        m_id = m["id"]
+        inf = infra_map.get(m_id, {})
+        m["available_models"] = inf.get("models", [])
+        m["installed_runtimes"] = inf.get("runtimes", [])
+        m["current_task"] = active_tasks.get(m_id)
+        m["is_authenticated"] = m_id in tokens
+
+        # Administrative enablement strictly requires consistency across both registries
+        infra_enabled = bool(inf.get("is_enabled", False))
+        mach_enabled = bool(m.get("is_enabled", False))
+        m["is_admin_enabled"] = mach_enabled and infra_enabled
+
+        # Actually scheduler-eligible requires:
+        # 1. Consistent administrative enablement across both machines and infrastructure_nodes
+        # 2. Currently reachable (online)
+        # 3. Authenticated with unrevoked credential
+        # 4. Non-retired canonical record
+        m["is_scheduler_eligible"] = (
+            m["is_admin_enabled"]
+            and m["connection_status"] == "online"
+            and (m_id in tokens)
+            and not str(m.get("notes", "")).startswith("[RETIRED")
+        )
+
+    all_records = get_all_machines(include_retired=True)
+    retired_machines = [m for m in all_records if str(m.get("notes", "")).startswith("[RETIRED") or m.get("connection_status") == "retired"]
+    retired_ids = {m["id"] for m in retired_machines}
+    for inf_id, inf_data in infra_map.items():
+        if inf_id not in retired_ids and str(inf_data.get("notes", "")).startswith("[RETIRED"):
+            retired_machines.append({
+                "id": inf_id,
+                "display_name": inf_data.get("name") or inf_id,
+                "hostname": inf_data.get("hostname", ""),
+                "ip_address": inf_data.get("ip_address", ""),
+                "role": inf_data.get("role", "fixture"),
+                "connection_status": "retired",
+                "is_enabled": 0,
+                "notes": inf_data.get("notes", ""),
+                "last_checked_at": inf_data.get("last_contact_at"),
+            })
+
+    # Fleet KPI metrics: 5 distinct operational and authorization dimensions
+    metrics = {
+        "registered_physical": len(active_machines),
+        "currently_reachable": sum(1 for m in active_machines if m["connection_status"] == "online"),
+        "administratively_enabled": sum(1 for m in active_machines if m.get("is_admin_enabled")),
+        "scheduler_eligible": sum(1 for m in active_machines if m.get("is_scheduler_eligible")),
+        "executing_work": len(active_tasks),
+        "retired_count": len(retired_machines),
+    }
+
     return templates.TemplateResponse(request=request, name="machines/list.html", context={
         "active_nav": "machines",
         "current_user": user,
         "csrf_token": get_csrf_token(request),
-        "machines": machines
+        "view": view,
+        "machines": active_machines if view == "active" else retired_machines,
+        "controller_node": controller_node,
+        "metrics": metrics,
     })
 
 @router.get("/machines/add", response_class=HTMLResponse)

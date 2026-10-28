@@ -18,7 +18,7 @@ from vps_agent import __version__ as AGENT_VERSION
 from worker.vps_worker import app as worker_app
 
 
-EXPECTED_RC2_VERSION = "1.0.0-rc.2"
+EXPECTED_RC2_VERSION = "1.0.0-rc.4"
 
 
 def test_authoritative_version_declaration():

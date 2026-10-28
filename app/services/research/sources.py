@@ -431,12 +431,20 @@ class SourceLibrary:
         - Publication date freshness
         - Metadata completeness (author, publisher)
         - Content depth (word count, tables, headings)
+        - Content sufficiency and absence of challenge / access denied pages
         """
         score = 0.5
         reasons = []
 
         host = (urlparse(url).hostname or "").lower()
-        if any(host.endswith(tld) or tld in host for tld in HIGH_QUALITY_DOMAINS):
+        txt_lower = (extracted.clean_text or "").lower()
+
+        # Reject bot challenges, captchas, and access denied pages
+        challenge_markers = ["access denied", "enable javascript", "cloudflare", "attention required", "robot or human", "403 forbidden", "ddos-guard", "captcha"]
+        if any(marker in txt_lower[:500] for marker in challenge_markers) or extracted.word_count < 50:
+            return 0.1, {"score": 0.1, "factors": ["Blocked, challenge interception, or empty content"], "domain": host, "status": "insufficient"}
+
+        if any(host.endswith(tld) or tld in host for tld in HIGH_QUALITY_DOMAINS) or host.endswith(".gov") or host.endswith(".edu") or host.endswith(".org"):
             score += 0.25
             reasons.append("Authoritative / academic / government domain")
 
@@ -448,15 +456,21 @@ class SourceLibrary:
             score += 0.1
             reasons.append("Verified publication date")
 
-        if extracted.word_count > 400:
+        if extracted.word_count > 600:
+            score += 0.1
+            reasons.append("Comprehensive body text (>600 words)")
+        elif extracted.word_count > 300:
             score += 0.05
             reasons.append("Substantial body text")
+        elif extracted.word_count < 150:
+            score -= 0.25
+            reasons.append("Content insufficient (<150 words)")
 
         if extracted.tables:
             score += 0.05
             reasons.append("Structured data tables present")
 
-        score = min(1.0, round(score, 2))
+        score = max(0.1, min(1.0, round(score, 2)))
         return score, {"score": score, "factors": reasons, "domain": host}
 
     def record_source_reuse(

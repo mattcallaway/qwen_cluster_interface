@@ -97,19 +97,25 @@ class CitationEngine:
         pub_str = f" — {pub}" if pub else ""
         return f"[{idx}] {title}{pub_str}. URL: {url} (Published: {pub_date}, Retrieved: {ret_date})"
 
-    def extract_citation_indices(self, text: str) -> List[int]:
+    def extract_citation_indices(self, text: str, max_valid_index: Optional[int] = None) -> List[int]:
         """Extract all cited numbers from markdown body text (e.g., [1], [2, 3] -> [1, 2, 3])."""
         ref_pos = text.find("## References")
         if ref_pos == -1:
             ref_pos = text.find("# References")
         body_text = text[:ref_pos] if ref_pos != -1 else text
 
+        # Strip markdown links [label](url) so bracketed link text is not confused for citations
+        body_no_links = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", body_text)
+
         indices: Set[int] = set()
-        for match in CITATION_REGEX.finditer(body_text):
+        for match in CITATION_REGEX.finditer(body_no_links):
             inner = match.group(1)
             for part in inner.split(","):
                 try:
                     num = int(part.strip())
+                    # Disambiguate 4-digit years (e.g. [2026], [2024]) from footnote citations
+                    if 1900 <= num <= 2099 and (max_valid_index is None or num > max_valid_index):
+                        continue
                     indices.add(num)
                 except ValueError:
                     pass
@@ -131,7 +137,12 @@ class CitationEngine:
         5. Enforces claim-level grounding: citations must demonstrate support for text.
         6. Enforces run isolation: cited sources must not violate research_run_id scope.
         """
-        citation_indices = self.extract_citation_indices(report_markdown)
+        if sources is None:
+            from app.services.research.sources import SourceLibrary
+            sources = SourceLibrary().list_sources(project_id, limit=200, research_run_id=research_run_id)
+
+        source_by_idx = {i + 1: s for i, s in enumerate(sources)}
+        citation_indices = self.extract_citation_indices(report_markdown, max_valid_index=len(source_by_idx))
 
         # Finding F-07: Zero-citation reports must strictly fail validation
         if len(citation_indices) == 0:
@@ -145,11 +156,6 @@ class CitationEngine:
                 errors=["MISSING_REQUIRED_CITATIONS: Report contains 0 citations. All research deliverables must cite authoritative sources."],
             )
 
-        if sources is None:
-            from app.services.research.sources import SourceLibrary
-            sources = SourceLibrary().list_sources(project_id, limit=200, research_run_id=research_run_id)
-
-        source_by_idx = {i + 1: s for i, s in enumerate(sources)}
         unresolved: List[int] = []
         unretrieved: List[str] = []
         unsupported: List[str] = []
@@ -222,17 +228,17 @@ class CitationEngine:
                         and not re.match(r"^C\d+$", part.strip())
                         and not (part.strip().startswith("**") and part.strip().endswith("**"))
                     ]
-                    claim_sentence = " ".join(parts) if parts else current_line.strip()
+                    claim_sentence = max(parts, key=len) if parts else current_line.strip()
                 else:
-                    # Extract sentence containing the marker
-                    s_start = max(0, body_markdown.rfind(".", 0, m_pos) + 1, line_start)
-                    s_end_dot = body_markdown.find(".", m_pos)
-                    cand_ends = [pos for pos in (s_end_dot, line_end) if pos != -1]
-                    s_end = min(cand_ends) if cand_ends else len(body_markdown)
-                    claim_sentence = body_markdown[s_start:s_end].strip()
-
-                if not claim_sentence:
-                    claim_sentence = current_line.strip()
+                    # Extract sentence containing the marker, preserving decimals like 99.8%
+                    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", current_line) if s.strip()]
+                    claim_sentence = ""
+                    for s in sentences:
+                        if marker in s:
+                            claim_sentence = s
+                            break
+                    if not claim_sentence or len(claim_sentence) < 15:
+                        claim_sentence = current_line.strip()
 
                 # Deterministic factual entailment check
                 entailment = verify_claim_against_source(claim_sentence, src_text)

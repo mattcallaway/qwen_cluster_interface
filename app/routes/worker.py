@@ -38,6 +38,13 @@ class ArtifactUploadRequest(BaseModel):
     artifact_type: str = "general"
 
 
+class ScriptStartRequest(BaseModel):
+    model_config = {'extra':'forbid'}
+    idempotency_key: str = Field(...,min_length=1,max_length=256)
+    nonce: str = Field(...,pattern='^[0-9a-f]{64}$')
+    manifest: Dict[str, Any]
+
+
 class EnrollmentTokenCreateRequest(BaseModel):
     allowed_node_id: Optional[str] = None
     expires_in_seconds: int = Field(default=86400, ge=60, le=2592000)
@@ -429,12 +436,13 @@ def submit_worker_telemetry(
 
 
 @router.post("/tasks/lease")
+@router.post("/lease-task")
 def lease_task(
     req: TaskLeaseRequest,
     worker: Dict[str, Any] = Depends(get_authenticated_worker),
 ):
     """
-    Request eligible task lease matching worker's verified capabilities.
+    Request eligible task lease matching worker's verified capabilities and authoritative authorization.
     """
     if worker["node_id"] != req.worker_id:
         raise HTTPException(
@@ -442,18 +450,34 @@ def lease_task(
             detail="Token node mismatch.",
         )
 
-    task = worker_svc.lease_task_for_worker(
-        worker_id=req.worker_id,
-        supported_categories=req.supported_categories,
-        lease_duration_seconds=req.lease_duration_seconds,
-        available_models=req.available_models,
-        available_ram_mb=req.available_ram_mb,
-    )
+    try:
+        task = worker_svc.lease_task_for_worker(
+            worker_id=req.worker_id,
+            supported_categories=req.supported_categories,
+            lease_duration_seconds=req.lease_duration_seconds,
+            available_models=req.available_models,
+            available_ram_mb=req.available_ram_mb,
+        )
+    except worker_svc.TaskAuthorizationError as tae:
+        raise HTTPException(
+            status_code=tae.status_code,
+            detail=tae.message,
+        )
 
     if not task:
         return {"status": "no_work", "message": "No eligible approved tasks available."}
 
     return {"status": "leased", "task": task}
+
+
+@router.post('/tasks/{task_id}/authorize-script')
+def authorize_script_start(task_id: str, req: ScriptStartRequest,
+                           worker: Dict[str, Any] = Depends(get_authenticated_worker)):
+    from app.services.orchestration.script_authorization import authorize_start
+    try:
+        return authorize_start(worker['node_id'],task_id,req.idempotency_key,req.manifest,req.nonce)
+    except worker_svc.TaskAuthorizationError as exc:
+        raise HTTPException(status_code=exc.status_code,detail=exc.message)
 
 
 @router.post("/tasks/{lease_id}/heartbeat")
@@ -479,16 +503,23 @@ def extend_task_lease(
     error_category = payload.error_category if payload else None
     progress_milestone = payload.progress_milestone if payload else None
 
-    success = worker_svc.renew_task_lease(
-        worker_id=worker["node_id"],
-        lease_id=lease_id,
-        additional_seconds=sec,
-        tool_name=tool_name,
-        tool_args=tool_args,
-        result_summary=result_summary,
-        error_category=error_category,
-        progress_milestone=progress_milestone,
-    )
+    try:
+        success = worker_svc.renew_task_lease(
+            worker_id=worker["node_id"],
+            lease_id=lease_id,
+            additional_seconds=sec,
+            tool_name=tool_name,
+            tool_args=tool_args,
+            result_summary=result_summary,
+            error_category=error_category,
+            progress_milestone=progress_milestone,
+        )
+    except worker_svc.TaskAuthorizationError as tae:
+        raise HTTPException(
+            status_code=tae.status_code,
+            detail=tae.message,
+        )
+
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -1,3 +1,5 @@
+> **Development review overlay â€” 2026-10-27.** [Verified implementation overlay and capability map](docs/verified-work/TECHMAP.md). Candidate changes are not deployed. Existing production-readiness claims below are historical; they do not override the current holds or evidence limitations.
+
 # Qwen Collective: Technical Architecture Map (TECHMAP)
 
 ## 1. Architectural Philosophy & Mental Model

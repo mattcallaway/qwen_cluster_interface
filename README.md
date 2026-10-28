@@ -1,3 +1,5 @@
+> **Development review overlay â€” 2026-10-27.** [Verified development work and operational limits](docs/verified-work/README.md). Candidate changes are not deployed. Existing production-readiness claims below are historical; they do not override the current holds or evidence limitations.
+
 # Qwen Collective
 ### A Sovereign, Distributed AI Coordination & Autonomous Execution Platform
 

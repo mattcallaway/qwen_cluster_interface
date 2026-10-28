@@ -252,7 +252,7 @@ def update_task_progress(task_id: str, status: str, result_data: Optional[Dict[s
         error_details = ?,
         attempt_count = attempt_count + CASE WHEN ? = 'running' THEN 1 ELSE 0 END,
         updated_at = ?
-    WHERE id = ?
+    WHERE id = ? AND status != 'cancelled'
     """, (status, res_str, error_details, status, now, task_id))
     conn.commit()
     conn.close()
@@ -381,6 +381,9 @@ def record_task_execution(
     task = get_task_by_id(task_id)
     if not task:
         raise NotFound("Task not found.")
+    if task["status"] == "cancelled":
+        logger.warning("Attempted to record completion for cancelled task %s; preserving cancelled state", task_id)
+        return task
 
     kn_id = None
     if create_knowledge_note and task.get("project_id"):
@@ -437,7 +440,7 @@ def record_task_execution(
         new_status = "completed" if outcome == "completed" else ("failed" if outcome == "failed" else "cancelled")
         conn.execute("""
             UPDATE tasks SET status = ?, error_details = ?, attempt_count = attempt_count + 1, updated_at = ?
-            WHERE id = ?
+            WHERE id = ? AND status != 'cancelled'
         """, (new_status, error_details or None, now, task_id))
 
         if task.get("project_id"):

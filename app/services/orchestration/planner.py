@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.database import db_transaction, get_db_connection
 from app.services.orchestration import model_router, states, task_graph
+from app.services.orchestration.contract import decompose_deliverable_requirements
 from app.services.orchestration.common import (
     NotFound, OrchestrationError, get_run, jdump, jload, log_event, new_id, now_iso,
 )
@@ -17,7 +18,7 @@ logger = logging.getLogger("qc.orchestrator.planner")
 MAX_REPAIRS = 2
 PLANNER_MAX_TOKENS = 2048
 PLANNER_TIMEOUT_S = 290
-TEMPLATE_GOALS = re.compile(r"(system|cluster|node|distributed)\s+health|health\s+(report|check|snapshot)|diagnostics?\s+report", re.I)
+TEMPLATE_GOALS = re.compile(r"(system|cluster|node|nodes|distributed)('s)?\s+health|health\s+(report|check|snapshot)|diagnostics?\s+report", re.I)
 PREFERRED_PLANNER_MODELS = ["qwen2.5:1.5b", "llama3.2:1b"]
 
 
@@ -65,8 +66,13 @@ def analyze_intake(intake: Dict[str, Any], nodes: Optional[List[Dict[str, Any]]]
             has_software_deliv = True
             break
 
-    is_software_project = has_software_deliv or bool(SOFTWARE_GOALS.search(obj))
-    research_words = bool(RESEARCH_GOALS.search(obj))
+    if req_deliverables and not has_software_deliv:
+        is_software_project = False
+    else:
+        is_software_project = has_software_deliv or bool(SOFTWARE_GOALS.search(obj))
+    deliv_text = " ".join(rd.text for rd in req_deliverables)
+    is_template_health = bool(TEMPLATE_GOALS.search(obj))
+    research_words = bool(RESEARCH_GOALS.search(obj)) or bool(RESEARCH_GOALS.search(deliv_text)) or (not is_software_project and not is_template_health)
     pure_research = research_words and not is_software_project
 
     if research_words:
@@ -172,12 +178,23 @@ def template_health_plan(intake: Dict[str, Any], nodes: List[Dict[str, Any]]) ->
 
 
 def _slugify_key(name: str) -> str:
-    s = re.sub(r"[^\w\s-]", "", name).strip().lower()
+    cleaned = re.sub(r"^\d+[\.\)\-\:\s]+", "", name).strip()
+    if ":" in cleaned:
+        cleaned = cleaned.split(":", 1)[0].strip()
+    s = re.sub(r"[^\w\s-]", "", cleaned).strip().lower()
     slug = re.sub(r"[-\s]+", "_", s)[:24].strip("_")
+    if not slug or not slug[0].isalpha():
+        slug = f"deliv_{slug}".strip("_")[:24]
     return slug or "deliverable"
 
 
 def _parse_requested_deliverables(intake: Dict[str, Any]) -> List[str]:
+    def _clean_name(raw: str) -> str:
+        s = re.sub(r"^\d+[\.\)\-\:\s]+", "", raw).strip()
+        if ":" in s:
+            s = s.split(":", 1)[0].strip()
+        return s
+
     # 1. Explicit deliverable keys
     explicit = intake.get("requested_deliverables") or intake.get("deliverables")
     if isinstance(explicit, list) and explicit:
@@ -185,11 +202,12 @@ def _parse_requested_deliverables(intake: Dict[str, Any]) -> List[str]:
         for x in explicit:
             name = x if isinstance(x, str) else x.get("name") or x.get("title") or str(x)
             if name and name.strip():
-                results.append(name.strip())
+                results.append(_clean_name(name))
         if results:
             return results
     elif isinstance(explicit, str) and explicit.strip():
-        items = [x.strip() for x in explicit.split("\n") if x.strip()]
+        items = [_clean_name(x) for x in explicit.split("\n") if x.strip()]
+        items = [x for x in items if x and not x.lower().startswith("all deliverable") and not x.lower().startswith("note:")]
         if len(items) > 1:
             return items
 
@@ -275,7 +293,46 @@ def template_research_plan(intake: Dict[str, Any], nodes: List[Dict[str, Any]]) 
         {"key": "search", "name": "Web Search", "objective": "Discover authoritative public sources."},
         {"key": "retrieve", "name": "Document Retrieval", "objective": "Fetch pages safely and extract clean text and tables."},
         {"key": "verify", "name": "Fact Verification", "objective": "Corroborate claims against retrieved evidence in the ledger."},
+        {"key": "assess", "name": "Evidence Sufficiency Assessment", "objective": "Evaluate retrieved evidence against deliverable requirement contracts."},
     ]
+
+    tasks.append({
+        "key": "assess_evidence_coverage",
+        "title": "Assess evidence sufficiency and coverage",
+        "stage": "assess",
+        "description": "Assess retrieved evidence against deliverable requirement contracts, evaluate source relevance, corroboration, and categorize gaps.",
+        "agent_role": "analysis",
+        "risk": "low",
+        "approval": "auto",
+        "priority": 3,
+        "max_attempts": 2,
+        "timeout_seconds": 120,
+        "required_capabilities": ["controller"],
+        "action": {"type": "controller_step", "step": "research_coverage", "inputs": ["verify_claims"]},
+        "acceptance": {"kind": "json_fields"},
+        "depends_on": ["verify_claims"],
+        "expected_outputs": ["evidence_sufficiency_assessment.json"],
+    })
+
+    # Deliverable decomposition and contract generation (Phase 1)
+    req_delivs = _parse_requested_deliverables(intake)
+    contracts = []
+    seen_slugs = set()
+    for idx, d_name in enumerate(req_delivs, start=1):
+        base_slug = _slugify_key(d_name)
+        slug = base_slug
+        cnt = 2
+        while slug in seen_slugs:
+            slug = f"{base_slug}_{cnt}"
+            cnt += 1
+        seen_slugs.add(slug)
+        c = decompose_deliverable_requirements(intake, d_name, slug)
+        contracts.append(c)
+
+    sc_str = str(intake.get("success_criteria") or "").lower()
+    requires_inference = bool(re.search(r"\b(inference|model|reasoning|analysis)\b", sc_str)) or any(
+        "inference" in c.required_execution_capabilities for c in contracts
+    )
 
     # Model inference integration if an enabled, online worker node with models is available (F-01)
     infer = [
@@ -283,7 +340,8 @@ def template_research_plan(intake: Dict[str, Any], nodes: List[Dict[str, Any]]) 
         if n.get("enabled") and n.get("authenticated") and n.get("health") == "online"
         and "inference" in n.get("capabilities", []) and n.get("models")
     ]
-    infer_deps = ["verify_claims"]
+    infer_deps = ["verify_claims", "assess_evidence_coverage"]
+
     if infer:
         inf_node = sorted(infer, key=lambda x: (-len(x.get("models", [])), x.get("id", "")))[0]
         pref = [m for m in PREFERRED_PLANNER_MODELS if m in inf_node.get("models", [])] or inf_node.get("models", [])[:1]
@@ -305,7 +363,46 @@ def template_research_plan(intake: Dict[str, Any], nodes: List[Dict[str, Any]]) 
                 "type": "inference",
                 "max_tokens": 1024,
                 "inputs": ["verify_claims"],
-                "instruction": f"Based on the verified evidence for '{obj[:120]}', analyze key risks, policy recommendations, and critical findings.",
+                "instruction": (
+                    f"Objective: '{obj}'.\n"
+                    "Evaluate the verified evidence provided in <evidence_data> to analyze:\n"
+                    "1. Primary operational risks and systemic vulnerabilities.\n"
+                    "2. Mandatory policy safeguards and governance controls.\n"
+                    "3. Actionable roadmap recommendations and evidence gaps.\n"
+                    "Stay strictly grounded in the objective and verified evidence."
+                ),
+            },
+            "acceptance": {"kind": "nonempty_text", "min_chars": 40},
+            "depends_on": ["verify_claims"],
+            "expected_outputs": ["ai_analysis.txt"],
+        })
+        stages.append({
+            "key": "analyze",
+            "name": "Model Evidence Analysis",
+            "objective": "Extract analytical insights and policy synthesis from verified evidence via model inference.",
+        })
+        infer_deps.append("model_research_analysis")
+    elif requires_inference and bool(re.search(r"\b(inference|model)\b", sc_str)):
+        # Model inference is an explicit user requirement but no model worker is currently enabled
+        tasks.append({
+            "key": "model_research_analysis",
+            "title": "Analyze verified evidence with local model",
+            "stage": "analyze",
+            "description": "Scheduler-mediated model inference required by project criteria to analyze verified evidence.",
+            "agent_role": "analysis",
+            "risk": "low",
+            "approval": "auto",
+            "priority": 3,
+            "max_attempts": 2,
+            "timeout_seconds": 240,
+            "required_capabilities": ["inference"],
+            "allowed_nodes": [],
+            "preferred_models": PREFERRED_PLANNER_MODELS,
+            "action": {
+                "type": "inference",
+                "max_tokens": 1024,
+                "inputs": ["verify_claims"],
+                "instruction": f"Objective: '{obj}'. Ground analysis strictly in verified evidence.",
             },
             "acceptance": {"kind": "nonempty_text", "min_chars": 40},
             "depends_on": ["verify_claims"],
@@ -324,19 +421,10 @@ def template_research_plan(intake: Dict[str, Any], nodes: List[Dict[str, Any]]) 
         "objective": "Synthesize final deliverables with verifiable citations.",
     })
 
-    # Multi-deliverable generation matching user intake (F-12)
-    req_delivs = _parse_requested_deliverables(intake)
     deliverables = []
-    seen_slugs = set()
-    for idx, d_name in enumerate(req_delivs, start=1):
-        base_slug = _slugify_key(d_name)
-        slug = base_slug
-        cnt = 2
-        while slug in seen_slugs:
-            slug = f"{base_slug}_{cnt}"
-            cnt += 1
-        seen_slugs.add(slug)
-
+    for c in contracts:
+        slug = c.key
+        d_name = c.name
         task_key = f"synthesize_{slug}"
         filename = f"{slug}.md"
         audit_file = f"citation_audit_{slug}.json"
@@ -366,7 +454,7 @@ def template_research_plan(intake: Dict[str, Any], nodes: List[Dict[str, Any]]) 
             "name": d_name,
             "type": "report",
             "description": f"Synthesized research deliverable: {d_name}",
-            "acceptance_criteria": "Supported by verified evidence and all citations resolve to retrieved sources.",
+            "acceptance_criteria": c.measurable_acceptance_criteria.get("description", "Supported by verified evidence and all citations resolve to retrieved sources."),
             "produced_by": task_key,
             "stage": "report",
             "terminal": True,
@@ -401,7 +489,8 @@ def template_research_plan(intake: Dict[str, Any], nodes: List[Dict[str, Any]]) 
             {"description": "A target domain blocks requests or returns anti-bot challenges.", "mitigation": "Graceful fallback to alternative discovered sources."},
             {"description": "A claim cannot be corroborated across multiple independent sources.", "mitigation": "Flag claim as INSUFFICIENT_EVIDENCE in the evidence ledger."}
         ],
-        "approval_gates": [{"action": "Execute plan", "reason": "Initial research execution requires approval."}]
+        "approval_gates": [{"action": "Execute plan", "reason": "Initial research execution requires approval."}],
+        "deliverable_contracts": [c.to_dict() for c in contracts],
     }
 
 
@@ -987,11 +1076,12 @@ def _pick_planner(nodes: List[Dict[str, Any]], preferred: Optional[str]) -> Tupl
     # Never blindly return sub-1B models (e.g. 0.5b) or unprobed nodes
     for n in cands:
         for m in n.get("models", []):
-            m_lower = m.lower()
+            m_name = m.get("name", "") if isinstance(m, dict) else str(m)
+            m_lower = m_name.lower()
             if any(sub in m_lower for sub in ("0.5b", "300m", "125m")):
                 continue
             if _is_model_probed(n["id"]):
-                return n, m
+                return n, m_name
     return (None, None)
 
 
@@ -1149,18 +1239,19 @@ def generate_plan(run_id: str, actor: str, mode: str = "auto", planner_model: Op
     from app.services.knowledge_store import search_knowledge_records, record_knowledge_impact
 
     try:
-        chk = execute_research_checkpoint(
-            project_id=run["project_id"],
-            run_id=run_id,
-            stage_phase="intake",
-            stage_name="Intake & Planning",
-            objective=intake.get("objective", ""),
-            context_input=intake,
-            actor=actor
-        )
+        if mode != "template" and bool(RESEARCH_GOALS.search(intake.get("objective", ""))):
+            chk = execute_research_checkpoint(
+                project_id=run["project_id"],
+                run_id=run_id,
+                stage_phase="intake",
+                stage_name="Intake & Planning",
+                objective=intake.get("objective", ""),
+                context_input=intake,
+                actor=actor
+            )
+            analysis["checkpoint_id"] = chk["id"]
         k_recs = search_knowledge_records(intake.get("objective", ""), project_id=run["project_id"], include_collective=True, limit=6)
         analysis["knowledge_findings"] = k_recs
-        analysis["checkpoint_id"] = chk["id"]
         for kr in k_recs:
             record_knowledge_impact(
                 knowledge_id=kr["id"],
@@ -1172,15 +1263,14 @@ def generate_plan(run_id: str, actor: str, mode: str = "auto", planner_model: Op
     except Exception as ex:
         logger.warning("Research checkpoint execution in planning failed: %s", ex)
 
-    use_template = mode == "template" or (mode == "auto" and analysis["template_match"])
-    if use_template and not analysis.get("research_match"):
+    if mode != "model" and analysis.get("template_match"):
         if not replan:
             states.transition(run_id, "PLANNING", "planning_started", actor, f"mode={mode}", expected_state="ANALYZING")
         rev = store_revision(run_id, template_health_plan(intake, nodes), "template", actor,
                              {"note": "deterministic template; no model involved"})
         return _after_candidate(run_id, rev, actor, replan)
 
-    if mode == "auto" and analysis.get("research_match"):
+    if mode in ("auto", "template") and analysis.get("research_match"):
         if analysis.get("pure_research_deliverable", True):
             if not replan:
                 states.transition(run_id, "PLANNING", "planning_started", actor, f"mode={mode}", expected_state="ANALYZING")
@@ -1189,25 +1279,19 @@ def generate_plan(run_id: str, actor: str, mode: str = "auto", planner_model: Op
             return _after_candidate(run_id, rev, actor, replan)
         else:
             # Finding F-05: Software/database/app project requiring research assistance
-            # Do NOT hijack the objective into a research report! Retain software deliverable.
             node, model = _pick_planner(nodes, planner_model or intake.get("planner_model"))
-            if not node:
+            if mode == "template" or not node:
                 if not replan:
                     states.transition(run_id, "PLANNING", "planning_started", actor, f"mode={mode}", expected_state="ANALYZING")
                 rev = store_revision(run_id, template_software_with_research_plan(intake, nodes), "template", actor,
                                      {"note": "software deliverable with research sidecar template"})
                 return _after_candidate(run_id, rev, actor, replan)
-    elif mode == "template" and analysis.get("research_match"):
+    elif mode == "template":
         if not replan:
             states.transition(run_id, "PLANNING", "planning_started", actor, f"mode={mode}", expected_state="ANALYZING")
-        if analysis.get("pure_research_deliverable", True):
-            rev = store_revision(run_id, template_research_plan(intake, nodes), "template", actor,
-                                 {"note": "autonomous research plan template; controller-orchestrated"})
-            return _after_candidate(run_id, rev, actor, replan)
-        else:
-            rev = store_revision(run_id, template_software_with_research_plan(intake, nodes), "template", actor,
-                                 {"note": "software deliverable with research sidecar template"})
-            return _after_candidate(run_id, rev, actor, replan)
+        rev = store_revision(run_id, template_research_plan(intake, nodes), "template", actor,
+                             {"note": "autonomous research plan template; controller-orchestrated"})
+        return _after_candidate(run_id, rev, actor, replan)
 
     node, model = _pick_planner(nodes, planner_model or intake.get("planner_model"))
     if not node:

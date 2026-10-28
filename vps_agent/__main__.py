@@ -31,7 +31,7 @@ from vps_agent.config import (
     validate_config,
 )
 
-__version__ = "1.0.0-rc.2"
+from vps_agent import __version__
 
 logger = logging.getLogger("qwen_collective.vps_daemon")
 

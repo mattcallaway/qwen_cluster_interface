@@ -9,7 +9,15 @@ import pytest
 from vps_agent.buffer import OfflineBuffer
 from vps_agent.capabilities import discover_local_hardware
 from vps_agent.config import AgentConfig
-from vps_agent.executor import execute_task
+from vps_agent.executor import execute_task as _execute_task
+from script_permit_fixtures import reviewed_fixture_permit
+
+
+def execute_task(task,timeout_seconds=300,**kwargs):
+    # Existing reviewed-code executor tests supply synthetic local permits.
+    # They do not claim to test controller authenticity or native authorization.
+    task,permit=reviewed_fixture_permit(task)
+    return _execute_task(task,timeout_seconds=timeout_seconds,script_permit=permit,**kwargs)
 
 
 def test_discover_local_hardware():

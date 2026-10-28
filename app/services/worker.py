@@ -20,7 +20,7 @@ import re
 import secrets
 import sqlite3
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
@@ -110,6 +110,29 @@ def verify_worker_task_authorization(
     own_conn = conn is None
     c = get_db_connection() if own_conn else conn
     try:
+        # 0. Verify worker node administrative enablement and canonical status
+        w_node = c.execute("SELECT is_enabled, notes, health_status FROM infrastructure_nodes WHERE id = ?", (worker_id,)).fetchone()
+        if w_node:
+            if not bool(w_node["is_enabled"]):
+                raise TaskAuthorizationError(f"Worker '{worker_id}' is administratively disabled. Task execution denied.", status_code=403)
+            w_notes = str(w_node["notes"] or "")
+            if w_notes.startswith("[RETIRED") or w_node["health_status"] == "retired":
+                raise TaskAuthorizationError(f"Worker '{worker_id}' is retired and quarantined. Task execution denied.", status_code=403)
+
+        # Verify machine registry consistency if present
+        m_node = c.execute("SELECT is_enabled, notes, connection_status FROM machines WHERE id = ?", (worker_id,)).fetchone()
+        if m_node:
+            if not bool(m_node["is_enabled"]):
+                raise TaskAuthorizationError(f"Worker '{worker_id}' is administratively disabled in machine registry. Task execution denied.", status_code=403)
+            m_notes = str(m_node["notes"] or "")
+            if m_notes.startswith("[RETIRED") or m_node["connection_status"] == "retired":
+                raise TaskAuthorizationError(f"Worker '{worker_id}' is retired in machine registry. Task execution denied.", status_code=403)
+
+        # Verify active unrevoked credentials
+        active_tok = c.execute("SELECT id FROM worker_auth_tokens WHERE node_id = ? AND revoked = 0", (worker_id,)).fetchone()
+        if not active_tok:
+            raise TaskAuthorizationError(f"Worker '{worker_id}' has no active unrevoked credentials. Task execution denied.", status_code=401)
+
         # 1. Verify task existence and assignment
         task_row = c.execute(
             "SELECT * FROM tasks WHERE id = ?",
@@ -899,8 +922,212 @@ def store_task_artifact(
 
 
 # ---------------------------------------------------------------------------
-# Durable Task Leasing Protocol
+# Durable Task Leasing Protocol & Authoritative Authorization Gateway
 # ---------------------------------------------------------------------------
+
+OPERATIONAL_TASK_TYPES = frozenset({
+    "library_script",
+    "shell_execution",
+    "vps_action",
+    "operational_task",
+    "script_execution",
+    "system_command",
+})
+
+INFERENCE_TASK_TYPES = frozenset({
+    "inference",
+    "llm_query",
+    "model_inference",
+    "planning_inference",
+    "synthesis_inference",
+})
+
+
+def check_worker_leasing_authority(
+    conn: sqlite3.Connection,
+    worker_id: str,
+    requested_categories: Optional[List[str]] = None,
+    enforce_fresh_heartbeat: bool = True,
+    heartbeat_stale_seconds: int = 300,
+) -> Dict[str, Any]:
+    """
+    Authoritative Server-Side Worker Authorization Validator.
+    Before granting any task lease or acknowledging leasing capability, validates:
+    1. Authenticated worker identity.
+    2. Valid, unrevoked worker credential in worker_auth_tokens.
+    3. Canonical, non-retired worker registration in infrastructure_nodes.
+    4. Administrative enablement in the authoritative registry (infrastructure_nodes.is_enabled == 1).
+    5. Consistent state across machines and infrastructure_nodes (where machines record exists).
+    6. Fresh health and heartbeat information (health != offline, last_contact within threshold).
+    7. Permission for requested task types & Extensible capability boundaries.
+    8. Worker class boundary enforcement (Desktop/Laptop/Pi inference-only, VPS operational hold).
+    9. Extensible capability policy loaded from capability_restrictions_json.
+    10. Fails closed on any missing, malformed, or contradictory configuration.
+    """
+    if not worker_id or not isinstance(worker_id, str):
+        raise TaskAuthorizationError("Missing or invalid worker identity.", status_code=403)
+
+    # 1. Canonical worker registration in infrastructure_nodes
+    w_node = conn.execute("SELECT * FROM infrastructure_nodes WHERE id = ?", (worker_id,)).fetchone()
+    if not w_node:
+        raise TaskAuthorizationError(
+            f"Worker '{worker_id}' is not registered in the authoritative infrastructure registry.",
+            status_code=403,
+        )
+
+    w_notes = str(w_node["notes"] or "")
+    if w_notes.startswith("[RETIRED") or w_node["health_status"] == "retired":
+        raise TaskAuthorizationError(
+            f"Worker '{worker_id}' is retired and quarantined. Task leasing denied.",
+            status_code=403,
+        )
+
+    # 2. Valid, unrevoked worker credential
+    tok_rows = conn.execute(
+        "SELECT id, revoked FROM worker_auth_tokens WHERE node_id = ?",
+        (worker_id,),
+    ).fetchall()
+    if tok_rows:
+        active_toks = [t for t in tok_rows if not bool(t["revoked"])]
+        if not active_toks:
+            raise TaskAuthorizationError(
+                f"Worker '{worker_id}' has revoked credentials. Task leasing denied.",
+                status_code=401,
+            )
+    elif worker_id in ("desktop-worker-01", "qwen-laptop", "pi-brain", "qwen-vps"):
+        raise TaskAuthorizationError(
+            f"Worker '{worker_id}' has no active unrevoked credentials. Task leasing denied.",
+            status_code=401,
+        )
+
+    # 3. Administrative enablement in authoritative registry
+    if not bool(w_node["is_enabled"]):
+        raise TaskAuthorizationError(
+            f"Worker '{worker_id}' is administratively disabled. Task leasing denied.",
+            status_code=403,
+        )
+
+    # 4. Consistent state across machines and infrastructure_nodes
+    m_node = conn.execute(
+        "SELECT is_enabled, notes, connection_status FROM machines WHERE id = ?",
+        (worker_id,),
+    ).fetchone()
+    if m_node:
+        if not bool(m_node["is_enabled"]):
+            raise TaskAuthorizationError(
+                f"Worker '{worker_id}' is administratively disabled in machine registry (state mismatch). Task leasing denied.",
+                status_code=403,
+            )
+        m_notes = str(m_node["notes"] or "")
+        if m_notes.startswith("[RETIRED") or m_node["connection_status"] == "retired":
+            raise TaskAuthorizationError(
+                f"Worker '{worker_id}' is marked retired in machine registry. Task leasing denied.",
+                status_code=403,
+            )
+    elif worker_id in ("desktop-worker-01", "qwen-laptop", "pi-brain", "qwen-vps"):
+        raise TaskAuthorizationError(
+            f"Physical worker '{worker_id}' missing required machine registry record. Task leasing denied.",
+            status_code=403,
+        )
+
+    # 5. Fresh health and heartbeat information
+    if w_node["health_status"] == "offline":
+        raise TaskAuthorizationError(
+            f"Worker '{worker_id}' is marked offline. Task leasing denied.",
+            status_code=403,
+        )
+
+    if enforce_fresh_heartbeat:
+        last_contact_str = w_node["last_contact_at"]
+        if not last_contact_str:
+            raise TaskAuthorizationError(
+                f"Worker '{worker_id}' has no verified heartbeat record. Task leasing denied.",
+                status_code=403,
+            )
+        try:
+            last_dt = datetime.fromisoformat(str(last_contact_str).replace("Z", "+00:00"))
+            now_dt = datetime.now(timezone.utc)
+            elapsed_sec = (now_dt - last_dt).total_seconds()
+            if elapsed_sec > heartbeat_stale_seconds:
+                raise TaskAuthorizationError(
+                    f"Worker '{worker_id}' heartbeat is stale ({int(elapsed_sec)}s > {heartbeat_stale_seconds}s limit; last contact: {last_contact_str}). Task leasing denied.",
+                    status_code=403,
+                )
+        except (ValueError, TypeError) as e:
+            raise TaskAuthorizationError(
+                f"Worker '{worker_id}' heartbeat timestamp is malformed ({last_contact_str}); failing closed.",
+                status_code=403,
+            )
+
+    # 6. Parse extensible capability restrictions
+    restr_raw = w_node["capability_restrictions_json"] or "{}"
+    try:
+        restrictions = json.loads(restr_raw) if isinstance(restr_raw, str) else dict(restr_raw)
+    except Exception:
+        raise TaskAuthorizationError(
+            f"Worker '{worker_id}' has malformed capability restrictions; failing closed.",
+            status_code=403,
+        )
+
+    is_vps = worker_id == "qwen-vps"
+    is_pi = worker_id == "pi-brain"
+    is_desktop_or_laptop = worker_id in ("desktop-worker-01", "qwen-laptop")
+
+    # VPS Operational Hold check (default True for qwen-vps or if operational_hold specified)
+    vps_hold = bool(restrictions.get("operational_hold", True if is_vps else False))
+    allow_ops = bool(restrictions.get("allow_operational_execution", False if is_vps else True))
+    allow_scripts = bool(restrictions.get("allow_script_execution", False if (is_desktop_or_laptop or is_pi) else True))
+
+    allowed_types = set(restrictions.get("allowed_task_types") or [])
+    blocked_types = set(restrictions.get("blocked_task_types") or [])
+    # Dedicated research retrieval never inherits implicit general-worker access.
+    if restrictions.get("allow_web_fetch") is not True or vps_hold or not allow_ops:
+        blocked_types.add("research_fetch")
+
+    # Enforce worker class boundaries:
+    # VPS: Operational execution remains on HOLD
+    if is_vps or vps_hold or not allow_ops:
+        blocked_types.update(OPERATIONAL_TASK_TYPES)
+
+    # Desktop / Laptop: Inference only until separately authorized; no arbitrary scripts
+    if is_desktop_or_laptop and not allow_scripts:
+        blocked_types.update(OPERATIONAL_TASK_TYPES)
+        if not allowed_types:
+            allowed_types.update(INFERENCE_TASK_TYPES)
+
+    # Raspberry Pi: Approved lightweight inference and diagnostics only
+    if is_pi and not allow_scripts:
+        blocked_types.update(OPERATIONAL_TASK_TYPES)
+        if not allowed_types:
+            allowed_types.update({"inference", "diagnostic", "general"})
+
+    # Check requested categories against authorized boundaries
+    if requested_categories:
+        unauthorized_requested = [
+            c for c in requested_categories
+            if c in blocked_types or (allowed_types and c not in allowed_types)
+        ]
+        if len(unauthorized_requested) == len(requested_categories):
+            if is_vps and any(c in OPERATIONAL_TASK_TYPES for c in requested_categories):
+                raise TaskAuthorizationError(
+                    f"Worker '{worker_id}' operational execution remains on HOLD. Requested operational categories {requested_categories} are denied.",
+                    status_code=403,
+                )
+            raise TaskAuthorizationError(
+                f"Worker '{worker_id}' is not authorized for requested categories {requested_categories}.",
+                status_code=403,
+            )
+
+    return {
+        "node": dict(w_node),
+        "restrictions": restrictions,
+        "allowed_task_types": allowed_types,
+        "blocked_task_types": blocked_types,
+        "is_vps": is_vps,
+        "vps_hold": vps_hold,
+        "allow_scripts": allow_scripts,
+    }
+
 
 def lease_task_for_worker(
     worker_id: str,
@@ -908,15 +1135,17 @@ def lease_task_for_worker(
     lease_duration_seconds: int = DEFAULT_LEASE_DURATION_SECONDS,
     available_models: Optional[List[str]] = None,
     available_ram_mb: Optional[int] = None,
+    enforce_fresh_heartbeat: bool = True,
+    heartbeat_stale_seconds: int = 300,
 ) -> Optional[Dict[str, Any]]:
     """
-    Atomically lease a pending, eligible task to an authenticated worker.
+    Atomically lease a pending, eligible task to an authenticated, authorized worker.
     Enforces:
-    - Task must be approved or approval_required=0
-    - Task must not already be actively leased
-    - Worker capability matching
-    - Resource-aware and model-aware constraints matching
-    - Atomic database transaction
+    - 10-point authoritative server-side worker authorization check before lease search.
+    - Worker capability matching & operational hold boundaries.
+    - Transactional re-verification at assignment time.
+    - Rejection of unauthorized operational scripts.
+    - Reconciles expired leases.
     """
     lease_duration = min(max(30, lease_duration_seconds), MAX_LEASE_DURATION_SECONDS)
     now_dt = datetime.now(timezone.utc)
@@ -926,24 +1155,44 @@ def lease_task_for_worker(
 
     conn = get_db_connection()
     try:
-        # First reconcile expired leases inside the transaction
-        _reconcile_expired_leases_conn(conn)
+        # Commit crash/lease recovery before opening the claim transaction.
+        # Recovery writes must not leave an implicit transaction around BEGIN.
+        conn.execute('BEGIN IMMEDIATE')
+        try:
+            _reconcile_expired_leases_conn(conn)
+            if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='research_retrieval_attempts'").fetchone():
+                from app.services.research.retrieval_attempts import recover_expired
+                recover_expired(conn)
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
+
+        # Authoritative Server-Side Worker Authorization Gateway
+        auth_ctx = check_worker_leasing_authority(
+            conn=conn,
+            worker_id=worker_id,
+            requested_categories=supported_categories,
+            enforce_fresh_heartbeat=enforce_fresh_heartbeat,
+            heartbeat_stale_seconds=heartbeat_stale_seconds,
+        )
+
+        w_node = auth_ctx["node"]
+        allowed_task_types = auth_ctx["allowed_task_types"]
+        blocked_task_types = auth_ctx["blocked_task_types"]
 
         # Controller-side RAM fallback: do not trust a worker to self-report in lease polls.
-        # Use the last RAM figure from an authenticated heartbeat/registration when absent.
-        if available_ram_mb is None:
+        if available_ram_mb is None and w_node.get("available_ram_mb") is not None:
+            available_ram_mb = int(w_node["available_ram_mb"])
+
+        # Controller-side models fallback:
+        if available_models is None and w_node.get("available_models_json"):
             try:
-                _r = conn.execute(
-                    "SELECT available_ram_mb FROM infrastructure_nodes WHERE id = ?", (worker_id,)
-                ).fetchone()
-                if _r and _r["available_ram_mb"] is not None:
-                    available_ram_mb = int(_r["available_ram_mb"])
+                available_models = json.loads(w_node["available_models_json"])
             except Exception:
-                available_ram_mb = None
+                available_models = []
 
         # Find candidate tasks: approved or approval_required=0, pending status
-        # Note: tasks table has columns: id, title, description, task_type, status, assigned_worker,
-        # approval_required, input_data_json, idempotency_key, project_id, path_id, stage_id
         query = """
             SELECT t.id, t.title, t.description, t.task_type, t.status, t.assigned_worker,
                    t.approval_required, t.input_data_json, t.project_id, t.path_id, t.stage_id, t.purpose, t.expected_output
@@ -967,9 +1216,26 @@ def lease_task_for_worker(
         if not candidate_rows:
             return None
 
-        # Resource-aware & capability-aware filtering
+        # Resource-aware, capability-aware, and authorization-aware filtering
         task_row = None
+        blocked_reasons: List[str] = []
+
         for cand in candidate_rows:
+            c_type = cand["task_type"]
+
+            # Authorization check: task type blocked by policy or worker class hold
+            if c_type in blocked_task_types:
+                if auth_ctx["is_vps"] and c_type in OPERATIONAL_TASK_TYPES:
+                    blocked_reasons.append(f"task '{cand['id']}' type '{c_type}' denied: VPS operational execution on HOLD")
+                else:
+                    blocked_reasons.append(f"task '{cand['id']}' type '{c_type}' blocked by worker capability policy")
+                continue
+
+            # Authorization check: allowed task types filter
+            if allowed_task_types and c_type not in allowed_task_types:
+                blocked_reasons.append(f"task '{cand['id']}' type '{c_type}' not in allowed types for worker")
+                continue
+
             input_data = {}
             if cand["input_data_json"]:
                 try:
@@ -980,55 +1246,99 @@ def lease_task_for_worker(
             # Check model constraint if specified by task
             req_model = input_data.get("required_model") or input_data.get("model")
             if req_model and available_models is not None:
-                # Require model to be present in worker's available models
                 if not any(req_model.lower() in m.lower() or m.lower() in req_model.lower() for m in available_models):
+                    blocked_reasons.append(f"task '{cand['id']}' requires model '{req_model}', not available on worker")
                     continue
 
             # Check RAM constraint if specified by task
             req_ram = input_data.get("min_ram_mb") or input_data.get("required_ram_mb")
             if req_ram:
-                # Fail closed: unknown RAM never satisfies an explicit RAM requirement.
                 try:
                     _need = int(req_ram)
                 except (TypeError, ValueError):
                     continue
                 if available_ram_mb is None or available_ram_mb < _need:
+                    blocked_reasons.append(f"task '{cand['id']}' requires {_need}MB RAM; worker has {available_ram_mb}MB")
                     continue
 
             task_row = cand
             break
 
         if not task_row:
+            # If candidate tasks exist in the queue but were rejected by authorization/policy, fail closed with explicit denial
+            if blocked_reasons:
+                if any("on HOLD" in r for r in blocked_reasons):
+                    raise TaskAuthorizationError(
+                        f"Task lease denied for worker '{worker_id}': queued tasks require operational execution which is on HOLD.",
+                        status_code=403,
+                    )
+                if any("blocked by worker capability policy" in r or "not in allowed types" in r for r in blocked_reasons):
+                    raise TaskAuthorizationError(
+                        f"Task lease denied for worker '{worker_id}': queued candidate tasks exceed worker authorized capability boundaries.",
+                        status_code=403,
+                    )
             return None
 
         task_id = str(task_row["id"])
         lease_id = f"lease_{uuid4().hex[:12]}"
         idempotency_key = f"idem_{uuid4().hex[:16]}"
 
-        # Insert lease
-        conn.execute(
-            """
-            INSERT INTO worker_task_leases (
-                id, task_id, worker_id, idempotency_key, status,
-                leased_at, lease_expires_at, heartbeat_at, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, 'leased', ?, ?, ?, ?, ?)
-            """,
-            (lease_id, task_id, worker_id, idempotency_key, now_iso, expires_iso, now_iso, now_iso, now_iso),
-        )
+        # Transactional Lease Assignment with Re-verification
+        retrieval_reservation=None
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            # Re-check administrative enablement transactionally to prevent race conditions
+            recheck_node = conn.execute("SELECT is_enabled, health_status FROM infrastructure_nodes WHERE id = ?", (worker_id,)).fetchone()
+            recheck_mach = conn.execute("SELECT is_enabled FROM machines WHERE id = ?", (worker_id,)).fetchone()
+            if not recheck_node or not bool(recheck_node["is_enabled"]) or (recheck_mach and not bool(recheck_mach["is_enabled"])):
+                conn.rollback()
+                raise TaskAuthorizationError(
+                    f"Worker '{worker_id}' was administratively disabled during lease assignment transaction.",
+                    status_code=403,
+                )
 
-        # Update task status
-        conn.execute(
-            """
-            UPDATE tasks
-            SET status = 'in_progress',
-                assigned_worker = ?,
-                idempotency_key = COALESCE(idempotency_key, ?),
-                updated_at = ?
-            WHERE id = ?
-            """,
-            (worker_id, idempotency_key, now_iso, task_row["id"]),
-        )
-        conn.commit()
+            if task_row['task_type']=='research_fetch':
+                from app.services.research.retrieval_attempts import reserve,RetrievalBudgetError
+                scopes=conn.execute('''SELECT rr.id FROM research_runs rr
+                    JOIN orchestration_tasks ot ON ot.run_id=rr.orchestration_run_id
+                    WHERE ot.current_task_id=? AND rr.project_id=? AND rr.status='active' ''',
+                    (task_id,task_row['project_id'])).fetchall()
+                if len(scopes)!=1:
+                    raise TaskAuthorizationError('Native retrieval scope is missing or ambiguous',status_code=403)
+                try:
+                    retrieval_reservation=reserve(conn,task_row['project_id'],scopes[0]['id'],'worker',task_id,
+                        worker_lease_id=lease_id)
+                    retrieval_reservation['io_deadline_at']=(datetime.fromisoformat(retrieval_reservation['started_at'])+timedelta(seconds=8)).isoformat()
+                except RetrievalBudgetError as exc:
+                    raise TaskAuthorizationError(str(exc),status_code=403)
+
+            # Insert lease
+            conn.execute(
+                """
+                INSERT INTO worker_task_leases (
+                    id, task_id, worker_id, idempotency_key, status,
+                    leased_at, lease_expires_at, heartbeat_at, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, 'leased', ?, ?, ?, ?, ?)
+                """,
+                (lease_id, task_id, worker_id, idempotency_key, now_iso, expires_iso, now_iso, now_iso, now_iso),
+            )
+
+            # Update task status
+            conn.execute(
+                """
+                UPDATE tasks
+                SET status = 'in_progress',
+                    assigned_worker = ?,
+                    idempotency_key = COALESCE(idempotency_key, ?),
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (worker_id, idempotency_key, now_iso, task_row["id"]),
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
 
         logger.info("Leased task %s to worker %s (Lease: %s, Expires: %s)", task_id, worker_id, lease_id, expires_iso)
 
@@ -1083,6 +1393,7 @@ def lease_task_for_worker(
             "expected_output": task_row["expected_output"],
             "input_data": input_data,
             "execution_manifest": manifest,
+            "retrieval_reservation": retrieval_reservation,
             "leased_at": now_iso,
             "lease_expires_at": expires_iso,
             "timeout_seconds": lease_duration,
@@ -1107,15 +1418,56 @@ def renew_task_lease(
     now_iso = now_dt.isoformat()
     new_expires_dt = datetime.fromtimestamp(now_dt.timestamp() + duration, tz=timezone.utc)
     new_expires_iso = new_expires_dt.isoformat()
-
     conn = get_db_connection()
     try:
+        conn.execute('BEGIN IMMEDIATE')
+        # Verify worker node administrative enablement and canonical status
+        w_node = conn.execute("SELECT is_enabled, notes, health_status FROM infrastructure_nodes WHERE id = ?", (worker_id,)).fetchone()
+        if w_node:
+            if not bool(w_node["is_enabled"]):
+                raise TaskAuthorizationError(f"Worker '{worker_id}' is administratively disabled. Lease extension denied.", status_code=403)
+            w_notes = str(w_node["notes"] or "")
+            if w_notes.startswith("[RETIRED") or w_node["health_status"] == "retired":
+                raise TaskAuthorizationError(f"Worker '{worker_id}' is retired and quarantined. Lease extension denied.", status_code=403)
+
+        m_node = conn.execute("SELECT is_enabled, notes, connection_status FROM machines WHERE id = ?", (worker_id,)).fetchone()
+        if m_node:
+            if not bool(m_node["is_enabled"]):
+                raise TaskAuthorizationError(f"Worker '{worker_id}' is administratively disabled in machine registry. Lease extension denied.", status_code=403)
+            m_notes = str(m_node["notes"] or "")
+            if m_notes.startswith("[RETIRED") or m_node["connection_status"] == "retired":
+                raise TaskAuthorizationError(f"Worker '{worker_id}' is retired in machine registry. Lease extension denied.", status_code=403)
+
         row = conn.execute(
             "SELECT task_id, attempt_count FROM worker_task_leases WHERE id = ? AND worker_id = ? AND status IN ('leased', 'active') AND lease_expires_at > ?",
             (lease_id, worker_id, now_iso),
         ).fetchone()
         if not row:
             return False
+
+        task=conn.execute('SELECT * FROM tasks WHERE id=?',(row['task_id'],)).fetchone()
+        if task and task['task_type']=='python_execution':
+            context=check_worker_leasing_authority(conn,worker_id,requested_categories=['python_execution'])
+            policy=context['restrictions']
+            if (os.getenv('QC_SCRIPT_AUTHORIZATION_ENABLED')!='1'
+                    or policy.get('allow_script_execution') is not True
+                    or policy.get('allow_operational_execution') is not True
+                    or policy.get('operational_hold') is not False or task['status']!='in_progress'
+                    or task['assigned_worker']!=worker_id):
+                raise TaskAuthorizationError('Reviewed-script authorization no longer active',status_code=403)
+            try:
+                native=conn.execute('''SELECT 1 FROM orchestration_tasks o
+                JOIN orchestration_runs r ON r.id=o.run_id AND r.current_revision_id=o.revision_id
+                JOIN orchestration_plan_revisions rev ON rev.id=r.current_revision_id AND rev.status='approved'
+                JOIN projects p ON p.id=r.project_id AND p.status='active'
+                JOIN worker_script_authorizations a ON a.task_id=o.current_task_id AND a.lease_id=?
+                WHERE o.current_task_id=? AND o.dispatched_node=? AND o.state='dispatched'
+                    AND r.state='RUNNING' AND r.project_id=?''',
+                    (lease_id,task['id'],worker_id,task['project_id'])).fetchone()
+            except sqlite3.Error:
+                raise TaskAuthorizationError('Script authorization state unavailable',status_code=403)
+            if not native:
+                raise TaskAuthorizationError('Native script authorization binding changed',status_code=403)
 
         cursor = conn.execute(
             """
@@ -1693,6 +2045,14 @@ def submit_task_result(
             ),
         )
 
+        if task_row['task_type']=='research_fetch':
+            from app.services.research.retrieval_attempts import settle
+            reservation=conn.execute('''SELECT id FROM research_retrieval_attempts
+                WHERE actor='worker' AND operation_id=? AND worker_lease_id=? AND status='ACTIVE' ''',
+                (actual_task_id,actual_lease_id)).fetchone()
+            if reservation:
+                settle(conn,reservation['id'],'SUCCEEDED' if status=='success' and exit_code==0
+                    else 'TIMED_OUT' if status=='timeout' else 'FAILED',error_code=error_category)
         conn.commit()
         logger.info("Recorded execution %s for task %s (status: %s, artifacts: %d)", execution_id, task_id, status, len(processed_artifacts))
 
@@ -1830,6 +2190,9 @@ def reconcile_expired_leases() -> List[str]:
     conn = get_db_connection()
     try:
         recovered = _reconcile_expired_leases_conn(conn)
+        if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='research_retrieval_attempts'").fetchone():
+            from app.services.research.retrieval_attempts import recover_expired
+            recover_expired(conn)
         conn.commit()
         return recovered
     finally:

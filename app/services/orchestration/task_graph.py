@@ -17,7 +17,7 @@ MAX_STAGES = 8
 MAX_PROMPT_CHARS = 2500
 AGENT_ROLES = ("project_manager", "research", "analysis", "development", "execution", "review",
                "integration", "recovery")
-ACTION_TYPES = ("library_script", "inference", "controller_step")
+ACTION_TYPES = ("library_script", "inference", "controller_step", "research_fetch")
 CONTROLLER_STEPS = (
     "assemble_report",
     "research_search",
@@ -25,6 +25,7 @@ CONTROLLER_STEPS = (
     "research_browser_read",
     "research_extract",
     "research_verify",
+    "research_coverage",
     "research_synthesize",
     "research_citation_audit",
     "research_full_cycle",
@@ -377,7 +378,7 @@ def validate_plan(plan: Dict[str, Any], nodes: Optional[List[Dict[str, Any]]] = 
             errors.append(f"Task '{k}' max_attempts must be 1..5.")
         if not 5 <= t["timeout_seconds"] <= 1800:
             errors.append(f"Task '{k}' timeout_seconds must be 5..1800.")
-        for m in t["preferred_models"]:
+        for m in (t.get("preferred_models") or []):
             if not MODEL_RE.match(m):
                 errors.append(f"Task '{k}' has an invalid model name.")
         _validate_action(t, errors)
@@ -471,7 +472,7 @@ def validate_plan(plan: Dict[str, Any], nodes: Optional[List[Dict[str, Any]]] = 
         "max_timeout_seconds_total": sum(t["timeout_seconds"] for t in tasks),
         "approx_tokens": sum(int(t["action"].get("max_tokens") or 0) + 400 for t in tasks
                              if t["action"].get("type") == "inference"),
-        "needs_nodes": sorted({n for t in tasks for n in t["allowed_nodes"]}),
+        "needs_nodes": sorted({n for t in tasks for n in (t.get("allowed_nodes") or [])}),
     }
     return {"valid": not errors, "errors": errors, "warnings": warnings,
             "capability_issues": capability_issues, "high_risk_tasks": high_risk, "estimate": estimate}
@@ -483,7 +484,8 @@ def _validate_action(t: Dict[str, Any], errors: List[str]) -> None:
     if typ not in ACTION_TYPES:
         errors.append(f"Task '{k}' has disallowed action type '{typ}'.")
         return
-    allowed_keys = {"type", "script_id", "model", "instruction", "inputs", "max_tokens", "step"}
+    allowed_keys = ({"type","url","feedback_path_id"} if typ=='research_fetch' else
+        {"type", "script_id", "model", "instruction", "inputs", "max_tokens", "step"})
     extra = set(a) - allowed_keys
     if extra:
         errors.append(f"Task '{k}' action has disallowed fields: {sorted(extra)}.")
@@ -492,6 +494,18 @@ def _validate_action(t: Dict[str, Any], errors: List[str]) -> None:
             errors.append(f"Task '{k}' references unknown script '{a.get('script_id')}'. Allowed library scripts: {sorted(script_library.LIBRARY.keys())}.")
         if not t["allowed_nodes"]:
             errors.append(f"Task '{k}' (library_script) must pin allowed_nodes.")
+    elif typ == 'research_fetch':
+        from urllib.parse import urlparse
+        url=a.get('url')
+        parsed=urlparse(url) if isinstance(url,str) else None
+        if (not parsed or parsed.scheme!='https' or not parsed.hostname or parsed.username or parsed.password):
+            errors.append(f"Task '{k}' needs an HTTPS URL without credentials.")
+        if not re.fullmatch(r'[a-f0-9]{64}',str(a.get('feedback_path_id',''))):
+            errors.append(f"Task '{k}' needs a durable feedback proposal ID.")
+        if not t['allowed_nodes'] or t.get('approval')!='required':
+            errors.append(f"Task '{k}' requires pinned nodes and explicit task approval.")
+        if t.get('max_attempts')!=1:
+            errors.append(f"Task '{k}' retrieval must use one attempt until failed-observation accounting is implemented.")
     elif typ == "inference":
         ins = _s(a.get("instruction"), MAX_PROMPT_CHARS + 1)
         if not ins:

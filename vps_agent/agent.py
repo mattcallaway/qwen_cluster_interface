@@ -28,11 +28,12 @@ from vps_agent.buffer import OfflineBuffer
 from vps_agent.capabilities import collect_live_telemetry, discover_local_hardware
 from vps_agent.config import AgentConfig, load_config, save_worker_token
 from vps_agent.executor import execute_task
+from vps_agent.executor import CLASS_B_OPERATIONS
 
 logger = logging.getLogger("qwen_collective.worker_agent")
 
 
-def _run_lease_heartbeats(agent: "VPSWorkerAgent", lease_id: str, stop_event: threading.Event) -> None:
+def _run_lease_heartbeats(agent: "VPSWorkerAgent", lease_id: str, stop_event: threading.Event, cancel_execution=None) -> None:
     """Maintain per-task lease renewal and node heartbeat in background during execution."""
     interval = min(15, max(5, agent.config.heartbeat_interval))
     while not stop_event.wait(interval):
@@ -42,10 +43,14 @@ def _run_lease_heartbeats(agent: "VPSWorkerAgent", lease_id: str, stop_event: th
             r = agent.session.post(renew_url, headers=agent._headers(), timeout=5)
             if r.status_code == 200:
                 logger.debug("Renewed heartbeat for lease %s", lease_id)
-            elif r.status_code in (403, 404):
+            else:
                 logger.warning("Lease %s heartbeat returned %s; task lease may be stale or revoked", lease_id, r.status_code)
+                if cancel_execution is not None:
+                    cancel_execution.set(); return
         except Exception as e:
             logger.debug("Lease heartbeat ping failed: %s", e)
+            if cancel_execution is not None:
+                cancel_execution.set(); return
 
         # 2. Also keep node health fresh
         try:
@@ -284,6 +289,26 @@ class VPSWorkerAgent:
                 break
         return flushed_count
 
+    def _authorize_script(self,task):
+        from vps_agent.script_authorization import secure_controller_url,permit_from_response
+        import secrets
+        if not self.config.allow_script_execution or not self.token or not self.is_registered:
+            return None
+        try:
+            origin=secure_controller_url(self.config.controller_url)
+            tls_verify=getattr(self.session,'verify',True)
+            if not (tls_verify is True or (isinstance(tls_verify,str) and bool(tls_verify))): return None
+            nonce=secrets.token_hex(32); started=time.monotonic()
+            response=self.session.post(f'{origin}/api/v1/worker/tasks/{task["task_id"]}/authorize-script',
+                headers=self._headers(),json={'idempotency_key':task['idempotency_key'],'nonce':nonce,
+                    'manifest':task.get('execution_manifest') or task['input_data'].get('execution_manifest')},
+                timeout=5,allow_redirects=False)
+            if response.status_code!=200: return None
+            return permit_from_response(task,response.json(),nonce,started)
+        except Exception:
+            logger.warning('Script start authorization unavailable; execution remains blocked')
+            return None
+
     def poll_and_execute_task(self) -> Optional[Dict[str, Any]]:
         """Lease one task from controller, execute it, and submit results."""
         if not self.is_registered or not self.token:
@@ -294,8 +319,11 @@ class VPSWorkerAgent:
         hardware_info = discover_local_hardware()
         categories = [
             "test_task", "health_check", "diagnostic", "capability_probe", "ping",
-            "python_execution", "approved_shell", "file_processing", "monitoring",
         ]
+        if self.config.allow_script_execution:
+            categories.append('python_execution')
+        if self.config.allow_web_fetch:
+            categories.append('research_fetch')
         if "model_inference" in hardware_info.get("declared_capabilities", []):
             categories.extend(["inference", "model_inference", "local_inference"])
         payload = {
@@ -331,15 +359,29 @@ class VPSWorkerAgent:
 
         # Execute task with independent concurrent lease/node heartbeating
         stop_heartbeat = threading.Event()
+        cancel_execution=threading.Event()
         hb_thread = threading.Thread(
             target=_run_lease_heartbeats,
-            args=(self, lease_id, stop_heartbeat),
+            args=(self, lease_id, stop_heartbeat,cancel_execution if task.get('task_type') in CLASS_B_OPERATIONS else None),
             daemon=True,
         )
         hb_thread.start()
 
         try:
-            exec_outcome = execute_task(task, timeout_seconds=self.config.default_task_timeout)
+            if task.get('task_type') in CLASS_B_OPERATIONS:
+                permit=self._authorize_script(task)
+                if permit is None:
+                    exec_outcome={'status':'error','exit_code':126,'runtime_seconds':0,
+                        'stdout_summary':'','stderr_summary':'Controller script start authorization unavailable.',
+                        'error_category':'script_authorization_required','result_payload':{'execution_class':'Class B'}}
+                else:
+                    exec_outcome=execute_task(task,timeout_seconds=self.config.default_task_timeout,
+                        script_permit=permit,cancel_event=cancel_execution)
+            elif task.get('task_type')=='research_fetch':
+                exec_outcome = execute_task(task, timeout_seconds=self.config.default_task_timeout,
+                    allow_web_fetch=self.config.allow_web_fetch)
+            else:
+                exec_outcome = execute_task(task, timeout_seconds=self.config.default_task_timeout)
         finally:
             stop_heartbeat.set()
             hb_thread.join(timeout=2.0)

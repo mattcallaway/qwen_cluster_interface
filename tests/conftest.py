@@ -66,6 +66,14 @@ def db_conn():
 
 
 @pytest.fixture(autouse=True)
+def preserve_settings_state():
+    """Ensure mutable settings such as data_dir are restored after every test."""
+    orig_data_dir = settings.data_dir
+    yield
+    settings.data_dir = orig_data_dir
+
+
+@pytest.fixture(autouse=True)
 def foreign_key_guard():
     """Verify that foreign-key integrity is intact at the conclusion of every test."""
     yield
@@ -73,5 +81,6 @@ def foreign_key_guard():
     with get_db_connection() as conn:
         fk_violations = conn.execute("PRAGMA foreign_key_check").fetchall()
         assert not fk_violations, f"Foreign key check violation detected at fixture boundary: {fk_violations}"
+
 
 

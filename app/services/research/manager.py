@@ -20,6 +20,7 @@ from app.services import deliverables
 from app.services.research.browser import HeadlessBrowserService
 from app.services.research.cache import ResearchCache
 from app.services.research.citations import CitationEngine
+from app.services.research.critic import AdversarialCritic, CriticReport
 from app.services.research.extraction import DocumentExtractor
 from app.services.research.planner import ResearchBudget, ResearchPlanner, ResearchStrategy
 from app.services.research.policy import ResearchSecurityPolicy
@@ -43,6 +44,7 @@ REGISTERED_RESEARCH_CAPABILITIES = (
     "claim_verify",
     "research_synthesize",
     "citation_validate",
+    "critic_audit",
 )
 
 # Supported controller research steps
@@ -54,6 +56,7 @@ RESEARCH_CONTROLLER_STEPS = (
     "research_verify",
     "research_synthesize",
     "research_citation_audit",
+    "research_critic_audit",
     "research_full_cycle",
 )
 
@@ -61,11 +64,64 @@ RESEARCH_CONTROLLER_STEPS = (
 class ResearchManager:
     """Central research coordinator executing research workflows."""
 
+    def review_claim_document(self,project_id,research_run_id,deliverable_key,artifact_id,verifier=None):
+        from app.database import db_transaction
+        from app.services.research.feedback import ProjectEvidenceFeedback
+        from app.services.research.claim_contracts import ClaimDocumentReview
+        with db_transaction() as conn:
+            ledger=ProjectEvidenceFeedback(conn,project_id,research_run_id,receipt_verifier=verifier)
+            reviewer=ClaimDocumentReview(ledger)
+            binding=reviewer.bind(deliverable_key,artifact_id)
+            return reviewer.evaluate(binding['id'])
+
+    def prepare_native_retrieval_feedback(self, project_id, research_run_id, execution_id, verifier, budget=None):
+        """Explicit controller-only observation bridge. Does not dispatch tasks.
+
+        Deployment must provide the isolated signing service/key and reviewed
+        schema migration; neither is automatically provisioned by this method.
+        """
+        from app.database import db_transaction
+        from app.services.research.feedback import ProjectEvidenceFeedback
+        effective_budget=budget or self.create_or_get_budget(project_id)
+        conn=get_db_connection()
+        try:
+            ledger=ProjectEvidenceFeedback(conn,project_id,research_run_id,receipt_verifier=verifier)
+            if (not effective_budget.can_retrieve()
+                    or effective_budget.browsing_seconds_used>=effective_budget.max_browsing_seconds):
+                return {'snapshot_id':None,'assessment':ledger.assess(),'paths':[],
+                    'stop_reason':'RESEARCH_BUDGET_EXHAUSTED'}
+            verifier.observe(ledger,execution_id)
+        finally: conn.close()
+        refreshed=budget or self.create_or_get_budget(project_id)
+        with db_transaction() as conn:
+            ledger=ProjectEvidenceFeedback(conn,project_id,research_run_id,receipt_verifier=verifier)
+            # Existing committed receipt: this call cannot start network work.
+            snapshot=ledger.capture_native_retrieval(execution_id)
+            result=self.planner.plan_evidence_feedback(ledger,refreshed)
+            return {'snapshot_id':snapshot['id'],**result}
+
+    def prepare_evidence_feedback(self, project_id, research_run_id, budget=None, max_paths=3, receipt_verifier=None):
+        """Explicit opt-in bridge to the append-only ledger and existing planner.
+
+        Schema installation is a separate approved migration. No legacy source
+        verdicts are imported, no queries execute, and no project is certified.
+        """
+        from app.database import db_transaction
+        from app.services.research.feedback import ProjectEvidenceFeedback
+        effective_budget=budget or self.create_or_get_budget(project_id)
+        with db_transaction() as conn:
+            ledger=ProjectEvidenceFeedback(conn,project_id,research_run_id,receipt_verifier=receipt_verifier)
+            return self.planner.plan_evidence_feedback(ledger,effective_budget,max_paths)
+
     def __init__(
         self,
         base_dir: Optional[Path] = None,
         security_policy: Optional[ResearchSecurityPolicy] = None,
+        feedback_only: bool = False,
     ):
+        if feedback_only:
+            self.planner=ResearchPlanner()
+            return
         self.base_dir = base_dir or Path(getattr(settings, "DATA_DIR", "data"))
         self.policy = security_policy or ResearchSecurityPolicy()
         self.scanner = ResearchSecurityScanner()
@@ -80,6 +136,7 @@ class ResearchManager:
         self.synthesizer = ResearchSynthesizer()
         self.planner = ResearchPlanner()
         self.telemetry = ResearchTelemetryService()
+        self.critic = AdversarialCritic(citation_engine=self.citation_engine)
 
     def create_or_get_budget(self, project_id: str, custom_budget: Optional[ResearchBudget] = None) -> ResearchBudget:
         """Retrieves or initializes the research budget for a project."""
@@ -204,11 +261,14 @@ class ResearchManager:
         use_browser_fallback: bool = True,
         research_run_id: Optional[str] = None,
         session_id: Optional[str] = None,
+        max_per_domain: int = 2,
     ) -> Dict[str, Any]:
         """Retrieves web pages, extracts clean document content, and registers sources scoped to run."""
         budget = self.create_or_get_budget(project_id)
         start_time = time.time()
         ingested_sources = []
+        domain_counts: Dict[str, int] = {}
+        from urllib.parse import urlparse
 
         for item in search_results:
             if not budget.can_retrieve():
@@ -217,6 +277,11 @@ class ResearchManager:
 
             url = item.get("url")
             if not url:
+                continue
+
+            netloc = urlparse(url).netloc.lower()
+            if domain_counts.get(netloc, 0) >= max_per_domain:
+                logger.debug("Skipping %s: max documents for domain %s reached (%d)", url, netloc, max_per_domain)
                 continue
 
             query = item.get("search_query", "")
@@ -306,6 +371,7 @@ class ResearchManager:
             )
 
             budget.documents_retrieved += 1
+            domain_counts[netloc] = domain_counts.get(netloc, 0) + 1
             ingested_sources.append(source_rec)
 
         self.update_budget(project_id, budget)
@@ -392,6 +458,40 @@ class ResearchManager:
             "claims": tracked_claims,
         }
 
+    def execute_coverage_step(
+        self,
+        project_id: str,
+        task_id: str,
+        contracts: List[Dict[str, Any]],
+        project_objective: str = "",
+        research_run_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Evaluates retrieved research evidence against explicit DeliverableRequirementContracts (Phase 3)."""
+        start_time = time.time()
+        sources = self.source_library.list_sources(project_id, research_run_id=research_run_id)
+        claims = self.evidence_ledger.list_claims(project_id, research_run_id=research_run_id)
+        from app.services.research.coverage import assess_evidence_coverage
+        assessment = assess_evidence_coverage(contracts, sources, claims, project_objective=project_objective)
+
+        duration_ms = (time.time() - start_time) * 1000
+        self.telemetry.record_event(
+            event_type="coverage_assessment",
+            project_id=project_id,
+            task_id=task_id,
+            duration_ms=duration_ms,
+            status=assessment["overall_status"],
+            metadata={
+                "overall_status": assessment["overall_status"],
+                "deliverables_assessed": len(assessment["deliverable_assessments"]),
+                "research_run_id": research_run_id,
+            },
+        )
+
+        return {
+            "status": "success",
+            "assessment": assessment,
+        }
+
     def execute_synthesis_and_citation_step(
         self,
         project_id: str,
@@ -399,6 +499,9 @@ class ResearchManager:
         objective: str,
         topic: str,
         research_run_id: Optional[str] = None,
+        ai_inputs: Optional[List[Dict[str, Any]]] = None,
+        deliverable_contract: Optional[Dict[str, Any]] = None,
+        coverage_assessment: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Synthesizes structured research report and audits all citations within run scope (Findings F-07, F-09)."""
         start_time = time.time()
@@ -407,13 +510,17 @@ class ResearchManager:
         sources = self.source_library.list_sources(project_id, research_run_id=research_run_id)
         claims = self.evidence_ledger.list_claims(project_id, research_run_id=research_run_id)
 
-        # 2. Synthesize initial report
+        # 2. Synthesize initial report with contract and sufficiency guidance
         report_md = self.synthesizer.synthesize_report(
             project_id=project_id,
             topic=topic,
             objective=objective,
             sources=sources,
             claims=claims,
+            ai_inputs=ai_inputs,
+            deliverable_contract=deliverable_contract,
+            coverage_assessment=coverage_assessment,
+            research_run_id=research_run_id,
         )
 
         # 3. Deterministically audit citations with zero-citation and grounding verification
@@ -438,6 +545,51 @@ class ResearchManager:
             "status": "success" if audit["valid"] else "citation_errors",
             "report_markdown": report_md,
             "audit": audit,
+        }
+
+    def execute_critic_audit_step(
+        self,
+        project_id: str,
+        task_id: str,
+        draft_markdown: str,
+        deliverable_contract: Optional[Any] = None,
+        research_run_id: Optional[str] = None,
+        reference_date: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """Executes an independent adversarial critique pass on a deliverable draft."""
+        start_time = time.time()
+        sources = self.source_library.list_sources(project_id, research_run_id=research_run_id)
+        claims = self.evidence_ledger.list_claims(project_id, research_run_id=research_run_id)
+
+        report = self.critic.audit_draft(
+            draft_markdown=draft_markdown,
+            contract=deliverable_contract,
+            sources=sources,
+            claims=claims,
+            project_id=project_id,
+            reference_date=reference_date,
+        )
+
+        duration_ms = (time.time() - start_time) * 1000
+        self.telemetry.record_event(
+            event_type="critic_audit",
+            project_id=project_id,
+            task_id=task_id,
+            duration_ms=duration_ms,
+            status="passed" if report.passed else "issues_found",
+            metadata={
+                "passed": report.passed,
+                "score": report.score,
+                "fatal_errors_count": len(report.fatal_errors),
+                "negative_violations_count": len(report.negative_violations),
+                "arithmetic_errors_count": len(report.arithmetic_errors),
+                "research_run_id": research_run_id,
+            },
+        )
+
+        return {
+            "status": "success" if report.passed else "critique_issues",
+            "report": report.to_dict(),
         }
 
     def run_full_cycle(

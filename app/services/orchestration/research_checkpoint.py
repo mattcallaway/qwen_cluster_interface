@@ -109,13 +109,7 @@ def evaluate_research_need(
     if stage_phase in ("intake", "planning", "intake_analysis", "feasibility_planning"):
         if total_fresh_evidence == 0:
             research_needed = True
-            decision_reason = "No prior verified project knowledge or sources found for this objective."
-            from app.services.research.planner import ResearchPlanner
-            strat = ResearchPlanner().generate_strategy(obj_clean)
-            external_queries = strat.initial_queries[:5]
-        elif requires_external and len(existing_source_ids) == 0:
-            research_needed = True
-            decision_reason = "Objective requires external research and no verified sources exist in this project library."
+            decision_reason = "No existing verified evidence or source library records exist for this project intake."
             from app.services.research.planner import ResearchPlanner
             strat = ResearchPlanner().generate_strategy(obj_clean)
             external_queries = strat.initial_queries[:5]
@@ -128,7 +122,7 @@ def evaluate_research_need(
             research_needed = True
             decision_reason = "Existing knowledge records are outdated or contradicted; fresh verification required."
             external_queries = [f"{stale_or_contradicted[0].get('subject', obj_clean[:60])} latest"]
-        elif (total_fresh_evidence == 0 or len(existing_source_ids) == 0) and requires_external:
+        elif total_fresh_evidence == 0 and requires_external:
             research_needed = True
             decision_reason = "Task execution requires external verified facts not present in knowledge base."
             from app.services.research.planner import ResearchPlanner

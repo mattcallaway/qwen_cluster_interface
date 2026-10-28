@@ -50,6 +50,12 @@ from app.services.research.retrieval import (
     SecureFetcher,
 )
 
+try:
+    import playwright
+    PLAYWRIGHT_INSTALLED = True
+except ImportError:
+    PLAYWRIGHT_INSTALLED = False
+
 
 # ---------------------------------------------------------------------------
 # Mock HTTP Server Fixture for Deterministic Local Testing
@@ -147,6 +153,7 @@ def mock_http_server() -> Generator[Tuple[str, int], None, None]:
 # Test Scenario A: Authorized Public HTTPS / HTTP Navigation
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skipif(not PLAYWRIGHT_INSTALLED, reason="Playwright automation library not installed")
 def test_scenario_a_authorized_public_navigation_succeeds(mock_http_server):
     """Scenario A: Authorized public website navigation succeeds and extracts DOM text."""
     host, port = mock_http_server
@@ -379,6 +386,7 @@ def test_scenario_f_public_to_private_redirect_denied(mock_http_server):
 # Test Scenario G: Browser Subresource Requests Cannot Bypass Policy
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skipif(not PLAYWRIGHT_INSTALLED, reason="Playwright automation library not installed")
 def test_scenario_g_browser_subresources_blocked_by_route_and_proxy(mock_http_server):
     """Scenario G: Internal images, scripts, and iframes embedded in a public page are blocked."""
     host, port = mock_http_server
@@ -447,6 +455,7 @@ def test_scenario_h_websocket_traffic_blocked():
 # Test Scenario I: Filtering Proxy Failure Causes Fail-Closed Behavior
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skipif(not PLAYWRIGHT_INSTALLED, reason="Playwright automation library not installed")
 def test_scenario_i_filtering_proxy_failure_fails_closed(monkeypatch):
     """Scenario I: When egress proxy fails to bind or start, browser execution fails closed with 503."""
     browser_svc = HeadlessBrowserService()
@@ -468,6 +477,7 @@ def test_scenario_i_filtering_proxy_failure_fails_closed(monkeypatch):
 # Test Scenario J: Browser Launch Cannot Silently Enable Unrestricted Direct Egress
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skipif(not PLAYWRIGHT_INSTALLED, reason="Playwright automation library not installed")
 def test_scenario_j_proxy_bypass_disabled_in_browser_args(monkeypatch):
     """Scenario J: Browser launch arguments strictly enforce proxy usage and <-loopback> routing."""
     captured_launch_kwargs = {}

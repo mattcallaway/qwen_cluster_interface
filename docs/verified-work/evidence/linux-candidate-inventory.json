@@ -1,0 +1,44 @@
+{
+  "observed_at_utc": "2026-10-28T04:31:43.370643+00:00",
+  "mode": "read-only inventory",
+  "credential_values_recorded": false,
+  "results": [
+    {
+      "node": "laptop",
+      "host": "100.101.187.115",
+      "port": 22,
+      "username": "emceemcee",
+      "status": "observed",
+      "inventory": {
+        "platform": "Linux",
+        "architecture": "x86_64",
+        "kernel": "7.0.0-38-generic",
+        "cpu_count": 4,
+        "memory": {
+          "MemTotal": "3893500 kB",
+          "MemAvailable": "2985716 kB",
+          "SwapTotal": "37748732 kB",
+          "SwapFree": "37116280 kB"
+        },
+        "root_disk_free_bytes": 879182544896,
+        "python": "3.12.3",
+        "systemd": "systemd 255 (255.4-1ubuntu8.18)",
+        "pid1": "systemd",
+        "cgroup_controllers": "cpuset cpu io memory hugetlb pids rdma misc dmem",
+        "uid": 1000,
+        "sudo_present": true,
+        "os_release": "PRETTY_NAME=\"Ubuntu 24.04.2 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\nVERSION=\"24.04.2 LTS (Noble Numbat)\"\nVERSION_CODENAME=noble\nID=ubuntu\nID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nUBUNTU_CODENAME=noble\nLOGO=ubuntu-logo",
+        "backend_verified": false,
+        "mutations": []
+      }
+    },
+    {
+      "node": "pi",
+      "host": "192.168.4.57",
+      "port": 22,
+      "username": "pibrain",
+      "status": "unavailable",
+      "error_type": "SSHException"
+    }
+  ]
+}

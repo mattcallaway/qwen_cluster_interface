@@ -1,6 +1,7 @@
 """Fixed, reviewed script library. Model output may only *select* a script by id; it can never supply code.
 
-Each script is read-only diagnostics: no environment dump, no network, no config files, no secrets.
+Scripts are reviewed diagnostics or synthetic fixtures: no environment dump,
+network, host config access or secrets. Fixtures may write workspace outputs.
 """
 from __future__ import annotations
 
@@ -87,6 +88,14 @@ LIBRARY: Dict[str, Dict[str, Any]] = {
         "validator": _validate_health,
         "timeout_seconds": 60,
     },
+}
+
+from app.services.orchestration.software_pilot import SCRIPT as _WEB_PILOT, validate_result as _validate_web_pilot
+LIBRARY['web_status_pilot'] = {
+    'title':'Synthetic task-status web fixture (isolated pilot)',
+    'script':_WEB_PILOT,'capabilities':['python_execution'],'network_access':False,
+    'risk':'low','idempotent':True,'result_schema':'qc.web_pilot.v1',
+    'validator':_validate_web_pilot,'timeout_seconds':15,
 }
 
 

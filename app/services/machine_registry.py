@@ -31,13 +31,18 @@ def _overlay_worker_health(machines: List[Dict[str, Any]]) -> List[Dict[str, Any
     from app.services.node_health import effective_health
     conn = get_db_connection()
     try:
-        rows = conn.execute("SELECT id, role, health_status, last_contact_at FROM infrastructure_nodes").fetchall()
+        rows = conn.execute("SELECT id, role, health_status, last_contact_at, notes FROM infrastructure_nodes").fetchall()
     finally:
         conn.close()
-    infra = {r["id"]: r for r in rows}
+    infra = {r["id"]: dict(r) for r in rows}
     for m in machines:
+        if m.get("connection_status") == "retired" or str(m.get("notes", "")).startswith("[RETIRED"):
+            continue
         n = infra.get(m["id"])
         if not n:
+            continue
+        if str(n.get("notes", "")).startswith("[RETIRED"):
+            m["connection_status"] = "offline"
             continue
         eff = effective_health(n["role"], n["health_status"], n["last_contact_at"])
         if n["role"] in ("vps_worker", "inference_node", "compute_worker", "general_worker") and n["last_contact_at"]:
@@ -45,10 +50,13 @@ def _overlay_worker_health(machines: List[Dict[str, Any]]) -> List[Dict[str, Any
             m["last_checked_at"] = n["last_contact_at"]
     return machines
 
-def get_all_machines() -> List[Dict[str, Any]]:
+def get_all_machines(include_retired: bool = False) -> List[Dict[str, Any]]:
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM machines ORDER BY created_at DESC")
+    if include_retired:
+        cursor.execute("SELECT * FROM machines ORDER BY created_at DESC")
+    else:
+        cursor.execute("SELECT * FROM machines WHERE notes NOT LIKE '[RETIRED%' AND connection_status != 'retired' ORDER BY created_at DESC")
     rows = cursor.fetchall()
     conn.close()
     return _overlay_worker_health([dict(row) for row in rows])
@@ -166,15 +174,65 @@ def update_machine_role(machine_id: str, new_role: str, notes: Optional[str] = N
     log_machine_audit(machine_id, "ROLE_CHANGED", f"Role updated to {new_role}")
 
 def toggle_machine_status(machine_id: str, is_enabled: bool):
+    """Atomically toggle administrative enablement across both machines and infrastructure_nodes."""
     conn = get_db_connection()
-    now = datetime.now(timezone.utc).isoformat()
-    conn.execute(
-        "UPDATE machines SET is_enabled = ?, updated_at = ? WHERE id = ?",
-        (1 if is_enabled else 0, now, machine_id)
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        val = 1 if is_enabled else 0
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute(
+            "UPDATE machines SET is_enabled = ?, updated_at = ? WHERE id = ?",
+            (val, now, machine_id),
+        )
+        conn.execute(
+            "UPDATE infrastructure_nodes SET is_enabled = ?, updated_at = ? WHERE id = ?",
+            (val, now, machine_id),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    log_machine_audit(
+        machine_id,
+        "TOGGLE_ENABLED",
+        f"Administrative enablement set to {is_enabled} across machines and infrastructure_nodes",
     )
-    conn.commit()
-    conn.close()
-    log_machine_audit(machine_id, "TOGGLE_ENABLED", f"Enabled set to {is_enabled}")
+
+
+def update_machine_capability_policy(
+    machine_id: str,
+    policy: Dict[str, Any],
+    operator: str = "operator",
+) -> Dict[str, Any]:
+    """
+    Operator-approved update to a worker's capability restrictions and operational policy.
+    Creates an immutable, auditable authorization event.
+    """
+    conn = get_db_connection()
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        policy_json = json.dumps(policy)
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute(
+            "UPDATE infrastructure_nodes SET capability_restrictions_json = ?, updated_at = ? WHERE id = ?",
+            (policy_json, now, machine_id),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    log_machine_audit(
+        machine_id,
+        "CAPABILITY_POLICY_UPDATED",
+        f"Operator '{operator}' updated capability policy: {json.dumps(policy)}",
+    )
+    return policy
 
 def generate_setup_instructions(machine: Dict[str, Any]) -> Dict[str, str]:
     """Generate explicit, non-destructive setup instructions and manual commands."""

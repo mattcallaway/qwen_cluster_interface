@@ -1,0 +1,26 @@
+........................................................................ [ 19%]
+........................................................................ [ 39%]
+........................................................................ [ 59%]
+........................................................................ [ 79%]
+........................................................................ [ 98%]
+....                                                                     [100%]
+============================== warnings summary ===============================
+tests\test_script_authorization.py:5
+  C:\Users\Matt C\Documents\Codex\2026-10-26\referenced-chatgpt-conversation-this-is-an\work\qwen-candidate\tests\test_script_authorization.py:5: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient
+
+tests/test_execution_cancellation.py::test_authenticated_hold_change_cancels_native_reviewed_job_and_descendants
+tests/test_execution_cancellation.py::test_authenticated_hold_change_cancels_native_reviewed_job_and_descendants
+tests/test_script_authorization.py::test_native_agent_leases_authorizes_executes_reviewed_fixture_and_submits
+tests/test_worker_reliability.py::test_offline_buffer_flush_reconciled_conflict_clears_queue
+tests/test_worker_reliability.py::test_offline_buffer_quarantines_invalid_payload_without_blocking_queue
+tests/test_worker_reliability.py::test_offline_buffer_auth_rejection_suspends_retries
+  C:\Users\Matt C\.gemini\antigravity-ide\scratch\qwen-collective\.venv\Lib\site-packages\httpx\_client.py:1144: StarletteDeprecationWarning: You should not use the 'timeout' argument with the TestClient. See https://github.com/Kludex/starlette/issues/1108 for more information.
+    return self.request(
+
+tests/test_version_consistency.py::test_openapi_schema_version
+  C:\Users\Matt C\.gemini\antigravity-ide\scratch\qwen-collective\.venv\Lib\site-packages\fastapi\openapi\utils.py:303: UserWarning: Duplicate Operation ID api_research_export_api_v1_projects__project_id__research_export_get for function api_research_export at C:\Users\Matt C\Documents\Codex\2026-10-26\referenced-chatgpt-conversation-this-is-an\work\qwen-candidate\app\routes\research.py
+    warnings.warn(message, stacklevel=1)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+364 passed, 8 warnings in 126.02s (0:02:06)

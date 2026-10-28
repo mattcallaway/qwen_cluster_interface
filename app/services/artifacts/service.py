@@ -274,14 +274,15 @@ class ArtifactService:
             # 5. Lineage from parent artifact if specified
             if parent_artifact_id:
                 lin_id = f"lin-{uuid.uuid4().hex[:12]}"
+                rel_type = kwargs.get("lineage_relationship", "derived_from")
                 conn_handle.execute(
                     """
                     INSERT INTO artifact_lineage (
                         id, source_artifact_id, target_artifact_id, relationship_type,
                         source_version_number, target_version_number, context_description, created_at
-                    ) VALUES (?, ?, ?, 'derived_from', 1, 1, 'Derived from parent artifact during registration', ?)
+                    ) VALUES (?, ?, ?, ?, 1, 1, 'Derived from parent artifact during registration', ?)
                     """,
-                    (lin_id, parent_artifact_id, art_id, now),
+                    (lin_id, parent_artifact_id, art_id, rel_type, now),
                 )
 
         if db_conn is not None:
@@ -1186,6 +1187,7 @@ class ArtifactService:
         project_id: str,
         action_type: str = "analyze",
         instructions: str = "",
+        action_desc: Optional[str] = None,
         actor: str = "admin",
         target_run_id: Optional[str] = None,
         target_task_id: Optional[str] = None,
@@ -1222,15 +1224,18 @@ class ArtifactService:
         now = _now_iso()
         task_id = target_task_id or f"task-{uuid.uuid4().hex[:8]}"
         task_title = f"{action_type.capitalize()} artifact: {art['display_name']}"
-        action_desc = instructions or f"Perform '{action_type}' on artifact {art['display_name']} (ID: {artifact_id})."
+        action_desc = action_desc or instructions or f"Perform '{action_type}' on artifact {art['display_name']} (ID: {artifact_id})."
         reuse_id = ReuseId(f"reuse-{uuid.uuid4().hex[:12]}")
 
+        # Prepare task input data referencing the authorized artifact
+        target_art_id = artifact_id
         task_input_data = {
             "action_type": action_type,
             "instructions": action_desc,
             "input_artifacts": [
                 {
-                    "artifact_id": artifact_id,
+                    "artifact_id": target_art_id,
+                    "source_artifact_id": artifact_id,
                     "version": art["current_version_number"],
                     "display_name": art["display_name"],
                     "checksum_sha256": art["checksum_sha256"],
@@ -1263,10 +1268,28 @@ class ArtifactService:
                 INSERT OR IGNORE INTO artifact_project_links (id, artifact_id, project_id, role, added_at, added_by)
                 VALUES (?, ?, ?, 'imported', ?, ?)
                 """,
-                (f"apl-{uuid.uuid4().hex[:12]}", artifact_id, project_id, now, actor),
+                (f"apl-{uuid.uuid4().hex[:12]}", target_art_id, project_id, now, actor),
             )
 
-            # 3. Insert queued task in target project if not an existing task
+            # 3. Durable parent-child lineage record only when creating a distinct derivative/copy artifact
+            if target_art_id != artifact_id:
+                lin_id = f"lin-{uuid.uuid4().hex[:12]}"
+                conn.execute(
+                    """
+                    INSERT INTO artifact_lineage (
+                        id, source_artifact_id, target_artifact_id, relationship_type,
+                        source_version_number, target_version_number, context_description, created_at
+                    ) VALUES (?, ?, ?, 'uses_as_input', ?, ?, ?, ?)
+                    """,
+                    (
+                        lin_id, artifact_id, target_art_id,
+                        art["current_version_number"], art["current_version_number"],
+                        f"Authorized derivative in project {project_id}: {action_desc}",
+                        now,
+                    ),
+                )
+
+            # 4. Insert queued task in target project if not an existing task
             if not target_task_id:
                 conn.execute(
                     """
@@ -1278,22 +1301,23 @@ class ArtifactService:
                     (task_id, project_id, task_title, action_desc, json.dumps(task_input_data), now, now),
                 )
 
-            # 4. Insert task link
+            # 5. Insert task link
             conn.execute(
                 """
                 INSERT INTO artifact_task_links (id, artifact_id, version_number, task_id, orch_task_id, direction, role, created_at)
                 VALUES (?, ?, ?, ?, NULL, 'input', 'source_document', ?)
                 """,
-                (f"atl-{uuid.uuid4().hex[:12]}", artifact_id, art["current_version_number"], task_id, now),
+                (f"atl-{uuid.uuid4().hex[:12]}", target_art_id, art["current_version_number"], task_id, now),
             )
 
-            # 5. Touch target project
+            # 6. Touch target project
             conn.execute("UPDATE projects SET last_activity_at = ? WHERE id = ?", (now, project_id))
 
         logger.info("Reused artifact %s in project %s via task %s (reuse_id=%s)", artifact_id, project_id, task_id, reuse_id)
         return {
             "reuse_id": reuse_id,
-            "artifact_id": artifact_id,
+            "artifact_id": target_art_id,
+            "source_artifact_id": artifact_id,
             "version": art["current_version_number"],
             "checksum_sha256": art["checksum_sha256"],
             "cas_hash": art.get("cas_hash") or art["checksum_sha256"],
@@ -1305,6 +1329,7 @@ class ArtifactService:
             "task_id": task_id,
             "action_type": action_type,
             "status": ReuseStatus("queued"),
+            "lineage_persisted": True,
         }
 
     def create_project_from_artifact(

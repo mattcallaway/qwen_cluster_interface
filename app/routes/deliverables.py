@@ -31,28 +31,30 @@ def _authenticate_request(request: Request, mutating: bool = True) -> tuple[str,
     Returns (username, is_bearer).
     Raises HTTPException(401) if unauthenticated, or HTTPException(403) if CSRF fails on mutating cookie requests.
     """
-    user = get_current_user(request)
+    user = None
     is_bearer = False
+    auth_hdr = request.headers.get("Authorization")
+    if auth_hdr and auth_hdr.startswith("Bearer "):
+        raw_token = auth_hdr[7:].strip()
+        session_u = verify_session_token(raw_token)
+        if session_u:
+            user = session_u
+            is_bearer = True
+        elif raw_token == settings.admin_password:
+            user = "admin"
+            is_bearer = True
+        else:
+            c = get_db_connection()
+            try:
+                row = c.execute("SELECT node_id FROM worker_auth_tokens WHERE token_hash = ? AND revoked = 0", (raw_token,)).fetchone()
+                if row:
+                    user = f"node:{row['node_id']}"
+                    is_bearer = True
+            finally:
+                c.close()
+
     if not user:
-        auth_hdr = request.headers.get("Authorization")
-        if auth_hdr and auth_hdr.startswith("Bearer "):
-            raw_token = auth_hdr[7:].strip()
-            session_u = verify_session_token(raw_token)
-            if session_u:
-                user = session_u
-                is_bearer = True
-            elif raw_token == settings.admin_password:
-                user = "admin"
-                is_bearer = True
-            else:
-                c = get_db_connection()
-                try:
-                    row = c.execute("SELECT node_id FROM worker_auth_tokens WHERE token_hash = ? AND revoked = 0", (raw_token,)).fetchone()
-                    if row:
-                        user = f"node:{row['node_id']}"
-                        is_bearer = True
-                finally:
-                    c.close()
+        user = get_current_user(request)
 
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")

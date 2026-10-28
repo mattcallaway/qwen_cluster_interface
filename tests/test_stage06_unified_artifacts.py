@@ -313,7 +313,9 @@ def test_f_cross_project_sharing_and_access_grant(test_projects, isolated_artifa
 def test_g_active_markup_cannot_execute_script_in_origin(test_projects, isolated_artifact_service):
     """Test G: An artifact containing active HTML/SVG cannot execute script in a privileged origin."""
     p1, _ = test_projects
+    from app.auth import create_session_token
     client = TestClient(app)
+    client.cookies.set("qc_session", create_session_token(p1.get("owner") or "admin"))
 
     malicious_html = b"<!DOCTYPE html><html><body><script>alert(document.cookie)</script><h1>Report</h1></body></html>"
     art = isolated_artifact_service.register_artifact(

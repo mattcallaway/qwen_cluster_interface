@@ -58,11 +58,13 @@ CHALLENGE_STRONG_MARKERS = [
     "unusual traffic from your computer network", "our systems have detected unusual traffic",
     "access to this page has been denied", "you have been blocked", "sorry, you have been blocked",
     "reference #18.", "errors.edgesuite.net", "bot detection", "automated access",
+    "client challenge", "challenge-running", "checking your browser", "human verification", "browser check",
 ]
 CHALLENGE_TITLE_MARKERS = [
     "just a moment", "attention required", "access denied", "captcha", "security check",
     "are you a robot", "robot check", "verify", "blocked", "403 forbidden", "pardon our interruption",
-    "one more step", "ddos protection", "please wait",
+    "one more step", "ddos protection", "please wait", "client challenge", "challenge", "security challenge",
+    "human verification",
 ]
 
 
@@ -475,7 +477,7 @@ def extract_claims_with_spans(
         if not (has_stat or has_relation):
             continue
 
-        cat = "statistic" if has_stat else "fact"
+        cat = "estimate" if has_stat else "fact"
 
         # Compute line numbers
         start_line = text[:start_char].count("\n") + 1
