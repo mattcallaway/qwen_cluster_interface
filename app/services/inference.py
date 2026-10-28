@@ -8,7 +8,39 @@ from app.database import get_db_connection
 
 logger = logging.getLogger("qwen_collective.inference")
 
+import os
+from app.config import settings
 from app.services.network_security import validate_endpoint_url
+
+_paged_kv_manager: Optional[Any] = None
+
+
+def encode_text_to_tokens(text: str) -> List[int]:
+    """
+    Deterministic integer token encoding for prompt text.
+    Encodes UTF-8 byte stream into integer token sequences.
+    """
+    return [int(b) for b in text.encode("utf-8")]
+
+
+def get_paged_kv_manager() -> Any:
+    global _paged_kv_manager
+    if _paged_kv_manager is None:
+        from app.services.paged_kv import PagedKVManager
+
+        kv_dir = settings.data_dir / "kv_cache"
+        _paged_kv_manager = PagedKVManager(
+            storage_dir=kv_dir,
+            max_ram_blocks=int(os.getenv("QC_PAGED_KV_MAX_RAM_BLOCKS", "128")),
+            block_size=int(os.getenv("QC_PAGED_KV_BLOCK_SIZE", "16")),
+            compress=True,
+        )
+    return _paged_kv_manager
+
+
+def get_paged_kv_metrics() -> Dict[str, Any]:
+    return get_paged_kv_manager().get_metrics()
+
 
 async def test_inference_endpoint(backend_type: str, endpoint_url: str, api_key: Optional[str] = None) -> Tuple[bool, Optional[str], Optional[str]]:
     """
@@ -305,6 +337,19 @@ async def send_chat_completion(
 
     attempts_log = []
 
+    # Sidecar Paged KV Prefix Search Hook
+    paged_kv = get_paged_kv_manager()
+    prompt_str = "\n".join(f"{m.get('role', '')}:{m.get('content', '')}" for m in messages)
+    tokens = encode_text_to_tokens(prompt_str)
+    seq_id = f"inf-seq-{uuid.uuid4().hex[:8]}"
+    default_model_name = candidates[0].get("model_name") or "qwen2.5"
+
+    paged_kv_report = paged_kv.ingest_prompt(
+        sequence_id=seq_id,
+        tokens=tokens,
+        model_name=default_model_name,
+    )
+
     for idx, backend in enumerate(candidates):
         backend_id = backend["id"]
         backend_name = backend["name"]
@@ -338,6 +383,14 @@ async def send_chat_completion(
 
                         update_backend_status(backend_id, "ready", error_details=None)
 
+                        # Cache completion continuation in paged KV store
+                        full_tokens = tokens + encode_text_to_tokens(content)
+                        paged_kv.ingest_prompt(
+                            sequence_id=f"{seq_id}-reply",
+                            tokens=full_tokens,
+                            model_name=backend.get("model_name") or default_model_name,
+                        )
+
                         return {
                             "success": True,
                             "content": content,
@@ -346,7 +399,8 @@ async def send_chat_completion(
                             "backend_id": backend_id,
                             "tier": tier,
                             "fallback_occurred": (idx > 0),
-                            "attempts": attempts_log
+                            "attempts": attempts_log,
+                            "paged_kv": paged_kv_report,
                         }
                     else:
                         err_msg = f"HTTP {resp.status_code} from {backend_name}: {resp.text[:200]}"
@@ -372,6 +426,14 @@ async def send_chat_completion(
 
                         update_backend_status(backend_id, "ready", error_details=None)
 
+                        # Cache completion continuation in paged KV store
+                        full_tokens = tokens + encode_text_to_tokens(content)
+                        paged_kv.ingest_prompt(
+                            sequence_id=f"{seq_id}-reply",
+                            tokens=full_tokens,
+                            model_name=backend.get("model_name") or default_model_name,
+                        )
+
                         return {
                             "success": True,
                             "content": content,
@@ -380,7 +442,8 @@ async def send_chat_completion(
                             "backend_id": backend_id,
                             "tier": tier,
                             "fallback_occurred": (idx > 0),
-                            "attempts": attempts_log
+                            "attempts": attempts_log,
+                            "paged_kv": paged_kv_report,
                         }
                     else:
                         err_msg = f"HTTP {resp.status_code} from {backend_name}: {resp.text[:200]}"
