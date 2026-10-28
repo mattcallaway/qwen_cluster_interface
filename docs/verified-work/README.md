@@ -57,4 +57,13 @@ Updated 2026-10-28. [Implementation and test report](evidence/INCREMENT_16_PROTE
 
 The controller captures exact immutable native worker response bytes and connects approved proposals to a protected Linux black-box verifier. General acceptance, automatic generated-code dispatch and production remain held.
 
-Selected regression results: **417 passed, 6 opt-in live tests skipped, 7 warnings**. The six live scenarios were separately enabled and passed, covering 18 actual confined executions; 55 fixed external evidence checks passed. These scopes overlap and are not additive. Native database records in those scenarios were synthetic; a live leased model-worker coding canary remains required.
+Selected regression results: **417 passed, 6 opt-in live tests skipped, 7 warnings**. The six live scenarios were separately enabled and passed in **34.07s**, covering 18 actual confined executions; 55 fixed external evidence checks passed.
+
+**Fresh Native Leased-Model Canary:**
+Executed across the real controller → task → lease → worker → model inference path with qwen2.5:1.5b on the laptop node (100.101.187.115). Demonstrated:
+- Correct behavior passing approved cases in the confined Linux sandbox.
+- Incorrect/forged code failing verifier despite exit code 0 and self-proclaimed success flags.
+- Bounded revision using a fresh task, lease, review, and grant without exposing test oracles to prompt.
+- Strict consume-before-execute root nonce replay rejection and controller stale-binding denial.
+- Timeout cancellation with confirmed cgroup and process cleanup.
+- Host integrity verified: unchanged service PIDs, temporary test policy removed. Evidence saved in docs/verified-work/evidence/laptop-native-canary-f706a49af04d4182a27a5887d1f9fc85.json.

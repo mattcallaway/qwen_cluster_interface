@@ -20,6 +20,14 @@ The controller authenticates the receipt, compares exact ordered answers itself 
 
 `behavior_verified` applies only to the approved cases. `accepted` and `certification_eligible` remain false. The general evaluator remains held. No auto-revision loop, hidden-answer feedback or production activation is added.
 
-## Evidence and next milestone
+## Evidence and milestone status
 
-137 focused checks; 417 selected regression tests passed, with six live opt-in tests skipped in that offline run. Separately, all six live scenarios passed across 18 actual Linux executions; 55 external fixture-oracle checks passed. These use synthetic native database records, not a live model/worker coding canary. The next milestone is a fresh isolated native leased-model run feeding its unmodified response through this bridge, with bounded failure/revision and revocation. Production release and hold changes require separate approval.
+- **Unit & regression baseline:** 53 focused verifier tests passed; 417 selected regression tests passed (with 6 live opt-in tests skipped in offline run, 7 warnings).
+- **Live verifier rehearsal:** All 6 live scenarios passed across 18 actual Linux sandbox executions in 34.07s; 55 external fixture-oracle checks verified.
+- **Fresh native leased-model canary:** Successfully executed across real controller → task → lease → worker → model inference path using `qwen2.5:1.5b` on laptop (`100.101.187.115`). Unmodified immutable response bytes captured directly into `qc.code_bundle.v1`. Demonstrated:
+  1. Correct behavior passing approved integer cases in confined Linux container.
+  2. Incorrect/forged code failing verifier despite exit code 0 and self-proclaimed authority flags.
+  3. Bounded revision with fresh task, lease, review, and grant without exposing test oracles to prompt.
+  4. Root verifier consume-before-execute nonce replay denial and controller stale binding rejection.
+  5. Timeout cancellation with confirmed cgroup and process cleanup.
+- **Safety holds:** All administrative holds remain FAIL-CLOSED. No production deployment, service restart, or hold removal authorized. Evidence recorded in `docs/verified-work/evidence/laptop-native-canary-f706a49af04d4182a27a5887d1f9fc85.json`.

@@ -1,0 +1,81 @@
+{
+  "batch_id": "f706a49af04d4182a27a5887d1f9fc85",
+  "started_at": "2026-10-28T08:21:32.468391+00:00",
+  "worker_id": "canary-worker-5c1adaf8",
+  "project_id": "prj-404bf21feb2c4bf9a442d8c2144317cf",
+  "run_id": "run-canary-dc250257",
+  "plan_revision_1": "rev-canary-1-c68acf",
+  "scenarios": {
+    "correct_behavior": {
+      "task_id": "task-dea99ca8",
+      "lease_id": "lease_61b5f638a1d3",
+      "model_response_sha256": "e62412c2117fca5ec1d9668bb66db37fba553de610a0600e99d1956e266565cf",
+      "review_id": "ed352f95290dcefed900c488a9dd72b0daeb7c45953f198da67d5fa325885128",
+      "grant_id": "48973547b57fa9a119d8caf3b2110024b21123f0912351d5d89d34ef00823239",
+      "decision": "CASES_PASSED",
+      "behavior_verified": true,
+      "cases": [
+        {
+          "case_id": "case_pos",
+          "requirement_id": "integer_addition",
+          "passed": true
+        },
+        {
+          "case_id": "case_neg",
+          "requirement_id": "integer_addition",
+          "passed": true
+        },
+        {
+          "case_id": "case_zero",
+          "requirement_id": "integer_addition",
+          "passed": true
+        }
+      ]
+    },
+    "incorrect_behavior_rejected": {
+      "task_id": "task-1cc587e0",
+      "lease_id": "lease_248b53e09aab",
+      "model_response_sha256": "1d07606d3791f2538f22b960cc4809b147ed10a209e6103551fb4e4933b7a98e",
+      "review_id": "407d8c83d0385a2ff823c67c132c56965d1ce66660068eb7ebec9a454bfd612e",
+      "grant_id": "18399393c1acb33b7adbea837b20230c7bc176b59e7bb200c337e61faee54e50",
+      "decision": "CASES_FAILED",
+      "behavior_verified": false,
+      "observations_exit_code_zero": true
+    },
+    "bounded_revision": {
+      "task_id": "task-a3a62ec4",
+      "lease_id": "lease_016b0efeae9f",
+      "model_response_sha256": "7601ab6c583460eefcf30d47b1b9dc56a177dc9be1bbce00c6bfda0e5a33f834",
+      "review_id": "f44be96689b96e09f2cea4422ba944edb7b235b3a34f3c62451ac384c92d1e89",
+      "grant_id": "81cbd515bc8eaae3d8545e4e476573d23647d9b3c1c135a3ef350e0afdd8e271",
+      "decision": "CASES_PASSED",
+      "behavior_verified": true
+    },
+    "stale_replay_rejection": {
+      "root_nonce_replay_denied": true,
+      "stale_controller_binding_rejected": true
+    },
+    "timeout_cancellation_cleanup": {
+      "task_id": "task-f7464528",
+      "lease_id": "lease_72f7b9dcac4b",
+      "decision": "CASES_FAILED",
+      "behavior_verified": false,
+      "reasons": [
+        "timeout",
+        "timeout",
+        "timeout"
+      ],
+      "all_cleanup_confirmed": true
+    }
+  },
+  "post_test_host_integrity": {
+    "services": {
+      "qwen-worker.service": "MainPID=554427; ActiveState=active; SubState=running",
+      "ollama.service": "MainPID=1432; ActiveState=active; SubState=running",
+      "qc-ollama-ts.service": "MainPID=519545; ActiveState=active; SubState=running"
+    },
+    "policy_exists": false
+  },
+  "completed_at": "2026-10-28T08:22:16.525072+00:00",
+  "passed": true
+}

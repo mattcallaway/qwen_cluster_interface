@@ -1,12 +1,16 @@
 """Authenticated test transport. Key/grant are stdin-only; private key is never read into reports."""
-import json,shlex,sys
+import json,os,shlex,sys
 from pathlib import Path
 import paramiko
-root=Path(__file__).resolve().parent.parent
-candidate=root/'work/qwen-candidate'
+script_path=Path(__file__).resolve()
+repo_root=script_path.parents[3] if len(script_path.parents)>3 and (script_path.parents[3]/'vps_agent').exists() else script_path.parents[1]
+vps_dir=repo_root/'vps_agent' if (repo_root/'vps_agent').exists() else (repo_root/'work/qwen-candidate/vps_agent')
+harness_file=script_path.parent/'laptop_protected_verifier_harness.py' if (script_path.parent/'laptop_protected_verifier_harness.py').exists() else (repo_root/'work/laptop_protected_verifier_harness.py')
+out_dir=Path(os.environ['QC_VERIFIER_OUTPUT_DIR']) if os.environ.get('QC_VERIFIER_OUTPUT_DIR') else ((repo_root/'docs/verified-work/evidence') if (repo_root/'docs/verified-work/evidence').exists() else (repo_root/'outputs'))
+out_dir.mkdir(parents=True,exist_ok=True)
 request=json.load(sys.stdin)
-context={**request,**{name:(candidate/'vps_agent'/(name+'.py')).read_text() for name in ('linux_sandbox','independent_verifier')}}
-harness=(root/'work/laptop_protected_verifier_harness.py').read_text()
+context={**request,**{name:(vps_dir/(name+'.py')).read_text() for name in ('linux_sandbox','independent_verifier')}}
+harness=harness_file.read_text()
 bootstrap='import sys,json,io;d=json.load(sys.stdin);sys.stdin=io.StringIO(json.dumps(d["context"]));exec(compile(d["script"],"<reviewed-protected-verifier>","exec"))'
 client=paramiko.SSHClient()
 client.load_system_host_keys(r'C:\Users\Matt C\.ssh\known_hosts');client.set_missing_host_key_policy(paramiko.RejectPolicy())
@@ -21,6 +25,6 @@ try:
         raise RuntimeError('Protected verifier transport failed: '+errors.decode(errors='replace')[-1500:])
     response=json.loads(raw)
     report=response['evidence']; report['receipt']=response['receipt']
-    (root/'outputs'/('laptop-verifier-'+request['grant']['nonce']+'.json')).write_text(json.dumps(report,indent=2),encoding='utf-8')
+    (out_dir/('laptop-verifier-'+request['grant']['nonce']+'.json')).write_text(json.dumps(report,indent=2),encoding='utf-8')
     print(json.dumps(response['receipt']))
 finally: client.close()
