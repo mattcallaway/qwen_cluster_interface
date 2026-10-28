@@ -1,0 +1,97 @@
+[
+  {
+    "path": "ANTIGRAVITY_HANDOFF_PROMPT.md",
+    "sha256": "9d2efd10aa8449a6619602766d8b0add37cbe87fcfb0d64dc7b770812b55e1d2",
+    "size": 9682
+  },
+  {
+    "path": "candidate-manifest.json",
+    "sha256": "2a8e974ea5702446374022155ff5d7575f0fc33fbb0ca5c363582f19f6fdd63b",
+    "size": 32987
+  },
+  {
+    "path": "credential-review-check.json",
+    "sha256": "9e9e2017f7a2e0b9d3dce5e2c6db83f55dd6b9118b838bcbbcbd6d2a96b422a7",
+    "size": 120
+  },
+  {
+    "path": "documentation-checks.json",
+    "sha256": "25917b1c2a438e124f33130c172315969f05e37dfae7938717c95b3cf1cf0304",
+    "size": 9054
+  },
+  {
+    "path": "increment16-focused-tests.txt",
+    "sha256": "169384d74021a95e44edffcacf455f2f1c7993e6805f91710e673b532052ef46",
+    "size": 184
+  },
+  {
+    "path": "increment16-integration-tests.txt",
+    "sha256": "2ed2bae74520d9448a46c060a931baaa4757a3295b0ab39a501eda5c98cd5d87",
+    "size": 2355
+  },
+  {
+    "path": "increment16-laptop-live-tests.txt",
+    "sha256": "a15e2b114aae306c986b0bb6310e68e252d58129d116a582b70f89241304730e",
+    "size": 934
+  },
+  {
+    "path": "INCREMENT_16_PROTECTED_CODE_VERIFICATION.md",
+    "sha256": "e2b3991ded5e09247a428d946e99e88b496b939c0325d4f813bf5d9ab75853af",
+    "size": 10066
+  },
+  {
+    "path": "laptop-verifier-2e88f8a8a1234e40bc1c754d894fe160.json",
+    "sha256": "2bb86c6b255418317f0b18994d482591d6e5944dddf6f54b963a1441bb68ae75",
+    "size": 6676
+  },
+  {
+    "path": "laptop-verifier-5db65514d4134f0b8fffa9e2348105a4.json",
+    "sha256": "44e1055244164a875e70602fcbea9d58d90a29801bc83666a60f9e93358e6d15",
+    "size": 6769
+  },
+  {
+    "path": "laptop-verifier-6424cab2217c497f89030442785d95c3.json",
+    "sha256": "ae230a62c72f349b1d8d1eebb2194a9a25ffa4011f54c9989b6f55a0e9bff1fc",
+    "size": 203293
+  },
+  {
+    "path": "laptop-verifier-7b805e9f896346e78266692ccfdb466b.json",
+    "sha256": "2094c83308caf5da49437b7b01e21ed9b367d5112a6f659d56f57c092a592af5",
+    "size": 6625
+  },
+  {
+    "path": "laptop-verifier-8c51181c072c4c54a8441485b89ab8b8.json",
+    "sha256": "764626e2d012e91905622cf4a7b4a872393123ba93c87c947c4558a7d6fec1cc",
+    "size": 6671
+  },
+  {
+    "path": "laptop-verifier-f72de4d60f1445c6877f19e46e537232.json",
+    "sha256": "830c8a3828cfe4e105f137ab75770c1a2da5408a8c8f03a4bfe68dd4b6e26c80",
+    "size": 6671
+  },
+  {
+    "path": "laptop-verifier-independent-checks.json",
+    "sha256": "79e1bfd727731af579f548f16021e37d19548c3809eb6420e06b4f9d418d59d6",
+    "size": 8049
+  },
+  {
+    "path": "PROTECTED_VERIFIER.md",
+    "sha256": "33ef19b41bae3c7f4fb9a08c4ea9516f1860357a7c9d74ae4eafaebf95f6ef60",
+    "size": 3556
+  },
+  {
+    "path": "qwen-containment.patch",
+    "sha256": "1a1611d5759c9918d4e7cb59cb3f42ae442e84d8c564e07932f73a64197cc854",
+    "size": 1267382
+  },
+  {
+    "path": "README.md",
+    "sha256": "f279e7d7a30b346b0c1a0130024d8086e7b04a47e8c7471d2c0f8f0ed2e7e5f7",
+    "size": 1518
+  },
+  {
+    "path": "SYNC_BEFORE_PUBLICATION.json",
+    "sha256": "db2d546d281f94b4daa0b109bd3357ac4e60e6101ada3c547cc6b48b985fb1f9",
+    "size": 955
+  }
+]

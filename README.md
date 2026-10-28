@@ -1,3 +1,5 @@
+> **2026-10-28 development review:** [Verified-work package and Antigravity handoff](docs/verified-work-review/increment16/README.md). Candidate evidence only; runtime integration and production activation remain gated.
+
 # Qwen Collective
 ### A Sovereign, Distributed AI Coordination & Execution Platform
 

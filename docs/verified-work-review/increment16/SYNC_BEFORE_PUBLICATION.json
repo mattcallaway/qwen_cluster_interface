@@ -1,0 +1,22 @@
+{
+  "observed_at_utc": "2026-10-28T07:41:21.754416+00:00",
+  "original_branch": "remediation/production-recovery",
+  "original_head": "5d3d90a21a33b1a8b9b0bc6c81387bd9f40a60fa",
+  "original_dirty_entries": 187,
+  "original_untracked_entries": 143,
+  "remote_heads": {
+    "refs/heads/main": "4be7f547f4919380a22abdd2122961d559d2f46f"
+  },
+  "manifest_paths_checked": 152,
+  "original_baseline_drift": [],
+  "candidate_or_output_drift": [],
+  "candidate_matches_review_manifest": true,
+  "original_matches_recorded_dirty_baseline": true,
+  "antigravity_runtime_source_equals_candidate": false,
+  "production_deployed": false,
+  "status": "REVIEW_PACKAGE_ONLY; Antigravity baseline preserved, candidate not integrated into runtime source",
+  "limits": [
+    "Manifest scan covers reviewed paths, not every file or production runtime.",
+    "Repository branch equality does not establish deployment or host configuration equality."
+  ]
+}
