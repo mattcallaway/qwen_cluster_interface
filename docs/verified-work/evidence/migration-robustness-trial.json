@@ -1,12 +1,17 @@
 {
-  "migration_duration_ms": 0.0,
-  "concurrent_writes": 25,
-  "concurrent_reads": 24,
-  "mean_write_latency_ms": 0.64,
+  "migration_duration_ms": 16.0,
+  "concurrent_writes": 31,
+  "concurrent_reads": 33,
+  "long_running_transaction_overlap": true,
+  "mean_write_latency_ms": 1.52,
   "errors": 0,
-  "pre_backup_sha256": "9e939bb0a703cda31ab94ebc9519804e486cf0c61c7bdbb679a9d56e1f68d2ab",
+  "pre_backup_file_sha256": "32b1f40c7bab3f5f2c8f36e8fa300ac33fd2f1a8dcf66b59bd9f82db413c5b1c",
+  "restored_backup_file_sha256": "32b1f40c7bab3f5f2c8f36e8fa300ac33fd2f1a8dcf66b59bd9f82db413c5b1c",
+  "pre_migration_data_sha256": "a777d834c5dcce56927b7243a14e3f470f022072e91c9db9e36ffd328e788739",
+  "restored_data_sha256": "a777d834c5dcce56927b7243a14e3f470f022072e91c9db9e36ffd328e788739",
   "post_migration_integrity": "ok",
   "restoration_integrity": "ok",
-  "append_only_enforced": true,
-  "audit_history_preserved_on_rollback": true
+  "trigger_immutability_update_blocked": true,
+  "trigger_immutability_delete_blocked": true,
+  "reimported_audit_records_after_restore": 1
 }

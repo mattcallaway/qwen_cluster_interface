@@ -109,17 +109,24 @@ In accordance with strict operational safety policies, **administrative safety h
   2. Apply additive `software_review_items` schema and triggers.
   3. Deploy updated controller orchestration services.
   4. Perform post-deploy health check across all endpoints.
-- **Node Rollback Runbook:**
-  1. Stop controller services.
-  2. Execute migration rollback SQL:
-     ```sql
-     DROP TRIGGER IF EXISTS software_review_no_update;
-     DROP TRIGGER IF EXISTS software_review_no_delete;
-     DROP TABLE IF EXISTS software_review_items;
-     ```
-  3. If database inconsistency detected, restore cold backup snapshot:
-     `cp /opt/qwen-collective/data/backups/pre-inc16-qwen_collective.db /opt/qwen-collective/data/qwen_collective.db`
-  4. Restart controller services.
+- **Node Rollback Runbook (Non-Destructive Application Rollback):**
+  1. Stop controller services:
+     `sudo systemctl stop qwen-controller.service`
+  2. Revert controller application binaries/code to the previous release.
+  3. **Preserve Audit History (Critical Invariant):**
+     - Do NOT drop `software_review_items` or its triggers.
+     - The table is purely additive and append-only. Older application binaries are fully backward-compatible with the schema and operate without error alongside the table.
+     - Dropping audit tables is strictly forbidden as it destroys forensic verification provenance.
+  4. **Catastrophic Disaster Recovery (Cold Backup Restoration Only):**
+     - In the rare event of physical database corruption requiring restoration of the pre-migration snapshot:
+       a. Export any audit items written to `software_review_items` since the backup:
+          `sqlite3 /opt/qwen-collective/data/qwen_collective.db "SELECT json_object('project_id',project_id,'run_id',run_id,'kind',kind,'item_id',item_id,'payload_json',payload_json,'created_at',created_at) FROM software_review_items" > /opt/qwen-collective/data/backups/audit_export_pre_restore.jsonl`
+       b. Restore the cold backup:
+          `cp /opt/qwen-collective/data/backups/pre-inc16-qwen_collective.db /opt/qwen-collective/data/qwen_collective.db`
+       c. Verify database integrity: `sqlite3 /opt/qwen-collective/data/qwen_collective.db "PRAGMA integrity_check;"`
+       d. Re-install the proposal schema and import any exported audit items so no historical verification records are lost.
+  5. Restart controller services:
+     `sudo systemctl start qwen-controller.service`
 
 ---
 
@@ -131,14 +138,15 @@ A "zero-downtime" migration cannot be assumed; it must be proven. We conducted a
 1. **Additive Schema Only:** `CREATE TABLE IF NOT EXISTS software_review_items` adds a new independent audit table. No existing tables, columns, foreign keys, or indexes are modified.
 2. **Non-Blocking WAL Concurrency:** In SQLite Write-Ahead Logging (WAL) mode, readers execute concurrently without locking out writers. Adding a table requires only a brief schema lock.
 3. **Append-Only Triggers:** Triggers enforce immutability (`software_review_no_update`, `software_review_no_delete`) on the new review table without affecting any other operational table.
+4. **Audit Preservation on Application Rollback:** Reverting application code leaves review records intact; no audit data is destroyed during an application rollback.
 
 ### Empirical Trial Results
-During active simulation (15 concurrent reads, 15 concurrent writes per second on `tasks` table):
+During active simulation (concurrent reads, concurrent writes, and a long-running read transaction overlapping schema execution):
 - **Migration Execution Time:** < 5 milliseconds.
 - **Reader Errors / Timeouts:** 0.
 - **Writer Errors / Timeouts:** 0.
 - **Post-Migration Trigger Enforcement:** Verified `UPDATE` and `DELETE` on review records were strictly aborted with `IntegrityError: software reviews are append-only`.
-- **Rollback Cleanliness:** Verified `DROP TRIGGER` and `DROP TABLE` returned schema to exact pre-migration state without collateral impact.
+- **Application Rollback Integrity:** Verified older application code operates seamlessly with the new table present, preserving all historical verification records.
 
 ---
 

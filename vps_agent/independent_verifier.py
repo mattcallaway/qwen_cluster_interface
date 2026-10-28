@@ -53,6 +53,7 @@ def strict_json_equal(actual,expected,depth=0,max_depth=16):
         return actual==expected
     elif isinstance(expected,float):
         if not math.isfinite(actual) or not math.isfinite(expected): return False
+        if abs(expected)>10**14 or abs(actual)>10**14: return False
         return actual==expected
     elif isinstance(expected,str):
         if len(actual)>65536 or len(expected)>65536: return False
@@ -63,6 +64,26 @@ def strict_json_equal(actual,expected,depth=0,max_depth=16):
 
 
 def cases_from(raw,requirement_ids):
+    def validate_bounded_json(val,depth=0,max_depth=16):
+        if depth>max_depth: raise ValueError('Nesting depth exceeds maximum allowed')
+        if isinstance(val,dict):
+            if len(val)>256: raise ValueError('Object key count exceeds maximum allowed')
+            for k,v in val.items():
+                if not isinstance(k,str) or len(k)>256: raise ValueError('Invalid or oversized object key')
+                validate_bounded_json(v,depth=depth+1,max_depth=max_depth)
+        elif isinstance(val,list):
+            if len(val)>256: raise ValueError('Array item count exceeds maximum allowed')
+            for item in val: validate_bounded_json(item,depth=depth+1,max_depth=max_depth)
+        elif isinstance(val,bool): pass
+        elif isinstance(val,int):
+            if abs(val)>10**14: raise ValueError('Integer magnitude exceeds 10^14')
+        elif isinstance(val,float):
+            if not math.isfinite(val) or abs(val)>10**14: raise ValueError('Float nonfinite or magnitude exceeds 10^14')
+        elif isinstance(val,str):
+            if len(val)>65536: raise ValueError('String length exceeds 65536')
+        elif val is None: pass
+        else: raise ValueError('Unsupported JSON type')
+
     if not isinstance(raw,str) or len(raw.encode())>100_000: raise ValueError('Bounded approved tests required')
     doc=strict(raw)
     if (not isinstance(doc,dict) or set(doc)!={'schema','requirement_ids','files'}
@@ -84,6 +105,7 @@ def cases_from(raw,requirement_ids):
                     or any(type(v) is not int or abs(v)>1_000_000 for v in [*case['input'].values(),case['expected']])):
                 raise ValueError('Invalid integer case')
             seen.add(case['id'])
+            case['profile']='qc.integer_cases.v1'
     elif suite['schema']=='qc.json_io_cases.v1':
         if not isinstance(cases,list) or not 2<=len(cases)<=16: raise ValueError('Two to sixteen independent cases required')
         for case in cases:
@@ -93,7 +115,10 @@ def cases_from(raw,requirement_ids):
                 raise ValueError('Invalid JSON I/O case')
             if len(encoded(case['input']))>32_768 or len(encoded(case['expected']))>32_768:
                 raise ValueError('Case I/O exceeds byte limit')
+            validate_bounded_json(case['input'],depth=0,max_depth=16)
+            validate_bounded_json(case['expected'],depth=0,max_depth=16)
             seen.add(case['id'])
+            case['profile']='qc.json_io_cases.v1'
     else:
         raise ValueError('Unsupported test profile')
     if {c['requirement_id'] for c in cases}!=set(requirement_ids): raise ValueError('Uncovered requirement')
@@ -156,10 +181,12 @@ def evaluate_observations(cases,observations):
                 and observation['reason']=='completed' and type(observation['exit_code']) is int and observation['exit_code']==0):
             try:
                 answer=strict(observation['stdout'])
-                if isinstance(answer,dict) and set(answer)=={'value'} and type(answer['value']) is int and type(case['expected']) is int and answer['value']==case['expected']:
-                    passed=True
-                elif strict_json_equal(answer,case['expected']):
-                    passed=True
+                if case.get('profile')=='qc.integer_cases.v1':
+                    if (isinstance(answer,dict) and set(answer)=={'value'} and type(answer['value']) is int and type(case['expected']) is int and answer['value']==case['expected']):
+                        passed=True
+                else:
+                    if strict_json_equal(answer,case['expected']):
+                        passed=True
             except (ValueError,TypeError): pass
         results.append({'case_id':case['id'],'requirement_id':case['requirement_id'],'passed':passed})
     return results
