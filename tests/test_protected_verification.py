@@ -240,3 +240,53 @@ def test_capture_can_create_canonical_artifact_from_worker_record(verification):
     review=r.review('app',identity);c.commit()
     assert review['proposal']['sha256']==f['artifact']['checksum_sha256']
     assert bridge(f).verify(review['id'],'a'*64)['behavior_verified']
+
+
+def test_broader_json_io_contract_profile_and_adequacy(proposal):
+    f=proposal; c=f['conn']; c.commit()
+    doc={'schema':'qc.independent_tests.v1','requirement_ids':['text_summary'],
+        'files':[{'path':'tests/cases.json','content':json.dumps({
+            'schema':'qc.json_io_cases.v1',
+            'cases':[
+                {'id':'basic','requirement_id':'text_summary','input':{'text':'hello world'},'expected':{'words':2,'length':11}},
+                {'id':'empty','requirement_id':'text_summary','input':{'text':''},'expected':{'words':0,'length':0}},
+                {'id':'punctuation','requirement_id':'text_summary','input':{'text':'  one,  two! three?  '},'expected':{'words':3,'length':21}}
+            ]
+        })}]}
+    tests=artifact_service.register_artifact(name='json_io_cases.json',data=json.dumps(doc).encode(),
+        project_id=f['reviewer'].project_id,run_id=f['run_id'])
+    plan=copy.deepcopy(f['plan'])
+    contract={'schema':'qc.software_contract.v1',
+        'requirements':[{'id':'text_summary','description':'Summarize text with word count and length'}],
+        'allowed_files':['src/main.py','web/index.html'],
+        'test_artifact_id':tests['id'],'test_version':1,'test_sha256':tests['checksum_sha256']}
+    plan['deliverables'][0]['acceptance_criteria']=contract
+    rev=f['revision']+'-json-io'
+    c.execute('''INSERT INTO orchestration_plan_revisions
+        (id,run_id,revision_number,status,source,plan_json,created_by,created_at)
+        VALUES (?,?,4,'approved','template',?,'tester','2026-10-28')''',(rev,f['run_id'],json.dumps(plan)))
+    c.execute('UPDATE orchestration_tasks SET revision_id=? WHERE run_id=?',(rev,f['run_id']))
+    c.execute('UPDATE orchestration_runs SET current_revision_id=? WHERE id=?',(rev,f['run_id'])); c.commit()
+    review=f['reviewer'].review('app',f['artifact']['id']); c.commit()
+
+    def pass_transport(grant,key):
+        _,cases=validate_grant(grant)
+        obs=[{'case_id':case['id'],'executed':True,'reason':'completed','exit_code':0,
+            'cleanup_confirmed':True,'stdout':json.dumps(case['expected']),
+            'unit':'qc-sandbox-'+'c'*32+'.service'} for case in cases]
+        return receipt_for(grant,obs,key)
+
+    result=ProtectedVerification(f['reviewer'],pass_transport,nonproduction=True).verify(review['id'],'a'*64)
+    assert result['behavior_verified'] is True and result['decision']=='CASES_PASSED'
+    assert len(result['cases'])==3
+
+    def wrong_transport(grant,key):
+        _,cases=validate_grant(grant)
+        obs=[{'case_id':case['id'],'executed':True,'reason':'completed','exit_code':0,
+            'cleanup_confirmed':True,'stdout':json.dumps({'words':999,'length':999}),
+            'unit':'qc-sandbox-'+'d'*32+'.service'} for case in cases]
+        return receipt_for(grant,obs,key)
+
+    res_wrong=ProtectedVerification(f['reviewer'],wrong_transport,nonproduction=True).verify(review['id'],'a'*64)
+    assert res_wrong['behavior_verified'] is False and res_wrong['decision']=='CASES_FAILED'
+

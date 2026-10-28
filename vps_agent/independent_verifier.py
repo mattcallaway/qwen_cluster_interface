@@ -31,18 +31,31 @@ def cases_from(raw,requirement_ids):
             or set(doc['files'][0])!={'path','content'} or doc['files'][0]['path']!='tests/cases.json'):
         raise ValueError('Approved declarative black-box cases required')
     suite=strict(doc['files'][0]['content'])
-    if not isinstance(suite,dict) or set(suite)!={'schema','cases'} or suite['schema']!='qc.integer_cases.v1':
+    if not isinstance(suite,dict) or set(suite)!={'schema','cases'}:
         raise ValueError('Unsupported test profile')
     cases=suite['cases']; seen=set()
-    if not isinstance(cases,list) or not 2<=len(cases)<=8: raise ValueError('Two to eight independent cases required')
-    for case in cases:
-        if (not isinstance(case,dict) or set(case)!={'id','requirement_id','input','expected'}
-                or not isinstance(case['id'],str) or not re.fullmatch('[a-zA-Z0-9_-]{1,64}',case['id'])
-                or case['id'] in seen or case['requirement_id'] not in requirement_ids
-                or not isinstance(case['input'],dict) or set(case['input'])!={'a','b'}
-                or any(type(v) is not int or abs(v)>1_000_000 for v in [*case['input'].values(),case['expected']])):
-            raise ValueError('Invalid integer case')
-        seen.add(case['id'])
+    if suite['schema']=='qc.integer_cases.v1':
+        if not isinstance(cases,list) or not 2<=len(cases)<=8: raise ValueError('Two to eight independent cases required')
+        for case in cases:
+            if (not isinstance(case,dict) or set(case)!={'id','requirement_id','input','expected'}
+                    or not isinstance(case['id'],str) or not re.fullmatch('[a-zA-Z0-9_-]{1,64}',case['id'])
+                    or case['id'] in seen or case['requirement_id'] not in requirement_ids
+                    or not isinstance(case['input'],dict) or set(case['input'])!={'a','b'}
+                    or any(type(v) is not int or abs(v)>1_000_000 for v in [*case['input'].values(),case['expected']])):
+                raise ValueError('Invalid integer case')
+            seen.add(case['id'])
+    elif suite['schema']=='qc.json_io_cases.v1':
+        if not isinstance(cases,list) or not 2<=len(cases)<=16: raise ValueError('Two to sixteen independent cases required')
+        for case in cases:
+            if (not isinstance(case,dict) or set(case)!={'id','requirement_id','input','expected'}
+                    or not isinstance(case['id'],str) or not re.fullmatch('[a-zA-Z0-9_-]{1,64}',case['id'])
+                    or case['id'] in seen or case['requirement_id'] not in requirement_ids):
+                raise ValueError('Invalid JSON I/O case')
+            if len(encoded(case['input']))>32_768 or len(encoded(case['expected']))>32_768:
+                raise ValueError('Case I/O exceeds byte limit')
+            seen.add(case['id'])
+    else:
+        raise ValueError('Unsupported test profile')
     if {c['requirement_id'] for c in cases}!=set(requirement_ids): raise ValueError('Uncovered requirement')
     return cases
 
@@ -103,7 +116,10 @@ def evaluate_observations(cases,observations):
                 and observation['reason']=='completed' and type(observation['exit_code']) is int and observation['exit_code']==0):
             try:
                 answer=strict(observation['stdout'])
-                passed=isinstance(answer,dict) and set(answer)=={'value'} and type(answer['value']) is int and answer['value']==case['expected']
+                if isinstance(answer,dict) and set(answer)=={'value'} and type(answer['value']) is int and type(case['expected']) is int and answer['value']==case['expected']:
+                    passed=True
+                elif type(answer) is type(case['expected']) and answer==case['expected']:
+                    passed=True
             except (ValueError,TypeError): pass
         results.append({'case_id':case['id'],'requirement_id':case['requirement_id'],'passed':passed})
     return results
