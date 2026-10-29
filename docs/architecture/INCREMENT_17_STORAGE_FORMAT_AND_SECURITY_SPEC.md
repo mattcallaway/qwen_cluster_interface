@@ -1,9 +1,9 @@
 # Increment 17: Storage Format, Cache Identity, and Security Specification
-## Document Identifier: `SPEC-INC17-PAGED-KV-V2.2`
-**Version:** 2.2  
+## Document Identifier: `SPEC-INC17-PAGED-KV-V2.3`
+**Version:** 2.3  
 **Status:** Implemented & Verified  
 **Date:** 2026-10-28  
-**Scope:** `app/services/paged_kv` subsystem, identity issuance authority, and inference lifecycle  
+**Scope:** `app/services/paged_kv` subsystem, identity issuance authority, trusted issuer membership, and inference lifecycle  
 
 ---
 
@@ -36,7 +36,12 @@ The Searchable Paged KV Cache persists fixed-size token KV tensors across Tier 1
 6. **Unverified Model Identity Spoofing:**
    - *Threat:* Deriving revision identifiers from display names or static string profiles allows models with altered weights to share the same namespace.
    - *Defense:* Genuine cross-request KV reuse requires a verified `ModelIdentityManifest` binding actual 64-character SHA-256 weight digests, tokenizer vocabularies, chat templates, and RoPE configurations. Unverified or display-name configurations are restricted to isolated `prototype_simulation` namespaces and barred from genuine tensor reuse.
-7. **Storage Authentication Limitations:**
+7. **Forged Authority & Untrusted Issuer Bypass:**
+   - *Threat:* Callers constructing an `IssuedReuseAuthority` object directly with empty artifacts and arbitrary tokens to claim verified reuse without approval or live artifact verification.
+   - *Defense:* `PagedKVManager` requires an explicitly configured `trusted_issuer`. Genuine reuse requires this trusted component to verify membership in active issuance records, non-empty complete artifact bindings, active manifest approval, live disk validity, matching namespace/tenant/runtime/layout/model instance, and unrevoked status. If unconfigured or unauthorized, the manager fails closed.
+8. **Trust Boundary Definition:**
+   - This boundary prevents misuse through ordinary public APIs and client interfaces. It does not claim protection against arbitrary privileged code executing inside the trusted Python process that directly modifies private runtime structures or memory.
+9. **Storage Authentication Limitations:**
    - Storage authentication protects against unauthorized tampering with stored files on disk, but does not substitute for kernel-level OS access controls. If an attacker gains raw root or process memory inspection capabilities, memory contents and active keys are compromised.
 
 ---
@@ -173,9 +178,23 @@ To eliminate caller-selected or label-based authorization bypasses, identity cla
      - Execution numerical layout (`bshd_fp16`, etc.) and runtime compatibility version.
 3. **Issued Reuse Authority (`IssuedReuseAuthority`):**
    - Cryptographically bound runtime object issued **only** upon successful completion of artifact verification against an approved manifest.
+   - Requires non-empty artifact mapping covering all mandatory roles (`weights`, `tokenizer`, `chat_template`, `rope_config`). Empty or incomplete artifact sets raise `ValueError` fail-closed.
    - Binds the verified manifest, model instance ID, execution namespace, approved tenant scope, and recorded artifact digests.
-   - **TOCTOU / Substitution Protection:** The issued authority provides `verify_live_artifacts()`, actively re-checking file hashes prior to loading or re-using cache pages. If an on-disk artifact changes or is swapped after issuance, authority is immediately invalidated.
-   - **Enforcement Entry Point:** `PagedKVManager.ingest_prompt(..., authority=...)` mandates `isinstance(authority, IssuedReuseAuthority)` and `authority.is_valid_for(namespace)`. Calls without valid authority or under prototype simulation are marked `verified_reuse_authorized: False`.
+   - **TOCTOU / Substitution Protection:** The issued authority provides `verify_live_artifacts()`, actively re-checking file hashes prior to loading or re-using cache pages. If an on-disk artifact changes, is emptied, or is swapped after issuance, authority is immediately invalidated.
+4. **Manager-Trusted Issuer Membership:**
+   - `PagedKVManager` is configured with an explicit `trusted_issuer: Optional[IdentityIssuanceAuthority]`.
+   - Callers cannot pass an issuer or establish authority via caller-supplied objects.
+   - Genuine reuse mandates that `trusted_issuer.validate_authority_for_reuse(authority, namespace)` confirms:
+     - The authority was issued by this specific issuer and exists in its active issuance records.
+     - The authority issuer token matches the issuer's private secret.
+     - The authority's manifest remains approved in the issuer's registry.
+     - Required artifact bindings are complete and non-empty.
+     - Live disk artifacts still match their recorded digests.
+     - Authority has not been revoked.
+   - If no trusted issuer is configured, manager strictly denies all genuine reuse.
+   - During sequence restoration from disk to RAM (`restore_sequence_to_ram`), the sequence's recorded authority is re-validated against the trusted issuer; if revoked or invalidated, restoration fails closed.
+   - Sequence cleanup (`release_sequence`) deterministically frees recorded authorities.
+   - **Enforcement Entry Point:** `PagedKVManager.ingest_prompt(..., authority=...)` mandates verified authority from `trusted_issuer`. Calls without valid authority or under prototype simulation are marked `verified_reuse_authorized: False` and matched tokens return 0.
 
 ---
 
