@@ -37,9 +37,9 @@ All four correctness defects were reproduced with dedicated, independently speci
 | Source File | SHA-256 Digest | Status |
 |---|---|---|
 | `app/services/paged_kv/page_table.py` | `7a1b1bb2e66e02bafbc798b66478e26fd081f348bd17c2739bbbf2563803f24c` | Repaired (F-7) |
-| `app/services/paged_kv/hasher.py` | `864c9dcc438b16a28914a81f4c350e3d2006cf370e14067352aa54a43c3d02ec` | Repaired (F-8, F-12) |
-| `app/services/paged_kv/store.py` | `7f7f7302d07c37ff4eb7bdc44b93c643b3ad3481845093503ccb9d8c0bb4216b` | Repaired (F-9, F-10, F-13) |
-| `app/services/paged_kv/manager.py` | `880f94d97c67936de020467628960fbe9c569d35d2d82df60458e020964bfb02` | Repaired (F-7, F-10, F-12, F-13) |
+| `app/services/paged_kv/hasher.py` | `7b06bd8cff5df5c408d007f179c15349e6cba25ba97b98e09bce0f3c453f68b4` | Repaired (F-8, F-12, F-16) |
+| `app/services/paged_kv/store.py` | `00fa9c8be8098c93ea030479013f51fbbaadede46d76d2f2385151346604b628` | Repaired (F-9, F-10, F-13, F-14, F-15) |
+| `app/services/paged_kv/manager.py` | `9d61955eb0993a9cd6110e3a96a24e38fbd21600a5a4b8c91e589f076b9fbf34` | Repaired (F-7, F-10, F-12, F-13, F-14, F-15, F-16) |
 | `app/services/inference.py` | `723ee4d4e664507818d02facdb299f1603298a5728993de2721d2f0f05a2e610` | Repaired (F-10) |
 | `app/services/pipeline_parallel/activation_protocol.py` | `77f299667d76cc4c32838517fb7ca9e067b061d1f156f7377a792c8ae7bcd509` | Verified |
 | `app/services/pipeline_parallel/topology.py` | `f19d5b0c3eb12bdf8def548b434101dc775e5490bb94a19c79fbc93e1e926a6f` | Verified |
@@ -48,6 +48,8 @@ All four correctness defects were reproduced with dedicated, independently speci
 | `tests/test_paged_kv_namespace_isolation.py` | `d986114b19512f41813463d18a27de2d016096ab6eb7326781db71c0aac13670` | Regression Suite B (11 tests) |
 | `tests/test_paged_kv_stored_integrity.py` | `e71075a053e6b1974528b81bde14fdcec844afc5097a3ee191df773277806690` | Regression Suite C (9 tests) |
 | `tests/test_paged_kv_memory_accounting.py` | `3e4812df644c4fde4c9eb3043c8c82f3d097b23725d1f565283641f91c0f839a` | Regression Suite D |
+| `tests/test_paged_kv_auth_and_identity.py` | `08c06ba5086b733f5eb1db4cf7ffad7f1e6c4edda14f82665c4771c77413a07b` | Regression Suite E (12 tests) |
+| `docs/architecture/INCREMENT_17_STORAGE_FORMAT_AND_SECURITY_SPEC.md` | `9cd8e4c5fba40fd2b8a562afffba95883e88090d874ff863c4208ea0bbc52560` | Format Specification v2.1 |
 
 ---
 
@@ -134,9 +136,50 @@ All four correctness defects were reproduced with dedicated, independently speci
   - `store.read_page(block_hash, expected_namespace_digest)` verifies that stored block hash matches requested key, stored namespace matches expected namespace, and HMAC tag is valid before returning or caching bytes.
   - Enforced equivalent identity checks on Tier 1 RAM hits and disk reloads.
   - Legacy `QCKVP1` envelopes fail closed with explicit deprecation error (`ValueError("Deprecated or unsupported stored page version 1")`).
-- **Verification:** 9 passing tests in `tests/test_paged_kv_stored_integrity.py` covering whole-envelope substitution rejection, payload bit flips, header tampering, trailing data rejection, truncation rejection, path traversal prevention, and corrupt magic rejection.
+### G. Authentication Downgrade Vulnerability (Defect F-14)
+- **Reproduction:** In `PagedKVStore.read_page()`, HMAC authentication was guarded by `if flags & 2:`. An attacker who altered the page payload and cleared bit 1 in the envelope header (`flags & ~FLAG_AUTHENTICATED`) bypassed HMAC verification completely.
+- **Failing Test:** `tests/test_paged_kv_auth_and_identity.py::test_auth_flag_downgrade_with_altered_payload_rejected`
+  ```text
+  AssertionError: DID NOT RAISE ValueError
+  # Returned: b'EVIL'
+  ```
+- **Root Cause:** Authentication verification was dictated by untrusted header flags rather than trusted caller/reader policy.
+- **Architectural Fix:**
+  - Enforced reader-mandated authentication policy on every `QCKVP2` page.
+  - Required `FLAG_AUTHENTICATED` (0x0002) in header flags; rejected unknown or incompatible flags (`flags & ~0x0003 != 0`).
+  - Evaluated header HMAC-SHA256 using constant-time comparison (`hmac.compare_digest`) before reading or decompressing the payload.
+- **Verification:** 4 tests in `tests/test_paged_kv_auth_and_identity.py` verifying altered payload rejection, unknown flag combination rejection, zeroed HMAC rejection, and forged envelope rejection using an independent secret key.
+
+### H. Hardcoded Storage Authentication Key Fallback (Defect F-15)
+- **Reproduction:** When `auth_key` was omitted and `PAGED_KV_STORAGE_KEY` was unset, `PagedKVStore` silently defaulted to `b"qc_internal_storage_key_v2_f89c1a"`, sharing the same key across unconfigured nodes.
+- **Failing Test:** `tests/test_paged_kv_auth_and_identity.py::test_unconfigured_store_fails_closed_without_hardcoded_key`
+  ```text
+  AssertionError: DID NOT RAISE ValueError
+  ```
+- **Root Cause:** Silent fallback to a source-visible hardcoded byte string.
+- **Architectural Fix:**
+  - Removed all hardcoded fallback keys from source code.
+  - Implemented `validate_storage_key()`, requiring an explicit key ($\ge 32$ bytes / 256 bits) passed via `auth_key` parameter or `PAGED_KV_STORAGE_KEY` environment variable.
+  - Unconfigured persistent stores fail closed with `ValueError`.
+  - Ephemeral test fixtures (`os.urandom(32)`) isolate test runs without contaminating application configuration.
+  - Documented key rotation and restart semantics: unauthenticated pages under new keys fail closed as safe cache misses.
+- **Verification:** 4 tests in `tests/test_paged_kv_auth_and_identity.py` verifying fail-closed unconfigured startup, length validation ($\ge 32$ bytes), type validation, and key rotation isolation.
+
+### I. Unverified Model Identity & Display-Name Spoofing (Defect F-16)
+- **Reproduction:** `ExecutionNamespace.create_canonical()` derived model revisions from display name strings (`f"rev_{hashlib.sha256(f'rev:{norm_name}'.encode()).hexdigest()[:16]}"`) or hardcoded mock profiles. Two models with differing weights but identical display names produced the same namespace digest.
+- **Failing Test:** `tests/test_paged_kv_auth_and_identity.py::test_changed_weights_under_same_display_name_changes_namespace`
+  ```text
+  TypeError: 'NoneType' object is not callable (ModelIdentityManifest missing)
+  ```
+- **Root Cause:** Deriving execution namespaces from display names or static string mocks without cryptographic binding to actual model weight digests, tokenizer vocabularies, and RoPE parameters.
+- **Architectural Fix:**
+  - Implemented `ModelIdentityManifest` dataclass binding immutable 64-char hex SHA-256 digests for model weights, tokenizer vocabularies, chat templates, and RoPE configurations.
+  - Partitioned namespaces via `identity_scope`: `"verified_runtime"` (authorized for genuine tensor reuse, `is_verified_for_reuse = True`) vs `"prototype_simulation"` (restricted to simulated testing, `is_verified_for_reuse = False`).
+  - Bound `identity_scope` and `runtime_compatibility` into canonical JSON serialization, ensuring prototype simulations and verified runtimes never share namespace digests.
+- **Verification:** 4 tests in `tests/test_paged_kv_auth_and_identity.py` verifying changed weight isolation, prototype reuse isolation, digest format validation, and RAM cache integrity/failure cleanup.
 
 ---
+
 
 
 ## 4. Capability Distinction Matrix

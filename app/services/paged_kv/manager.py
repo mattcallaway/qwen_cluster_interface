@@ -20,6 +20,7 @@ class PagedKVManager:
         max_ram_bytes: Optional[int] = None,
         block_size: int = 16,
         compress: bool = True,
+        auth_key: Optional[Union[bytes, str]] = None,
     ):
         self.block_size = block_size
         self.max_ram_blocks = max_ram_blocks
@@ -28,7 +29,7 @@ class PagedKVManager:
         self.radix_tree = PrefixRadixTree(hasher=self.hasher)
         self.pool = PhysicalBlockPool(total_blocks=max_ram_blocks * 4)
         self.table = VirtualBlockTable(pool=self.pool)
-        self.store = PagedKVStore(storage_dir=storage_dir, compress=compress)
+        self.store = PagedKVStore(storage_dir=storage_dir, compress=compress, auth_key=auth_key)
 
         # Connect physical pool eviction callback to safely offload unpinned blocks to disk
         self.pool.eviction_callback = self._evict_lru_page_to_disk
@@ -127,6 +128,8 @@ class PagedKVManager:
             "total_sequence_blocks": len(self.table.get_physical_blocks(sequence_id)),
             "ram_blocks_in_use": self.store.get_ram_page_count(),
             "ram_bytes_in_use": self.store.get_ram_bytes(),
+            "verified_reuse_authorized": namespace.is_verified_for_reuse,
+            "identity_scope": namespace.identity_scope,
         }
 
     def _evict_lru_page_to_disk(self) -> bool:

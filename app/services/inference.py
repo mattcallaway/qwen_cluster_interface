@@ -29,11 +29,13 @@ def get_paged_kv_manager() -> Any:
         from app.services.paged_kv import PagedKVManager
 
         kv_dir = settings.data_dir / "kv_cache"
+        auth_key = os.environ.get("PAGED_KV_STORAGE_KEY") or os.environ.get("QC_PAGED_KV_STORAGE_KEY")
         _paged_kv_manager = PagedKVManager(
             storage_dir=kv_dir,
             max_ram_blocks=int(os.getenv("QC_PAGED_KV_MAX_RAM_BLOCKS", "128")),
             block_size=int(os.getenv("QC_PAGED_KV_BLOCK_SIZE", "16")),
             compress=True,
+            auth_key=auth_key,
         )
     return _paged_kv_manager
 

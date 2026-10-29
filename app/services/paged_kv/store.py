@@ -24,6 +24,56 @@ MAGIC_BYTES = b"QCKVP2"
 V1_MAGIC_BYTES = b"QCKVP1"
 MAX_PAGE_BYTES = 64 * 1024 * 1024  # 64 MB ceiling per block page
 
+FLAG_COMPRESSED_ZLIB = 0x0001
+FLAG_AUTHENTICATED = 0x0002
+SUPPORTED_FLAGS = FLAG_COMPRESSED_ZLIB | FLAG_AUTHENTICATED
+MIN_KEY_BYTES = 32
+
+
+def validate_storage_key(auth_key: Optional[Union[bytes, str]] = None) -> bytes:
+    """
+    Validates and resolves the storage authentication key.
+    Enforces that:
+    - An explicit key is provided via parameter or PAGED_KV_STORAGE_KEY environment variable.
+    - Key type is bytes or str (hex-encoded or raw).
+    - Minimum length is at least 32 bytes (256 bits).
+    - No hardcoded or silent fallback key is permitted.
+    """
+    if auth_key is None:
+        raw = os.environ.get("PAGED_KV_STORAGE_KEY", "").strip()
+        if not raw:
+            raw = os.environ.get("QC_PAGED_KV_STORAGE_KEY", "").strip()
+        if not raw:
+            raise ValueError(
+                "Missing storage authentication key: PagedKVStore requires an explicit, protected 256-bit key. "
+                "Provide 'auth_key' (bytes/str >= 32 bytes) or set 'PAGED_KV_STORAGE_KEY'. "
+                "Failing closed to prevent unauthenticated storage access."
+            )
+        auth_key = raw
+
+    if isinstance(auth_key, str):
+        if not auth_key.strip():
+            raise ValueError("Storage authentication key cannot be empty or whitespace only")
+        # Support hex-encoded 64-character strings (32 bytes)
+        if len(auth_key) == 64:
+            try:
+                key_bytes = bytes.fromhex(auth_key)
+            except ValueError:
+                key_bytes = auth_key.encode("utf-8")
+        else:
+            key_bytes = auth_key.encode("utf-8")
+    elif isinstance(auth_key, (bytes, bytearray)):
+        key_bytes = bytes(auth_key)
+    else:
+        raise TypeError(f"auth_key must be bytes or str, got {type(auth_key).__name__}")
+
+    if len(key_bytes) < MIN_KEY_BYTES:
+        raise ValueError(
+            f"Insufficient storage key length: key must be at least {MIN_KEY_BYTES} bytes (256 bits), got {len(key_bytes)} bytes"
+        )
+
+    return key_bytes
+
 
 def _ns_to_bytes(ns: str) -> bytes:
     """Converts a namespace digest string (64-char hex or arbitrary string) to 32 raw bytes."""
@@ -59,14 +109,13 @@ class PagedKVStore:
         self,
         storage_dir: Union[str, Path],
         compress: bool = True,
-        auth_key: Optional[bytes] = None,
+        auth_key: Optional[Union[bytes, str]] = None,
     ):
         self.storage_dir = Path(storage_dir)
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.compress = compress
-        # Storage envelope authentication key (HMAC-SHA256)
-        raw_key = auth_key or os.environ.get("PAGED_KV_STORAGE_KEY", "").encode("utf-8")
-        self.auth_key = raw_key if raw_key else b"qc_internal_storage_key_v2_f89c1a"
+        # Storage envelope authentication key (HMAC-SHA256) - fail closed if unconfigured
+        self.auth_key = validate_storage_key(auth_key)
         # In-memory RAM cache: block_hash -> RamCacheEntry
         self._ram_cache: Dict[str, RamCacheEntry] = {}
         self.current_ram_bytes: int = 0
@@ -116,10 +165,10 @@ class PagedKVStore:
 
             if self.compress:
                 disk_payload = zlib.compress(tensor_bytes, level=6)
-                flags = 1 | 2  # bit 0: compressed, bit 1: authenticated
+                flags = FLAG_AUTHENTICATED | FLAG_COMPRESSED_ZLIB
             else:
                 disk_payload = tensor_bytes
-                flags = 2  # bit 1: authenticated
+                flags = FLAG_AUTHENTICATED
 
             hash_bytes = block_hash.encode("ascii")[:64].ljust(64, b"\x00")
             ns_bytes = _ns_to_bytes(namespace_digest)
@@ -165,15 +214,29 @@ class PagedKVStore:
             entry = self._ram_cache.pop(block_hash)
             self._ram_cache[block_hash] = entry
 
+            if entry.block_hash != block_hash:
+                self.evict_from_ram(block_hash)
+                raise ValueError(
+                    f"RAM cache key mismatch for {block_hash}: entry key is {entry.block_hash}"
+                )
+
             if expected_namespace_digest is not None:
                 expected_ns_b = _ns_to_bytes(expected_namespace_digest)
                 stored_ns_b = _ns_to_bytes(entry.namespace_digest)
                 if stored_ns_b != expected_ns_b:
+                    self.evict_from_ram(block_hash)
                     raise ValueError(
                         f"RAM cache namespace mismatch for {block_hash}: "
                         f"expected {expected_namespace_digest}, found {entry.namespace_digest}"
                     )
-            if expected_payload_sha is not None and entry.payload_sha != expected_payload_sha:
+
+            actual_ram_sha = hashlib.sha256(entry.tensor_bytes).digest()
+            if not hmac.compare_digest(actual_ram_sha, entry.payload_sha):
+                self.evict_from_ram(block_hash)
+                raise ValueError(f"RAM cache payload digest mismatch for {block_hash}")
+
+            if expected_payload_sha is not None and not hmac.compare_digest(entry.payload_sha, expected_payload_sha):
+                self.evict_from_ram(block_hash)
                 raise ValueError(f"RAM cache payload digest mismatch for {block_hash}")
 
             return entry.tensor_bytes
@@ -192,31 +255,36 @@ class PagedKVStore:
                         raise ValueError(f"Deprecated or unsupported stored page version 1 for {block_hash}")
             raise ValueError(f"Corrupt page envelope for {block_hash}: file size {file_size} < header {HEADER_SIZE}")
 
+        # Bounded parsing: read header first to authenticate before reading/allocating payload
         with open(disk_path, "rb") as f:
-            raw = f.read(MAX_PAGE_BYTES + 1)
+            raw_header = f.read(HEADER_SIZE)
 
-        if len(raw) > MAX_PAGE_BYTES:
-            raise ValueError("Read exceeded maximum page limit")
-
-        magic = raw[:6]
+        magic = raw_header[:6]
         if magic == V1_MAGIC_BYTES:
             raise ValueError(f"Deprecated or unsupported stored page version 1 for {block_hash}")
         if magic != MAGIC_BYTES:
             raise ValueError(f"Invalid magic bytes in stored page {block_hash}: {magic!r}")
 
         magic, version, flags, stored_hash_bytes, stored_ns_bytes, orig_len, comp_len, expected_sha, stored_hmac = struct.unpack(
-            HEADER_FORMAT, raw[:HEADER_SIZE]
+            HEADER_FORMAT, raw_header
         )
 
         if version != 2:
             raise ValueError(f"Unsupported stored page version {version} for {block_hash}")
 
-        # Verify header HMAC authentication tag
-        if flags & 2:
-            header_prefix = raw[:HEADER_SIZE - 32]
-            computed_hmac = hmac.new(self.auth_key, header_prefix, hashlib.sha256).digest()
-            if not hmac.compare_digest(computed_hmac, stored_hmac):
-                raise ValueError(f"Envelope authentication failed for {block_hash}: header HMAC mismatch")
+        # Enforce reader authentication policy: reject unauthenticated envelopes or unknown flags
+        if flags & ~SUPPORTED_FLAGS != 0:
+            raise ValueError(f"Unsupported or unknown flags in stored page {block_hash}: {flags:#06x}")
+        if not (flags & FLAG_AUTHENTICATED):
+            raise ValueError(
+                f"Unauthenticated envelope for {block_hash}: missing mandatory authentication flag (flags={flags:#06x})"
+            )
+
+        # Constant-time HMAC authentication check of header metadata BEFORE reading or decompressing payload
+        header_prefix = raw_header[:HEADER_SIZE - 32]
+        computed_hmac = hmac.new(self.auth_key, header_prefix, hashlib.sha256).digest()
+        if not hmac.compare_digest(computed_hmac, stored_hmac):
+            raise ValueError(f"Envelope authentication failed for {block_hash}: header HMAC mismatch")
 
         # Verify block hash (key identity)
         stored_hash = stored_hash_bytes.rstrip(b"\x00").decode("ascii", errors="replace")
@@ -235,17 +303,31 @@ class PagedKVStore:
 
         if orig_len > MAX_PAGE_BYTES:
             raise ValueError(f"Declared uncompressed length exceeds safe maximum: {orig_len}")
+        if comp_len > MAX_PAGE_BYTES:
+            raise ValueError(f"Declared compressed length exceeds safe maximum: {comp_len}")
 
-        disk_payload = raw[HEADER_SIZE:]
-        if len(disk_payload) != comp_len:
+        # Bound exact file length: prevent truncated payload or trailing junk
+        expected_file_size = HEADER_SIZE + comp_len
+        if file_size != expected_file_size:
             raise ValueError(
-                f"Page envelope length mismatch for {block_hash}: declared compressed length {comp_len}, actual payload bytes {len(disk_payload)}"
+                f"Page envelope length mismatch for {block_hash}: declared envelope total {expected_file_size}, actual file size {file_size}"
             )
 
-        if flags & 1:  # Compressed
+        with open(disk_path, "rb") as f:
+            f.seek(HEADER_SIZE)
+            disk_payload = f.read(comp_len + 1)
+
+        if len(disk_payload) != comp_len:
+            raise ValueError(
+                f"Page envelope length mismatch for {block_hash}: declared payload {comp_len}, actual read {len(disk_payload)}"
+            )
+
+        if flags & FLAG_COMPRESSED_ZLIB:
             try:
                 decompressor = zlib.decompressobj()
-                tensor_bytes = decompressor.decompress(disk_payload, max_length=orig_len + 1024)
+                tensor_bytes = decompressor.decompress(disk_payload, max_length=orig_len + 1)
+                if decompressor.unused_data:
+                    raise ValueError("Trailing data detected in decompression stream")
             except Exception as e:
                 raise ValueError(f"Decompression failed for stored page {block_hash}: {e}")
         else:
@@ -258,11 +340,11 @@ class PagedKVStore:
 
         # Cryptographic integrity check: verify tensor payload matches authentic SHA-256
         actual_sha = hashlib.sha256(tensor_bytes).digest()
-        if actual_sha != expected_sha:
+        if not hmac.compare_digest(actual_sha, expected_sha):
             raise ValueError(
                 f"Stored page integrity check failed for {block_hash}: SHA-256 digest mismatch"
             )
-        if expected_payload_sha is not None and actual_sha != expected_payload_sha:
+        if expected_payload_sha is not None and not hmac.compare_digest(actual_sha, expected_payload_sha):
             raise ValueError(
                 f"Stored page payload digest does not match caller expected payload SHA-256 for {block_hash}"
             )
@@ -274,58 +356,40 @@ class PagedKVStore:
             payload_sha=actual_sha,
         )
         self.current_ram_bytes += len(tensor_bytes)
+
         return tensor_bytes
 
     def evict_from_ram(self, block_hash: str) -> bool:
-        """
-        Evicts a page from Tier 1 RAM cache while ensuring it remains durable on Tier 2 disk.
-        Returns True if evicted, False if not in RAM.
-        """
+        """Evicts a page from RAM cache without affecting disk copy."""
+        entry = self._ram_cache.pop(block_hash, None)
+        if entry is not None:
+            self.current_ram_bytes -= len(entry.tensor_bytes)
+            return True
+        return False
+
+    def delete_page(self, block_hash: str) -> bool:
+        """Deletes a page from both RAM and disk."""
         self._validate_hash(block_hash)
-        if block_hash not in self._ram_cache:
-            return False
-
-        # Ensure page is on disk before discarding from RAM
+        ram_deleted = self.evict_from_ram(block_hash)
         disk_path = self._get_disk_path(block_hash)
-        if not disk_path.exists():
-            entry = self._ram_cache[block_hash]
-            self.write_page(
-                block_hash,
-                entry.tensor_bytes,
-                persist_to_disk=True,
-                namespace_digest=entry.namespace_digest,
-            )
-
-        evicted_entry = self._ram_cache.pop(block_hash)
-        self.current_ram_bytes -= len(evicted_entry.tensor_bytes)
-        return True
+        disk_deleted = False
+        if disk_path.exists():
+            disk_path.unlink()
+            disk_deleted = True
+        return ram_deleted or disk_deleted
 
     def is_in_ram(self, block_hash: str) -> bool:
         return block_hash in self._ram_cache
 
-    def is_on_disk(self, block_hash: str) -> bool:
+    def exists_on_disk(self, block_hash: str) -> bool:
         return self._get_disk_path(block_hash).exists()
+
+    def is_on_disk(self, block_hash: str) -> bool:
+        """Alias for exists_on_disk."""
+        return self.exists_on_disk(block_hash)
 
     def get_ram_page_count(self) -> int:
         return len(self._ram_cache)
 
     def get_ram_bytes(self) -> int:
         return self.current_ram_bytes
-
-    def delete_page(self, block_hash: str) -> bool:
-        """Removes a page from both RAM and disk."""
-        self._validate_hash(block_hash)
-        existed = False
-        if block_hash in self._ram_cache:
-            entry = self._ram_cache.pop(block_hash)
-            self.current_ram_bytes -= len(entry.tensor_bytes)
-            existed = True
-
-        disk_path = self._get_disk_path(block_hash)
-        if disk_path.exists():
-            disk_path.unlink()
-            existed = True
-
-        return existed
-
-

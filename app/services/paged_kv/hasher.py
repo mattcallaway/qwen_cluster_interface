@@ -35,15 +35,73 @@ KNOWN_MODEL_PROFILES: Dict[str, Dict[str, str]] = {
 }
 
 
+import re
+
+@dataclass(frozen=True)
+class ModelIdentityManifest:
+    """
+    Immutable specification of verified model runtime identity.
+    Binds:
+    - model_name: human-readable display name (e.g. 'qwen2.5:1.5b')
+    - weight_digest: 64-character SHA-256 hexadecimal hash of weights
+    - tokenizer_digest: 64-character SHA-256 hexadecimal hash of tokenizer vocab/files
+    - chat_template_digest: 64-character SHA-256 hexadecimal hash of chat template
+    - kv_layout: string identifying memory layout & dtype (e.g. 'bshd_fp16')
+    - rope_config_digest: 64-character SHA-256 hexadecimal hash of RoPE/positional configuration
+    - runtime_compatibility: string identifying runtime architecture (e.g. 'qwen_collective_v2')
+    - tenant_id: tenant or security scope (default 'tenant_local')
+    """
+    model_name: str
+    weight_digest: str
+    tokenizer_digest: str
+    chat_template_digest: str
+    kv_layout: str
+    rope_config_digest: str
+    runtime_compatibility: str = "qwen_collective_v2"
+    tenant_id: str = "tenant_local"
+
+    def __post_init__(self):
+        fields = [
+            ("model_name", self.model_name),
+            ("weight_digest", self.weight_digest),
+            ("tokenizer_digest", self.tokenizer_digest),
+            ("chat_template_digest", self.chat_template_digest),
+            ("kv_layout", self.kv_layout),
+            ("rope_config_digest", self.rope_config_digest),
+            ("runtime_compatibility", self.runtime_compatibility),
+            ("tenant_id", self.tenant_id),
+        ]
+        for name, val in fields:
+            if not isinstance(val, str):
+                raise TypeError(f"ModelIdentityManifest field '{name}' must be a string, got {type(val).__name__}")
+            if not val.strip():
+                raise ValueError(f"ModelIdentityManifest field '{name}' cannot be empty or whitespace only")
+            if val.strip().lower() == "default":
+                raise ValueError(f"ModelIdentityManifest field '{name}' cannot be generic placeholder 'default'")
+
+        # Verify 64-character hex digests for cryptographic hashes
+        hex_fields = [
+            ("weight_digest", self.weight_digest),
+            ("tokenizer_digest", self.tokenizer_digest),
+            ("chat_template_digest", self.chat_template_digest),
+            ("rope_config_digest", self.rope_config_digest),
+        ]
+        for name, val in hex_fields:
+            if len(val) != 64 or not re.match(r"^[0-9a-fA-F]{64}$", val):
+                raise ValueError(f"ModelIdentityManifest field '{name}' must be a 64-character hex SHA-256 digest, got {val!r}")
+
+
 @dataclass(frozen=True)
 class ExecutionNamespace:
     """
     Immutable execution namespace binding cache entries to:
-    - model architecture, weights revision or unique hash
+    - model architecture, verified weights revision or unique hash
     - tokenizer identity and chat template
     - tensor KV layout and numerical dtype
     - RoPE base and position configurations
     - tenant or security scope
+    - identity scope ('verified_runtime' vs 'prototype_simulation')
+    - runtime compatibility version
     """
     model_name: str
     model_revision: str
@@ -52,6 +110,12 @@ class ExecutionNamespace:
     kv_layout: str = "bshd_fp16"
     rope_config_hash: str = "rope_theta_1m_v1"
     tenant_id: str = "tenant_local"
+    identity_scope: str = "prototype_simulation"
+    runtime_compatibility: str = "qwen_collective_v2"
+
+    @property
+    def is_verified_for_reuse(self) -> bool:
+        return self.identity_scope == "verified_runtime"
 
     def __post_init__(self):
         fields = [
@@ -62,6 +126,8 @@ class ExecutionNamespace:
             ("kv_layout", self.kv_layout),
             ("rope_config_hash", self.rope_config_hash),
             ("tenant_id", self.tenant_id),
+            ("identity_scope", self.identity_scope),
+            ("runtime_compatibility", self.runtime_compatibility),
         ]
         for name, val in fields:
             if val is None or not isinstance(val, str):
@@ -73,6 +139,9 @@ class ExecutionNamespace:
             if len(val) > 256:
                 raise ValueError(f"ExecutionNamespace field '{name}' exceeds maximum allowed length of 256 chars (got {len(val)})")
 
+        if self.identity_scope not in ("verified_runtime", "prototype_simulation"):
+            raise ValueError(f"Invalid identity_scope: {self.identity_scope!r}. Must be 'verified_runtime' or 'prototype_simulation'")
+
     def canonical_bytes(self) -> bytes:
         """
         Produces unambiguous, deterministic canonical byte representation.
@@ -83,10 +152,12 @@ class ExecutionNamespace:
             "schema": f"ExecutionNamespace/{SCHEMA_VERSION}",
             "fields": {
                 "chat_template_hash": self.chat_template_hash,
+                "identity_scope": self.identity_scope,
                 "kv_layout": self.kv_layout,
                 "model_name": self.model_name,
                 "model_revision": self.model_revision,
                 "rope_config_hash": self.rope_config_hash,
+                "runtime_compatibility": self.runtime_compatibility,
                 "tenant_id": self.tenant_id,
                 "tokenizer_id": self.tokenizer_id,
             },
@@ -98,7 +169,34 @@ class ExecutionNamespace:
         return hashlib.sha256(self.canonical_bytes()).hexdigest()
 
     @classmethod
-    def create_canonical(
+    def from_manifest(
+        cls,
+        manifest: ModelIdentityManifest,
+        tenant_id: Optional[str] = None,
+    ) -> "ExecutionNamespace":
+        """
+        Constructs a verified execution namespace from a verified ModelIdentityManifest.
+        Marks identity_scope='verified_runtime' and authorizes genuine KV reuse.
+        """
+        if manifest is None or not isinstance(manifest, ModelIdentityManifest):
+            raise ValueError(
+                f"Cannot construct verified ExecutionNamespace: manifest must be an instance of ModelIdentityManifest, got {type(manifest).__name__}"
+            )
+
+        return cls(
+            model_name=manifest.model_name,
+            model_revision=manifest.weight_digest,
+            tokenizer_id=manifest.tokenizer_digest,
+            chat_template_hash=manifest.chat_template_digest,
+            kv_layout=manifest.kv_layout,
+            rope_config_hash=manifest.rope_config_digest,
+            runtime_compatibility=manifest.runtime_compatibility,
+            tenant_id=tenant_id or manifest.tenant_id,
+            identity_scope="verified_runtime",
+        )
+
+    @classmethod
+    def create_prototype_simulation(
         cls,
         model_name: str,
         model_revision: Optional[str] = None,
@@ -107,10 +205,12 @@ class ExecutionNamespace:
         kv_layout: Optional[str] = None,
         rope_config_hash: Optional[str] = None,
         tenant_id: Optional[str] = None,
+        runtime_compatibility: Optional[str] = None,
     ) -> "ExecutionNamespace":
         """
-        Factory to construct an ExecutionNamespace with authentic model profiles
-        or deterministic model-bound attributes, eliminating generic placeholders.
+        Factory to construct an isolated prototype simulation namespace.
+        Explicitly marked identity_scope='prototype_simulation'.
+        Not authorized for genuine production tensor reuse.
         """
         if not model_name or not isinstance(model_name, str) or not model_name.strip():
             raise ValueError("model_name must be a non-empty string")
@@ -118,12 +218,13 @@ class ExecutionNamespace:
         norm_name = model_name.strip()
         profile = KNOWN_MODEL_PROFILES.get(norm_name, {})
 
-        rev = model_revision or profile.get("model_revision") or f"rev_{hashlib.sha256(f'rev:{norm_name}'.encode()).hexdigest()[:16]}"
-        tok = tokenizer_id or profile.get("tokenizer_id") or f"tok_{hashlib.sha256(f'tok:{norm_name}'.encode()).hexdigest()[:16]}"
-        tmpl = chat_template_hash or profile.get("chat_template_hash") or f"tmpl_{hashlib.sha256(f'tmpl:{norm_name}'.encode()).hexdigest()[:16]}"
+        rev = model_revision or profile.get("model_revision") or f"sim_rev_{hashlib.sha256(f'sim:rev:{norm_name}'.encode()).hexdigest()[:16]}"
+        tok = tokenizer_id or profile.get("tokenizer_id") or f"sim_tok_{hashlib.sha256(f'sim:tok:{norm_name}'.encode()).hexdigest()[:16]}"
+        tmpl = chat_template_hash or profile.get("chat_template_hash") or f"sim_tmpl_{hashlib.sha256(f'sim:tmpl:{norm_name}'.encode()).hexdigest()[:16]}"
         layout = kv_layout or profile.get("kv_layout") or "bshd_fp16"
-        rope = rope_config_hash or profile.get("rope_config_hash") or f"rope_{hashlib.sha256(f'rope:{norm_name}'.encode()).hexdigest()[:16]}"
+        rope = rope_config_hash or profile.get("rope_config_hash") or f"sim_rope_{hashlib.sha256(f'sim:rope:{norm_name}'.encode()).hexdigest()[:16]}"
         tenant = tenant_id or profile.get("tenant_id") or "tenant_local"
+        compat = runtime_compatibility or "qwen_collective_v2"
 
         return cls(
             model_name=norm_name,
@@ -133,6 +234,37 @@ class ExecutionNamespace:
             kv_layout=layout,
             rope_config_hash=rope,
             tenant_id=tenant,
+            identity_scope="prototype_simulation",
+            runtime_compatibility=compat,
+        )
+
+    @classmethod
+    def create_canonical(
+        cls,
+        model_name: str,
+        model_revision: Optional[str] = None,
+        tokenizer_id: Optional[str] = None,
+        chat_template_hash: Optional[str] = None,
+        kv_layout: Optional[str] = None,
+        rope_config_hash: Optional[str] = None,
+        tenant_id: Optional[str] = None,
+        manifest: Optional[ModelIdentityManifest] = None,
+    ) -> "ExecutionNamespace":
+        """
+        Constructs an ExecutionNamespace. If a verified manifest is supplied, creates
+        a verified runtime namespace; otherwise creates an isolated prototype simulation namespace.
+        """
+        if manifest is not None:
+            return cls.from_manifest(manifest, tenant_id=tenant_id)
+
+        return cls.create_prototype_simulation(
+            model_name=model_name,
+            model_revision=model_revision,
+            tokenizer_id=tokenizer_id,
+            chat_template_hash=chat_template_hash,
+            kv_layout=kv_layout,
+            rope_config_hash=rope_config_hash,
+            tenant_id=tenant_id,
         )
 
 
