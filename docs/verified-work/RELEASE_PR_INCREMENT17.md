@@ -3,7 +3,7 @@
 **PR Title:** `feat(paged_kv): Increment 17 searchable paged KV cache, pipeline parallelism transport, and complete authority boundary repair`  
 **Base Branch:** `main` (`4be7f547f4919380a22abdd2122961d559d2f46f`)  
 **Head Branch:** `feature/increment17-pipeline-parallelism-paged-kv`  
-**Tested Feature Commit SHA:** `b39810ad91fbe77a6f002228cd710fe0610b6827`  
+**Tested Feature Commit SHA:** `5a4a873c11a5b3840ca13dca2d0a1a3866575b3d`  
 **Tested Integration Rehearsal SHA:** `531dc171be0f85727c07559e9044cf5f56564d70` (rehearsal passed; disposable worktree and branch cleanly removed)  
 **Status:** DRAFT / FOR OPERATOR REVIEW ONLY (Caching disabled by default; production deployment, cache activation, database migration, service restart, and hold removal held fail-closed)  
 
