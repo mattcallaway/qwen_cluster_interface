@@ -13,7 +13,7 @@
     <div>
       <h2 style="font-size: 1.35rem; font-weight: 700;">{{ group.name }}</h2>
       <div style="font-size: 0.85rem; color: var(--text-muted); font-family: var(--font-mono); margin-top: 4px;">
-        ID: {{ group.id }} &bull; Backend: llama.cpp RPC
+        ID: {{ group.id }} &bull; Backend: {{ 'Increment 17 Pipeline Parallelism' if group.backend_type == 'pipeline_parallel' else 'llama.cpp RPC' }}
       </div>
     </div>
     <div>
@@ -50,7 +50,7 @@
           <td>{{ group.context_window }} tokens</td>
         </tr>
         <tr>
-          <td style="color: var(--text-muted); font-weight: 600;">RPC Workers</td>
+          <td style="color: var(--text-muted); font-weight: 600;">{{ 'Downstream Workers' if group.backend_type == 'pipeline_parallel' else 'RPC Workers' }}</td>
           <td>
             {% for rpc in group.rpc_endpoints %}
               <div><code>{{ rpc }}</code></div>
@@ -66,12 +66,21 @@
     <div class="card-title">
       <span>Prerequisites & Security</span>
     </div>
-    <ul style="font-size: 0.85rem; color: var(--text-muted); margin-left: 20px; line-height: 1.8;">
-      <li>Ensure all RPC workers are running: <code>./build/bin/rpc-server -H 0.0.0.0 -p 50052</code></li>
-      <li>Verify network latency between coordinator and workers is minimal (wired Gigabit LAN or 5GHz Wi-Fi recommended).</li>
-      <li><strong>Security Notice:</strong> Keep RPC traffic on an isolated private subnet. RPC has no built-in encryption or authentication.</li>
-      <li>Verify identical Git commit hashes for llama.cpp builds across all nodes to avoid serialization errors.</li>
-    </ul>
+    {% if group.backend_type == 'pipeline_parallel' %}
+      <ul style="font-size: 0.85rem; color: var(--text-muted); margin-left: 20px; line-height: 1.8;">
+        <li>Ensure downstream Stage 1 workers are active: <code>python stage1_worker.py --port 8990 --hidden-dim 896</code></li>
+        <li><strong>Security:</strong> All inter-node activation frames are framed in <code>QCACT1</code> binary envelopes and authenticated with HMAC-SHA256.</li>
+        <li>Network transit routed over Tailscale WireGuard encrypted mesh (LAN/WAN).</li>
+        <li>Stage 0 coordinator runs token embeddings and layers 0–11 on local GPU (FP16).</li>
+      </ul>
+    {% else %}
+      <ul style="font-size: 0.85rem; color: var(--text-muted); margin-left: 20px; line-height: 1.8;">
+        <li>Ensure all RPC workers are running: <code>./build/bin/rpc-server -H 0.0.0.0 -p 50052</code></li>
+        <li>Verify network latency between coordinator and workers is minimal (wired Gigabit LAN or 5GHz Wi-Fi recommended).</li>
+        <li><strong>Security Notice:</strong> Keep RPC traffic on an isolated private subnet. RPC has no built-in encryption or authentication.</li>
+        <li>Verify identical Git commit hashes for llama.cpp builds across all nodes to avoid serialization errors.</li>
+      </ul>
+    {% endif %}
   </div>
 </div>
 

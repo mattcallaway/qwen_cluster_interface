@@ -231,17 +231,20 @@
 
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
         <div class="form-group">
+          <label class="form-label" for="backend_type">Orchestration Architecture</label>
+          <select class="form-control" id="backend_type" name="backend_type">
+            <option value="pipeline_parallel">Increment 17 Pipeline Parallelism (QCACT1 Binary Socket)</option>
+            <option value="llama_cpp_rpc" selected>llama.cpp RPC Cluster</option>
+          </select>
+        </div>
+
+        <div class="form-group">
           <label class="form-label" for="coordinator_id">Coordinator Machine</label>
           <select class="form-control" id="coordinator_id" name="coordinator_machine_id">
             {% for m in machines %}
               <option value="{{ m.id }}">{{ m.display_name }} ({{ m.ip_address }})</option>
             {% endfor %}
           </select>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label" for="context_window">Context Window</label>
-          <input class="form-control" type="number" id="context_window" name="context_window" value="4096">
         </div>
       </div>
 

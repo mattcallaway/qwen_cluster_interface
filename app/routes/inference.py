@@ -129,6 +129,7 @@ def create_group(
     coordinator_machine_id: str = Form(...),
     model_file: str = Form(...),
     rpc_endpoints_raw: str = Form(...),
+    backend_type: str = Form("llama_cpp_rpc"),
     context_window: int = Form(4096),
     runtime_parameters: Optional[str] = Form(""),
     notes: Optional[str] = Form("")
@@ -145,7 +146,8 @@ def create_group(
         rpc_endpoints=rpc_list,
         context_window=context_window,
         runtime_parameters=runtime_parameters or "",
-        notes=notes or ""
+        notes=notes or "",
+        backend_type=backend_type,
     )
     return RedirectResponse(url=f"/inference/groups/{group_id}", status_code=status.HTTP_302_FOUND)
 

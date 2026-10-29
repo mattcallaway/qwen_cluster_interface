@@ -315,7 +315,8 @@ def create_distributed_group(
     rpc_endpoints: List[str],
     context_window: int = 4096,
     runtime_parameters: str = "",
-    notes: str = ""
+    notes: str = "",
+    backend_type: str = "llama_cpp_rpc"
 ) -> str:
     group_id = f"dist-{uuid.uuid4().hex[:8]}"
     now = datetime.now(timezone.utc).isoformat()
@@ -326,9 +327,9 @@ def create_distributed_group(
         id, name, coordinator_machine_id, backend_type,
         model_file, context_window, runtime_parameters,
         rpc_endpoints_json, status, notes, created_at, updated_at
-    ) VALUES (?, ?, ?, 'llama_cpp_rpc', ?, ?, ?, ?, 'ready_for_testing', ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ready_for_testing', ?, ?, ?)
     """, (
-        group_id, name.strip(), coordinator_machine_id, model_file.strip(),
+        group_id, name.strip(), coordinator_machine_id, backend_type.strip(), model_file.strip(),
         context_window, runtime_parameters.strip(), json.dumps(rpc_endpoints),
         notes.strip(), now, now
     ))
@@ -337,7 +338,25 @@ def create_distributed_group(
     return group_id
 
 def generate_distributed_launch_command(group: Dict[str, Any]) -> str:
-    """Generate the exact llama-server command for manual execution on the coordinator."""
+    """Generate launch commands for manual execution on the coordinator and workers."""
+    backend_type = group.get("backend_type", "llama_cpp_rpc")
+    if backend_type == "pipeline_parallel":
+        model_path = group.get("model_file", "Qwen/Qwen2.5-0.5B-Instruct")
+        rpc_list = group.get("rpc_endpoints", [])
+        downstream = rpc_list[0] if rpc_list else "100.101.187.115:8990"
+        extra_params = group.get("runtime_parameters", "").strip()
+
+        cmd_parts = [
+            "# --- Coordinator (Stage 0: Desktop GPU Layers 0-11) ---",
+            f"python -m app.services.pipeline_parallel.runner --stage 0 --model {model_path} --downstream tcp://{downstream}",
+            "",
+            "# --- Worker (Stage 1: Remote Node Layers 12-24) ---",
+            f"python stage1_worker.py --port {downstream.split(':')[-1]} --hidden-dim 896"
+        ]
+        if extra_params:
+            cmd_parts.append(f"# Runtime flags: {extra_params}")
+        return "\n".join(cmd_parts)
+
     model_path = group.get("model_file", "models/qwen2.5-7b-instruct-q4_k_m.gguf")
     ctx = group.get("context_window", 4096)
     rpc_list = group.get("rpc_endpoints", [])

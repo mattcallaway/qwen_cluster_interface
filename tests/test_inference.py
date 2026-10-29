@@ -50,6 +50,31 @@ def test_distributed_group_and_command_generation():
     assert "--rpc 192.168.1.102:50052,192.168.1.103:50052" in cmd
     assert "-ngl 0" in cmd
 
+
+def test_pipeline_parallel_group_and_command_generation():
+    group_id = create_distributed_group(
+        name="Desktop-Laptop-Pipeline",
+        coordinator_machine_id="desktop-worker-01",
+        model_file="Qwen/Qwen2.5-0.5B-Instruct",
+        rpc_endpoints=["100.101.187.115:8990"],
+        context_window=4096,
+        backend_type="pipeline_parallel",
+        runtime_parameters="--split-layer 12 --dtype float16"
+    )
+    assert group_id.startswith("dist-")
+
+    group = get_distributed_group_by_id(group_id)
+    assert group is not None
+    assert group["backend_type"] == "pipeline_parallel"
+    assert group["rpc_endpoints"] == ["100.101.187.115:8990"]
+
+    cmd = generate_distributed_launch_command(group)
+    assert "Stage 0: Desktop GPU" in cmd
+    assert "Qwen/Qwen2.5-0.5B-Instruct" in cmd
+    assert "100.101.187.115:8990" in cmd
+    assert "stage1_worker.py --port 8990" in cmd
+
+
 def test_benchmark_recorder_and_durability():
     add_benchmark_result(
         group_or_backend_name="Dual-Laptop Cluster",
