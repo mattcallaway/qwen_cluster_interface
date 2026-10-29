@@ -6,6 +6,8 @@ Coordinates layer partitioning, activation streaming, and inter-node stage execu
 from .topology import PipelineStageConfig, PipelineTopology
 from .activation_protocol import ActivationFrame, ActivationProtocol
 from .runner import PipelineStageRunner
+from .socket_transport import send_framed_bytes, recv_framed_bytes
+from .stage1_server import Stage1SocketServer
 
 __all__ = [
     "PipelineStageConfig",
@@ -13,4 +15,7 @@ __all__ = [
     "ActivationFrame",
     "ActivationProtocol",
     "PipelineStageRunner",
+    "Stage1SocketServer",
+    "send_framed_bytes",
+    "recv_framed_bytes",
 ]

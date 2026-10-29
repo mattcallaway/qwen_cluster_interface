@@ -153,3 +153,47 @@ def test_three_stage_pipeline_forward_flow():
     assert "predicted_token_id" in result
     assert isinstance(result["predicted_token_id"], int)
     assert result["final_stage_index"] == 2
+
+
+def test_stage1_socket_server_streaming_and_auth():
+    import json
+    import socket
+    from app.services.pipeline_parallel import (
+        Stage1SocketServer,
+        send_framed_bytes,
+        recv_framed_bytes,
+    )
+
+    port = 18991  # Test port
+    server = Stage1SocketServer(host="127.0.0.1", port=port, secret_key=SECRET_KEY, hidden_dim=64)
+    server.start(background=True)
+
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_sock:
+            client_sock.connect(("127.0.0.1", port))
+
+            # 1. Valid frame
+            protocol = ActivationProtocol(secret_key=SECRET_KEY)
+            activations = [0.05 * i for i in range(64)]
+            frame = protocol.encode_frame("test-sess-01", stage_index=0, token_index=0, activations=activations, tensor_dtype="float32")
+            send_framed_bytes(client_sock, frame)
+
+            resp_raw = recv_framed_bytes(client_sock)
+            assert resp_raw is not None
+            resp = json.loads(resp_raw.decode("utf-8"))
+            assert resp["status"] == "ok"
+            assert resp["hmac_verified"] is True
+            assert resp["session_id"] == "test-sess-01"
+
+            # 2. Corrupted frame (tampered HMAC)
+            bad_frame = bytearray(frame)
+            bad_frame[-1] ^= 0xFF
+            send_framed_bytes(client_sock, bytes(bad_frame))
+
+            resp_raw = recv_framed_bytes(client_sock)
+            assert resp_raw is not None
+            resp = json.loads(resp_raw.decode("utf-8"))
+            assert resp["status"] == "auth_error"
+            assert resp["hmac_verified"] is False
+    finally:
+        server.stop()

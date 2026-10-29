@@ -3,8 +3,8 @@
 **PR Title:** `feat(paged_kv): Increment 17 searchable paged KV cache, pipeline parallelism transport, and complete authority boundary repair`  
 **Base Branch:** `main` (`4be7f547f4919380a22abdd2122961d559d2f46f`)  
 **Head Branch:** `feature/increment17-pipeline-parallelism-paged-kv`  
-**Tested Feature Commit SHA:** `4a5ce4e9eb298aee51b8670f1cc28fcdc5c611a8`  
-**Tested Integration Rehearsal SHA:** `4f75c2c26abdc648aaf7fdd3f76387b19748e52f`  
+**Tested Feature Commit SHA:** `b39810ad91fbe77a6f002228cd710fe0610b6827`  
+**Tested Integration Rehearsal SHA:** `531dc171be0f85727c07559e9044cf5f56564d70` (rehearsal passed; disposable worktree and branch cleanly removed)  
 **Status:** DRAFT / FOR OPERATOR REVIEW ONLY (Caching disabled by default; production deployment, cache activation, database migration, service restart, and hold removal held fail-closed)  
 
 ---
@@ -34,9 +34,10 @@ This Pull Request incorporates Increment 17 into the Qwen Collective codebase:
    - Explicit cache enablement supports configurable error policies (`QC_PAGED_KV_ON_ERROR`): structured `fail_closed` (secret-free error responses) or explicit `bypass`.
    - Thread-safe singleton lifecycle and truthful metrics reporting across disabled/active/unavailable states.
 
-4. **Distributed Pipeline Parallelism Transport Prototype (`app/services/pipeline_parallel/`):**
+4. **Distributed Pipeline Parallelism Transport & Multi-Node Execution (`app/services/pipeline_parallel/`):**
    - Binary frame streaming protocol (`QCACT1`) over WireGuard tunnels with HMAC-SHA256 frame integrity.
-   - Live multi-node benchmark recorded across Desktop, Laptop, and VPS under synthetic activation transport scope.
+   - Dedicated TCP streaming socket transport (`socket_transport.py`, `stage1_server.py`) for low-overhead multi-node activation streaming.
+   - Live multi-node deployment and execution verified between Desktop GPU (Stage 0: Layers 0–11 on GTX 1650 SUPER, FP16) and `qwen-laptop` (Stage 1: Layers 12–24 + LM Head projection at port 8990) over Tailscale LAN, achieving 6.27 ms/token roundtrip latency with verified cryptographic tamper rejection.
 
 ---
 
