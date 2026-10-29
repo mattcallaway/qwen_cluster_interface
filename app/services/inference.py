@@ -61,6 +61,7 @@ def get_paged_kv_manager() -> Optional[Any]:
             return _paged_kv_manager
 
         from app.services.paged_kv import PagedKVManager
+        from app.services.paged_kv.identity import get_default_issuance_authority
 
         kv_dir = settings.data_dir / "kv_cache"
         auth_key = os.environ.get("PAGED_KV_STORAGE_KEY") or os.environ.get("QC_PAGED_KV_STORAGE_KEY")
@@ -72,6 +73,7 @@ def get_paged_kv_manager() -> Optional[Any]:
                 block_size=int(os.getenv("QC_PAGED_KV_BLOCK_SIZE", "16")),
                 compress=True,
                 auth_key=auth_key,
+                trusted_issuer=get_default_issuance_authority(),
             )
             _paged_kv_init_error = None
             return _paged_kv_manager

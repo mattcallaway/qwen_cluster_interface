@@ -5,7 +5,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional, Sequence, Union
+from typing import Any, Dict, Optional, Sequence, Union
 
 from .hasher import ExecutionNamespace, ModelIdentityManifest
 
@@ -28,6 +28,8 @@ class IssuedReuseAuthority:
     Cannot be fabricated by caller-selected string labels or dataclass arguments.
     """
 
+    REQUIRED_ROLES = frozenset({"weights", "tokenizer", "chat_template", "rope_config"})
+
     def __init__(
         self,
         authority_id: str,
@@ -35,12 +37,29 @@ class IssuedReuseAuthority:
         bound_artifacts: Dict[str, BoundArtifactInfo],
         issued_at: float,
         issuer_token: str,
+        model_instance_id: Optional[str] = None,
     ):
+        if not authority_id or not isinstance(authority_id, str):
+            raise ValueError("authority_id must be a non-empty string")
+        if not isinstance(manifest, ModelIdentityManifest):
+            raise TypeError(f"manifest must be ModelIdentityManifest, got {type(manifest).__name__}")
+        if not bound_artifacts or not isinstance(bound_artifacts, dict):
+            raise ValueError("bound_artifacts must be a non-empty mapping")
+        missing_roles = self.REQUIRED_ROLES - set(bound_artifacts.keys())
+        if missing_roles:
+            raise ValueError(f"bound_artifacts is missing required roles: {sorted(missing_roles)}")
+        for role, info in bound_artifacts.items():
+            if not isinstance(info, BoundArtifactInfo):
+                raise TypeError(f"Artifact for role '{role}' must be BoundArtifactInfo")
+        if not issuer_token or not isinstance(issuer_token, str):
+            raise ValueError("issuer_token must be a non-empty string")
+
         self._authority_id = authority_id
         self._manifest = manifest
         self._bound_artifacts = bound_artifacts
         self._issued_at = issued_at
         self._issuer_token = issuer_token
+        self._model_instance_id = model_instance_id or manifest.model_name
         self._is_active = True
 
     @property
@@ -75,6 +94,14 @@ class IssuedReuseAuthority:
     def is_active(self) -> bool:
         return self._is_active
 
+    @property
+    def bound_artifacts(self) -> Dict[str, BoundArtifactInfo]:
+        return dict(self._bound_artifacts)
+
+    @property
+    def model_instance_id(self) -> str:
+        return self._model_instance_id
+
     def invalidate(self) -> None:
         """Revokes this authority token."""
         self._is_active = False
@@ -86,6 +113,13 @@ class IssuedReuseAuthority:
         """
         if not self._is_active:
             return False
+        if not self._bound_artifacts or len(self._bound_artifacts) < len(self.REQUIRED_ROLES):
+            self._is_active = False
+            return False
+        for role in self.REQUIRED_ROLES:
+            if role not in self._bound_artifacts:
+                self._is_active = False
+                return False
         for role, info in self._bound_artifacts.items():
             p = Path(info.file_path)
             if not p.is_file():
@@ -268,12 +302,84 @@ class IdentityIssuanceAuthority:
             bound_artifacts=bound_artifacts,
             issued_at=time.time(),
             issuer_token=self._issuer_secret,
+            model_instance_id=manifest.model_name,
         )
 
         with self._lock:
             self._active_authorities[authority_id] = authority
 
         return authority
+
+    def validate_authority_for_reuse(
+        self,
+        authority: Any,
+        namespace: ExecutionNamespace,
+        model_instance_id: Optional[str] = None,
+    ) -> bool:
+        """
+        Validates that an authority token:
+        1. Is an authentic IssuedReuseAuthority instance.
+        2. Was actually issued by this specific IdentityIssuanceAuthority instance.
+        3. Remains active in this issuer's records.
+        4. Matches this issuer's private secret token.
+        5. Has not been revoked or invalidated.
+        6. Its approved manifest remains in this issuer's registry.
+        7. Required artifact bindings are complete, non-empty, and intact on disk.
+        8. Matches the requested execution namespace, layout, tenant, runtime, and model instance.
+        """
+        if not isinstance(authority, IssuedReuseAuthority):
+            return False
+        if not isinstance(namespace, ExecutionNamespace):
+            return False
+
+        with self._lock:
+            # 1. Authority must actually have been issued by this issuer instance
+            active_auth = self._active_authorities.get(authority.authority_id)
+            if active_auth is None or active_auth is not authority:
+                return False
+
+            # 2. Issuer token must match private secret
+            if authority._issuer_token != self._issuer_secret:
+                return False
+
+            # 3. Must be actively valid (not invalidated/revoked)
+            if not authority.is_active:
+                return False
+
+            # 4. Manifest must still be approved in registry
+            if not self.registry.is_approved(authority.manifest):
+                return False
+
+            # 5. Required artifact bindings must be complete and non-empty
+            bound = authority.bound_artifacts
+            if not bound:
+                return False
+            missing_roles = IssuedReuseAuthority.REQUIRED_ROLES - set(bound.keys())
+            if missing_roles:
+                return False
+
+            # 6. Live disk artifact verification (TOCTOU)
+            if not authority.verify_live_artifacts():
+                return False
+
+            # 7. Check namespace attributes against authority
+            if (
+                namespace.model_name != authority.model_name
+                or namespace.model_revision != authority.model_revision
+                or namespace.tokenizer_id != authority.manifest.tokenizer_digest
+                or namespace.chat_template_hash != authority.manifest.chat_template_digest
+                or namespace.kv_layout != authority.kv_layout
+                or namespace.rope_config_hash != authority.manifest.rope_config_digest
+                or namespace.tenant_id != authority.tenant_id
+                or namespace.runtime_compatibility != authority.runtime_compatibility
+            ):
+                return False
+
+            # 8. Check model instance binding if specified
+            if model_instance_id and authority.model_instance_id != model_instance_id:
+                return False
+
+            return True
 
     def revoke_authority(self, authority_id: str) -> bool:
         with self._lock:
@@ -294,3 +400,10 @@ def get_default_manifest_registry() -> ApprovedManifestRegistry:
 
 def get_default_issuance_authority() -> IdentityIssuanceAuthority:
     return _global_authority
+
+
+def reset_default_issuance_authority() -> None:
+    global _global_registry, _global_authority
+    _global_registry = ApprovedManifestRegistry()
+    _global_authority = IdentityIssuanceAuthority(registry=_global_registry)
+

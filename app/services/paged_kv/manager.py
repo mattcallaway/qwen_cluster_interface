@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 from .hasher import ExecutionNamespace, PagedKVHasher, PrefixRadixTree, TokenBlock
-from .identity import IssuedReuseAuthority
+from .identity import IdentityIssuanceAuthority, IssuedReuseAuthority
 from .page_table import PhysicalBlock, PhysicalBlockPool, VirtualBlockTable
 from .store import PagedKVStore
 
@@ -22,6 +22,7 @@ class PagedKVManager:
         block_size: int = 16,
         compress: bool = True,
         auth_key: Optional[Union[bytes, str]] = None,
+        trusted_issuer: Optional[IdentityIssuanceAuthority] = None,
     ):
         self.block_size = block_size
         self.max_ram_blocks = max_ram_blocks
@@ -31,10 +32,12 @@ class PagedKVManager:
         self.pool = PhysicalBlockPool(total_blocks=max_ram_blocks * 4)
         self.table = VirtualBlockTable(pool=self.pool)
         self.store = PagedKVStore(storage_dir=storage_dir, compress=compress, auth_key=auth_key)
+        self.trusted_issuer = trusted_issuer
 
         # Connect physical pool eviction callback to safely offload unpinned blocks to disk
         self.pool.eviction_callback = self._evict_lru_page_to_disk
         self.sequence_namespaces: Dict[str, ExecutionNamespace] = {}
+        self.sequence_authorities: Dict[str, IssuedReuseAuthority] = {}
 
         # Statistics
         self.total_queries = 0
@@ -68,12 +71,19 @@ class PagedKVManager:
         total_tokens = len(tokens)
         self.total_evaluated_tokens += total_tokens
 
-        # Authority verification: genuine reuse requires an authentic IssuedReuseAuthority
-        is_authorized = (
-            authority is not None
-            and isinstance(authority, IssuedReuseAuthority)
-            and authority.is_valid_for(namespace)
-        )
+        # Authority verification: genuine reuse requires that the manager's configured trusted_issuer
+        # confirms this authority token was issued by it, is active, non-empty, and valid.
+        is_authorized = False
+        if self.trusted_issuer is not None and authority is not None:
+            is_authorized = self.trusted_issuer.validate_authority_for_reuse(
+                authority=authority,
+                namespace=namespace,
+            )
+
+        if is_authorized and isinstance(authority, IssuedReuseAuthority):
+            self.sequence_authorities[sequence_id] = authority
+        else:
+            self.sequence_authorities.pop(sequence_id, None)
 
         matched_blocks: List[TokenBlock] = []
         matched_token_count = 0
@@ -182,7 +192,14 @@ class PagedKVManager:
         remapping unmapped pages from disk, validating identities, and re-enforcing RAM quotas.
         """
         hashes = self.table.get_block_hashes(sequence_id)
+        auth = self.sequence_authorities.get(sequence_id)
         ns = self.sequence_namespaces.get(sequence_id)
+        if auth is not None:
+            if self.trusted_issuer is None or not self.trusted_issuer.validate_authority_for_reuse(auth, ns):
+                raise ValueError(
+                    f"Cannot restore sequence '{sequence_id}' to RAM: reuse authority has been revoked or invalidated."
+                )
+
         expected_ns_digest = ns.compute_digest() if ns else None
         restored = 0
         for idx, h in enumerate(hashes):
@@ -203,6 +220,7 @@ class PagedKVManager:
     def release_sequence(self, sequence_id: str) -> int:
         """Releases sequence resources and cleans up table mappings."""
         self.sequence_namespaces.pop(sequence_id, None)
+        self.sequence_authorities.pop(sequence_id, None)
         freed_bids = self.table.release_sequence(sequence_id)
         return len(freed_bids)
 

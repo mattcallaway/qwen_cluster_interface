@@ -3,6 +3,7 @@ import os
 import shutil
 import tempfile
 import threading
+import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -185,7 +186,7 @@ def test_verified_synthetic_artifacts_issue_scoped_authority(synthetic_model_art
     ns = ExecutionNamespace.from_manifest(manifest)
     assert authority.is_valid_for(ns) is True
 
-    mgr = PagedKVManager(storage_dir=tmp_path, auth_key=os.urandom(32))
+    mgr = PagedKVManager(storage_dir=tmp_path, auth_key=os.urandom(32), trusted_issuer=authority_issuer)
     tokens = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]
 
     res1 = mgr.ingest_prompt("seq-auth-1", tokens, namespace=ns, authority=authority)
@@ -252,6 +253,207 @@ def test_prototype_simulation_cannot_cross_into_genuine_reuse(tmp_path):
     res2 = mgr.ingest_prompt("p2", tokens, namespace=proto_ns)
     # Prototype prefix matched in Radix tree, but verified_reuse_authorized is strictly False
     assert res2["verified_reuse_authorized"] is False
+
+
+def test_empty_or_incomplete_artifact_bindings_rejected():
+    """IssuedReuseAuthority constructor rejects empty or incomplete artifact dictionaries fail-closed."""
+    import time
+
+    manifest = ModelIdentityManifest(
+        model_name="qwen2.5:1.5b",
+        weight_digest="11" * 32,
+        tokenizer_digest="22" * 32,
+        chat_template_digest="33" * 32,
+        kv_layout="bshd_fp16",
+        rope_config_digest="44" * 32,
+        runtime_compatibility="qwen_collective_v2",
+    )
+    # Empty artifact mapping must raise ValueError
+    with pytest.raises(ValueError, match="bound_artifacts must be a non-empty mapping"):
+        IssuedReuseAuthority(
+            authority_id="auth_empty",
+            manifest=manifest,
+            bound_artifacts={},
+            issued_at=time.time(),
+            issuer_token="token",
+        )
+
+    # Missing required role must raise ValueError
+    from app.services.paged_kv.identity import BoundArtifactInfo
+    incomplete_artifacts = {
+        "weights": BoundArtifactInfo("weights", "weights.bin", 100, "11" * 32, time.time())
+    }
+    with pytest.raises(ValueError, match="bound_artifacts is missing required roles"):
+        IssuedReuseAuthority(
+            authority_id="auth_incomplete",
+            manifest=manifest,
+            bound_artifacts=incomplete_artifacts,
+            issued_at=time.time(),
+            issuer_token="token",
+        )
+
+
+def test_reproduce_untrusted_issuer_and_empty_artifacts_bypass(tmp_path, synthetic_model_artifacts):
+    """
+    Reproduction test for independent recheck bypass:
+    An authority not issued or registered by the manager's trusted issuer must NOT be accepted,
+    must report verified_reuse_authorized: False, and must NOT reuse cached prefix tokens.
+    """
+    import time
+    from app.services.paged_kv.identity import BoundArtifactInfo
+
+    manifest = synthetic_model_artifacts["manifest"]
+    ns = ExecutionNamespace.from_manifest(manifest)
+
+    # Fabricate an authority with simulated artifact records but bogus issuer secret
+    synthetic_bound = {
+        role: BoundArtifactInfo(role, str(path), path.stat().st_size, "11" * 32, path.stat().st_mtime)
+        for role, path in synthetic_model_artifacts["paths"].items()
+    }
+    unregistered_authority = IssuedReuseAuthority(
+        authority_id="unregistered_auth_123",
+        manifest=manifest,
+        bound_artifacts=synthetic_bound,
+        issued_at=time.time(),
+        issuer_token="unregistered_bogus_token",
+    )
+
+    # Manager configured with a trusted issuer that never issued unregistered_authority
+    trusted_issuer = IdentityIssuanceAuthority(registry=ApprovedManifestRegistry())
+    mgr = PagedKVManager(storage_dir=tmp_path, auth_key=b"k" * 32, trusted_issuer=trusted_issuer)
+
+    # Request 1
+    tokens = list(range(16))
+    res1 = mgr.ingest_prompt("seq-1", tokens, namespace=ns, authority=unregistered_authority)
+    assert res1["verified_reuse_authorized"] is False, (
+        "Bypass prevented: unregistered authority denied verified_reuse_authorized"
+    )
+
+    # Request 2
+    res2 = mgr.ingest_prompt("seq-2", tokens, namespace=ns, authority=unregistered_authority)
+    assert res2["verified_reuse_authorized"] is False
+    assert res2["matched_tokens"] == 0, (
+        f"Bypass prevented: unregistered authority denied token reuse, got {res2['matched_tokens']}"
+    )
+
+
+def test_authority_from_different_issuer_rejected(synthetic_model_artifacts, tmp_path):
+    """Authority issued by Issuer A must be rejected by a manager trusting Issuer B."""
+    reg_a = ApprovedManifestRegistry()
+    reg_b = ApprovedManifestRegistry()
+    manifest = synthetic_model_artifacts["manifest"]
+    reg_a.register_approved_manifest(manifest)
+    reg_b.register_approved_manifest(manifest)
+
+    issuer_a = IdentityIssuanceAuthority(registry=reg_a)
+    issuer_b = IdentityIssuanceAuthority(registry=reg_b)
+
+    auth_a = issuer_a.verify_and_issue(manifest, synthetic_model_artifacts["paths"])
+    ns = ExecutionNamespace.from_manifest(manifest)
+
+    # Manager trusts issuer_b only
+    mgr = PagedKVManager(storage_dir=tmp_path, auth_key=b"k" * 32, trusted_issuer=issuer_b)
+
+    res = mgr.ingest_prompt("seq-cross-issuer", list(range(16)), namespace=ns, authority=auth_a)
+    assert res["verified_reuse_authorized"] is False
+    assert res["matched_tokens"] == 0
+
+
+def test_manager_without_trusted_issuer_denies_all_reuse(synthetic_model_artifacts, tmp_path):
+    """A manager without a configured trusted_issuer strictly denies all genuine reuse."""
+    registry = ApprovedManifestRegistry()
+    manifest = synthetic_model_artifacts["manifest"]
+    registry.register_approved_manifest(manifest)
+    issuer = IdentityIssuanceAuthority(registry=registry)
+
+    authority = issuer.verify_and_issue(manifest, synthetic_model_artifacts["paths"])
+    ns = ExecutionNamespace.from_manifest(manifest)
+
+    # Manager without trusted_issuer
+    mgr = PagedKVManager(storage_dir=tmp_path, auth_key=b"k" * 32, trusted_issuer=None)
+
+    res1 = mgr.ingest_prompt("seq-untrusted-mgr-1", list(range(16)), namespace=ns, authority=authority)
+    assert res1["verified_reuse_authorized"] is False
+
+    res2 = mgr.ingest_prompt("seq-untrusted-mgr-2", list(range(16)), namespace=ns, authority=authority)
+    assert res2["verified_reuse_authorized"] is False
+    assert res2["matched_tokens"] == 0
+
+
+def test_revoked_authority_rejected_on_subsequent_reuse_and_restore(synthetic_model_artifacts, tmp_path):
+    """Revoking an authority prevents subsequent reuse and blocks RAM restoration of the sequence."""
+    registry = ApprovedManifestRegistry()
+    manifest = synthetic_model_artifacts["manifest"]
+    registry.register_approved_manifest(manifest)
+    issuer = IdentityIssuanceAuthority(registry=registry)
+
+    authority = issuer.verify_and_issue(manifest, synthetic_model_artifacts["paths"])
+    ns = ExecutionNamespace.from_manifest(manifest)
+
+    mgr = PagedKVManager(storage_dir=tmp_path, auth_key=b"k" * 32, trusted_issuer=issuer)
+    tokens = list(range(16))
+
+    # Request 1: authorized and successful
+    res1 = mgr.ingest_prompt("seq-revokable-1", tokens, namespace=ns, authority=authority)
+    assert res1["verified_reuse_authorized"] is True
+
+    # Revoke authority in issuer
+    revoked = issuer.revoke_authority(authority.authority_id)
+    assert revoked is True
+    assert authority.is_active is False
+
+    # Request 2: reuse must now be rejected
+    res2 = mgr.ingest_prompt("seq-revokable-2", tokens, namespace=ns, authority=authority)
+    assert res2["verified_reuse_authorized"] is False
+    assert res2["matched_tokens"] == 0
+
+    # Evict RAM to disk
+    mgr.store.evict_from_ram(mgr.table.get_block_hashes("seq-revokable-1")[0])
+
+    # Attempting to restore seq-revokable-1 to RAM must fail closed due to revoked authority
+    with pytest.raises(ValueError, match="reuse authority has been revoked or invalidated"):
+        mgr.restore_sequence_to_ram("seq-revokable-1")
+
+
+def test_concurrent_revocation_safety(synthetic_model_artifacts, tmp_path):
+    """Concurrent ingestion and revocation do not cause race conditions or corrupt authority records."""
+    registry = ApprovedManifestRegistry()
+    manifest = synthetic_model_artifacts["manifest"]
+    registry.register_approved_manifest(manifest)
+    issuer = IdentityIssuanceAuthority(registry=registry)
+
+    authority = issuer.verify_and_issue(manifest, synthetic_model_artifacts["paths"])
+    ns = ExecutionNamespace.from_manifest(manifest)
+    mgr = PagedKVManager(storage_dir=tmp_path, auth_key=b"k" * 32, trusted_issuer=issuer)
+
+    errors = []
+
+    def worker_ingest(seq_num):
+        try:
+            tokens = [seq_num * 100 + i for i in range(16)]
+            mgr.ingest_prompt(f"concurrent-seq-{seq_num}", tokens, namespace=ns, authority=authority)
+        except Exception as e:
+            errors.append(e)
+
+    def worker_revoke():
+        time.sleep(0.01)
+        issuer.revoke_authority(authority.authority_id)
+
+    threads = [threading.Thread(target=worker_ingest, args=(i,)) for i in range(10)]
+    revoke_thread = threading.Thread(target=worker_revoke)
+
+    for t in threads:
+        t.start()
+    revoke_thread.start()
+
+    for t in threads:
+        t.join()
+    revoke_thread.join()
+
+    assert len(errors) == 0
+    assert authority.is_active is False
+
+
 
 
 # ===========================================================================
