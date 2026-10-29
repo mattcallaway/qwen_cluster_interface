@@ -22,6 +22,9 @@ Supplement to the canonical [TECHMAP](../../TECHMAP.md), its [legacy pointer](..
 | Linux candidate | `vps_agent/linux_sandbox.py`, `code_proposals.py:prepare_linux_plan`, `scripts/probe_linux_sandbox.py` | Root-image/cgroup service policy, explicit operator harness, version-bound diagnostic plan; not connected to worker/generated-code dispatch or production |
 | Actual Linux evidence | `docs/verified-work/evidence/laptop-linux-*.json`, reviewed rehearsal harnesses | Real laptop fixtures and manager/kernel observations; manual diagnostic evidence, never a substitute for native generated-code provenance |
 | VPS launcher | Existing `scripts/qwen-sandbox-runner.py` in original repository | Source inspected; installation/root ownership/actual confinement not reverified on VPS |
+| Searchable Paged KV Cache | pp/services/paged_kv/{hasher,page_table,store,manager}.py | 16-token page tables, chained SHA-256 hashes, Radix tree prefix matching, LRU RAM bounds |
+| Distributed Pipeline Parallelism | pp/services/pipeline_parallel/{activation_protocol,topology,runner}.py | WireGuard activation frame transport, IEEE 754 serialization, HMAC-SHA256 integrity, multi-stage layer partitions |
+| Orchestrator Verification DAG | pp/services/orchestration/pipeline_kv_diagnostics.py, engine.py | Dedicated controller step for live capability validation and adversarial fault containment |
 
 Source paths under `research/` and `orchestration/` are relative to `app/services/`. The worker fixture tests and local browser rehearsal are not a controller-generated model coding run.
 

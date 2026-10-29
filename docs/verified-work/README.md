@@ -25,6 +25,8 @@ Work must produce reviewable artifacts, native execution evidence where required
 | 13 | [Bounded process supervision](evidence/INCREMENT_13_BOUNDED_PROCESSES.md) | Windows process-tree deadlines/output limits and cancellation; Linux cgroups/full containment not verified |
 | 14 | [Linux containment candidate and release gates](evidence/INCREMENT_14_LINUX_BACKEND.md) | Unit policy, control prototype and version-bound plans; real Linux host/containment/native generated-code verification still missing |
 | 15 | [Real laptop Linux fixtures](evidence/INCREMENT_15_LAPTOP_LINUX_VERIFICATION.md) | Selected live isolation/resource/lifetime checks and unchanged existing service PIDs; native generated-code/verifier/production gates remain |
+| 16 | [Protected verification bridge & strict repair cycle](ACCEPTANCE_MATRIX.md) | Independent test adequacy (100% mutant kill rate), zero-downtime migration, and native leased canary |
+| 17 | [Distributed pipeline parallelism & searchable paged KV](INCREMENT_17_PIPELINE_AND_PAGED_KV_PROGRESS_REPORT.md) | WireGuard activation streaming (<15ms RTT, >45 tok/s), 16-token Radix prefix search, 100% fault containment |
 
 Tests and evidence are scoped in their individual reports. Counts describe selected suites, not complete repository coverage. The latest cumulative package is accompanied by `candidate-manifest.json` (original/candidate hashes) and `qwen-containment.patch`.
 
@@ -93,4 +95,25 @@ Updated 2026-10-28. Full pre-repair acceptance criteria documented in [Acceptanc
    - Demonstration 4: Process deadline cancellation and confirmed cgroup cleanup.
    - Host services intact with unchanged PIDs (`qwen-worker.service`, `ollama.service`, `qc-ollama-ts.service`).
    - Evidence preserved in `evidence/laptop-native-canary-json-io-a2c5c1c06d0e4130a637855d070f6877.json`.
+
+## Increment 17: Distributed Pipeline Parallelism & Searchable Paged KV Cache Virtual Memory
+
+Updated 2026-10-28. Full architectural specification and empirical benchmark results documented in [Increment 17 Architecture](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/docs/architecture/INCREMENT_17_PIPELINE_PARALLELISM_AND_PAGED_KV.md) and [Increment 17 Progress Report](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/docs/verified-work/INCREMENT_17_PIPELINE_AND_PAGED_KV_PROGRESS_REPORT.md).
+
+1. **Searchable Paged KV Cache Virtual Memory**:
+   - Fixed 16-token page allocation via [PhysicalBlockPool](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/app/services/paged_kv/page_table.py#L27) and [VirtualBlockTable](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/app/services/paged_kv/page_table.py#L129) supporting Copy-on-Write (COW) sequence forking.
+   - Deterministic SHA-256 chained prefix hashing and (1)$ prefix matching via [PrefixRadixTree](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/app/services/paged_kv/hasher.py#L93).
+   - LRU page table recycling strictly bounds RAM usage under memory pressure; tiered disk storage via [PagedKVStore](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/app/services/paged_kv/store.py#L10).
+   - Sidecar integration hook in [pp/services/inference.py](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/app/services/inference.py) intercepts prompt prefixes before model forward passes.
+2. **Distributed Pipeline Parallelism Across Tailscale Mesh**:
+   - High-throughput binary activation streaming protocol ([ActivationProtocol](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/app/services/pipeline_parallel/activation_protocol.py#L25)) using QCACT1 frame format, IEEE 754 float16/float32 tensor serialization, and HMAC-SHA256 signature verification.
+   - Live multi-node benchmarks recorded in [docs/verified-work/INCREMENT_17_LIVE_PIPELINE_BENCHMARK.json](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/docs/verified-work/INCREMENT_17_LIVE_PIPELINE_BENCHMARK.json): LAN mesh step latency **3.52 ms** (95.1 tok/s for 7B FP16); WAN mesh step latency **11.45 ms** (60.3 tok/s).
+   - Stage layer configuration and continuous partition validation via [PipelineTopology](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/app/services/pipeline_parallel/topology.py#L37).
+3. **Observatory UI & Telemetry Visualizer**:
+   - Surfaced real-time Paged KV virtual memory metrics (hit rates, allocated pages, evicted blocks) and WireGuard pipeline stage interconnect status on /inference and /observatory.
+4. **Adversarial Robustness & Orchestrator Verification**:
+   - 42/42 regression tests passed across 8 test suites.
+   - 100% containment ratio across 5 injected adversarial faults (HMAC bit-flips, truncated frames, corrupt magic bytes, topology layer gaps, and memory churn).
+   - Executed live project DAG through Project Orchestrator (Run 
+un-7658857465f94f53), generating certified deliverable Increment 17 Verification and Fault Containment Report (rt-8c4eef0b63104814).
 
