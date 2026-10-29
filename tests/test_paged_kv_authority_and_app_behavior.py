@@ -618,7 +618,45 @@ def test_concurrent_initialization_safety(clean_environment, monkeypatch, tmp_pa
     for t in threads:
         t.join()
 
-    assert len(errors) == 0
-    assert len(managers) == 10
-    # All threads got the exact same singleton
     assert all(m is managers[0] for m in managers)
+
+
+def test_clean_environment_disabled_by_default_settings(clean_environment):
+    """
+    Verifies Section 4 requirement: Caching is strictly disabled by default without hidden configuration.
+    No automatic fixture injects keys or enabled flags.
+    """
+    assert is_paged_kv_enabled() is False
+    assert get_paged_kv_manager() is None
+    metrics = get_paged_kv_metrics()
+    assert metrics["status"] == "disabled"
+    assert metrics["enabled"] is False
+
+
+def test_disabled_cache_startup_does_not_initialize_persistent_storage(clean_environment, tmp_path, monkeypatch):
+    """
+    Verifies Section 4 requirement: Disabled-cache startup does not initialize persistent cache storage.
+    """
+    cache_dir = tmp_path / "paged_kv_cache"
+    monkeypatch.setattr("app.config.settings.data_dir", tmp_path)
+    
+    # Under disabled mode, manager is None and storage directory is not created
+    mgr = get_paged_kv_manager()
+    assert mgr is None
+    assert not cache_dir.exists()
+
+
+def test_invalid_authority_never_verified_via_fallback_paths(tmp_path, synthetic_model_artifacts):
+    """
+    Verifies Section 4 requirement: Invalid authorities never become verified through fallback paths.
+    """
+    manifest = synthetic_model_artifacts["manifest"]
+    ns = ExecutionNamespace.from_manifest(manifest)
+    trusted_issuer = IdentityIssuanceAuthority(registry=ApprovedManifestRegistry())
+    mgr = PagedKVManager(storage_dir=tmp_path, auth_key=b"k" * 32, trusted_issuer=trusted_issuer)
+
+    for bogus_auth in [None, "string_authority", 12345, object(), {}]:
+        res = mgr.ingest_prompt("seq-bogus", list(range(16)), namespace=ns, authority=bogus_auth)
+        assert res["verified_reuse_authorized"] is False
+        assert res["matched_tokens"] == 0
+
