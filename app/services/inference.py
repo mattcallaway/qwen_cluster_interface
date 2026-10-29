@@ -350,126 +350,136 @@ async def send_chat_completion(
         model_name=default_model_name,
     )
 
-    for idx, backend in enumerate(candidates):
-        backend_id = backend["id"]
-        backend_name = backend["name"]
-        tier = backend.get("tier", "tier_1_primary")
-        url = backend["endpoint_url"].rstrip("/")
-        timeout_sec = float(backend.get("timeout_seconds") or 45.0)
-        headers = {}
-        if backend.get("api_key"):
-            headers["Authorization"] = f"Bearer {backend['api_key']}"
+    try:
+        for idx, backend in enumerate(candidates):
+            backend_id = backend["id"]
+            backend_name = backend["name"]
+            tier = backend.get("tier", "tier_1_primary")
+            url = backend["endpoint_url"].rstrip("/")
+            timeout_sec = float(backend.get("timeout_seconds") or 45.0)
+            headers = {}
+            if backend.get("api_key"):
+                headers["Authorization"] = f"Bearer {backend['api_key']}"
 
-        logger.info(
-            "Attempting inference on backend %s [%s] (priority %s, tier %s, timeout %.1fs)...",
-            backend_name, url, backend.get("priority"), tier, timeout_sec
-        )
+            logger.info(
+                "Attempting inference on backend %s [%s] (priority %s, tier %s, timeout %.1fs)...",
+                backend_name, url, backend.get("priority"), tier, timeout_sec
+            )
 
-        try:
-            async with httpx.AsyncClient(timeout=timeout_sec, follow_redirects=False) as client:
-                if backend["backend_type"] == "ollama":
-                    payload = {
-                        "model": backend.get("model_name", "qwen2.5:3b"),
-                        "messages": messages,
-                        "options": {"num_ctx": min(backend.get("context_window") or 8192, 8192)},
-                        "stream": False
-                    }
-                    resp = await client.post(f"{url}/api/chat", json=payload, headers=headers)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        content = data.get("message", {}).get("content", "")
-                        if not content:
-                            raise ValueError("Ollama returned empty response content.")
-
-                        update_backend_status(backend_id, "ready", error_details=None)
-
-                        # Cache completion continuation in paged KV store
-                        full_tokens = tokens + encode_text_to_tokens(content)
-                        paged_kv.ingest_prompt(
-                            sequence_id=f"{seq_id}-reply",
-                            tokens=full_tokens,
-                            model_name=backend.get("model_name") or default_model_name,
-                        )
-
-                        return {
-                            "success": True,
-                            "content": content,
-                            "model": backend.get("model_name"),
-                            "backend": backend_name,
-                            "backend_id": backend_id,
-                            "tier": tier,
-                            "fallback_occurred": (idx > 0),
-                            "attempts": attempts_log,
-                            "paged_kv": paged_kv_report,
+            try:
+                async with httpx.AsyncClient(timeout=timeout_sec, follow_redirects=False) as client:
+                    if backend["backend_type"] == "ollama":
+                        payload = {
+                            "model": backend.get("model_name", "qwen2.5:3b"),
+                            "messages": messages,
+                            "options": {"num_ctx": min(backend.get("context_window") or 8192, 8192)},
+                            "stream": False
                         }
+                        resp = await client.post(f"{url}/api/chat", json=payload, headers=headers)
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            content = data.get("message", {}).get("content", "")
+                            if not content:
+                                raise ValueError("Ollama returned empty response content.")
+
+                            update_backend_status(backend_id, "ready", error_details=None)
+
+                            # Cache completion continuation in paged KV store
+                            full_tokens = tokens + encode_text_to_tokens(content)
+                            reply_seq = f"{seq_id}-reply"
+                            paged_kv.ingest_prompt(
+                                sequence_id=reply_seq,
+                                tokens=full_tokens,
+                                model_name=backend.get("model_name") or default_model_name,
+                            )
+                            # Release transient reply sequence mapping from table
+                            paged_kv.release_sequence(reply_seq)
+
+                            return {
+                                "success": True,
+                                "content": content,
+                                "model": backend.get("model_name"),
+                                "backend": backend_name,
+                                "backend_id": backend_id,
+                                "tier": tier,
+                                "fallback_occurred": (idx > 0),
+                                "attempts": attempts_log,
+                                "paged_kv": paged_kv_report,
+                            }
+                        else:
+                            err_msg = f"HTTP {resp.status_code} from {backend_name}: {resp.text[:200]}"
+                            logger.warning("Backend %s failed with status %d: %s", backend_name, resp.status_code, err_msg)
+                            update_backend_status(backend_id, "error", error_details=err_msg)
+                            attempts_log.append({"backend": backend_name, "error": err_msg, "tier": tier})
+
                     else:
-                        err_msg = f"HTTP {resp.status_code} from {backend_name}: {resp.text[:200]}"
-                        logger.warning("Backend %s failed with status %d: %s", backend_name, resp.status_code, err_msg)
-                        update_backend_status(backend_id, "error", error_details=err_msg)
-                        attempts_log.append({"backend": backend_name, "error": err_msg, "tier": tier})
-
-                else:
-                    # llama.cpp server / OpenAI API
-                    payload = {
-                        "messages": messages,
-                        "temperature": 0.7,
-                        "max_tokens": 1024,
-                        "stream": False
-                    }
-                    resp = await client.post(f"{url}/v1/chat/completions", json=payload, headers=headers)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        choices = data.get("choices", [])
-                        content = choices[0].get("message", {}).get("content", "") if choices else ""
-                        if not content:
-                            raise ValueError("llama-server returned empty choices.")
-
-                        update_backend_status(backend_id, "ready", error_details=None)
-
-                        # Cache completion continuation in paged KV store
-                        full_tokens = tokens + encode_text_to_tokens(content)
-                        paged_kv.ingest_prompt(
-                            sequence_id=f"{seq_id}-reply",
-                            tokens=full_tokens,
-                            model_name=backend.get("model_name") or default_model_name,
-                        )
-
-                        return {
-                            "success": True,
-                            "content": content,
-                            "model": backend.get("model_name"),
-                            "backend": backend_name,
-                            "backend_id": backend_id,
-                            "tier": tier,
-                            "fallback_occurred": (idx > 0),
-                            "attempts": attempts_log,
-                            "paged_kv": paged_kv_report,
+                        # llama.cpp server / OpenAI API
+                        payload = {
+                            "messages": messages,
+                            "temperature": 0.7,
+                            "max_tokens": 1024,
+                            "stream": False
                         }
-                    else:
-                        err_msg = f"HTTP {resp.status_code} from {backend_name}: {resp.text[:200]}"
-                        logger.warning("Backend %s failed: %s", backend_name, err_msg)
-                        update_backend_status(backend_id, "error", error_details=err_msg)
-                        attempts_log.append({"backend": backend_name, "error": err_msg, "tier": tier})
+                        resp = await client.post(f"{url}/v1/chat/completions", json=payload, headers=headers)
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            choices = data.get("choices", [])
+                            content = choices[0].get("message", {}).get("content", "") if choices else ""
+                            if not content:
+                                raise ValueError("llama-server returned empty choices.")
 
-        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
-            err_msg = f"Unreachable: {str(e)}"
-            logger.warning("Backend %s unreachable, cascading to fallback: %s", backend_name, err_msg)
-            update_backend_status(backend_id, "offline", error_details=err_msg)
-            attempts_log.append({"backend": backend_name, "error": err_msg, "tier": tier})
-        except httpx.TimeoutException as e:
-            err_msg = f"Timed out after {timeout_sec}s: {str(e)}"
-            logger.warning("Backend %s timed out, cascading to fallback: %s", backend_name, err_msg)
-            update_backend_status(backend_id, "error", error_details=err_msg)
-            attempts_log.append({"backend": backend_name, "error": err_msg, "tier": tier})
-        except Exception as e:
-            err_msg = f"Execution error: {str(e)}"
-            logger.warning("Backend %s encountered exception, cascading to fallback: %s", backend_name, err_msg)
-            update_backend_status(backend_id, "error", error_details=err_msg)
-            attempts_log.append({"backend": backend_name, "error": err_msg, "tier": tier})
+                            update_backend_status(backend_id, "ready", error_details=None)
 
-    # All candidates exhausted
-    return {
-        "success": False,
-        "error": f"All {len(candidates)} candidate inference backend(s) failed. Failover summary: {json.dumps(attempts_log)}",
-        "attempts": attempts_log
-    }
+                            # Cache completion continuation in paged KV store
+                            full_tokens = tokens + encode_text_to_tokens(content)
+                            reply_seq = f"{seq_id}-reply"
+                            paged_kv.ingest_prompt(
+                                sequence_id=reply_seq,
+                                tokens=full_tokens,
+                                model_name=backend.get("model_name") or default_model_name,
+                            )
+                            # Release transient reply sequence mapping from table
+                            paged_kv.release_sequence(reply_seq)
+
+                            return {
+                                "success": True,
+                                "content": content,
+                                "model": backend.get("model_name"),
+                                "backend": backend_name,
+                                "backend_id": backend_id,
+                                "tier": tier,
+                                "fallback_occurred": (idx > 0),
+                                "attempts": attempts_log,
+                                "paged_kv": paged_kv_report,
+                            }
+                        else:
+                            err_msg = f"HTTP {resp.status_code} from {backend_name}: {resp.text[:200]}"
+                            logger.warning("Backend %s failed: %s", backend_name, err_msg)
+                            update_backend_status(backend_id, "error", error_details=err_msg)
+                            attempts_log.append({"backend": backend_name, "error": err_msg, "tier": tier})
+
+            except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+                err_msg = f"Unreachable: {str(e)}"
+                logger.warning("Backend %s unreachable, cascading to fallback: %s", backend_name, err_msg)
+                update_backend_status(backend_id, "offline", error_details=err_msg)
+                attempts_log.append({"backend": backend_name, "error": err_msg, "tier": tier})
+            except httpx.TimeoutException as e:
+                err_msg = f"Timed out after {timeout_sec}s: {str(e)}"
+                logger.warning("Backend %s timed out, cascading to fallback: %s", backend_name, err_msg)
+                update_backend_status(backend_id, "error", error_details=err_msg)
+                attempts_log.append({"backend": backend_name, "error": err_msg, "tier": tier})
+            except Exception as e:
+                err_msg = f"Execution error: {str(e)}"
+                logger.warning("Backend %s encountered exception, cascading to fallback: %s", backend_name, err_msg)
+                update_backend_status(backend_id, "error", error_details=err_msg)
+                attempts_log.append({"backend": backend_name, "error": err_msg, "tier": tier})
+
+        # All candidates exhausted
+        return {
+            "success": False,
+            "error": f"All {len(candidates)} candidate inference backend(s) failed. Failover summary: {json.dumps(attempts_log)}",
+            "attempts": attempts_log
+        }
+    finally:
+        # Deterministically clean up the transient prompt sequence table entry
+        paged_kv.release_sequence(seq_id)

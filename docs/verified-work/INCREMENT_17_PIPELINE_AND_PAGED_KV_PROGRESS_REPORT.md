@@ -4,11 +4,18 @@
 **Date:** 2026-10-28  
 **Scope:** Increment 17 Architecture, Implementation Progress, Empirical Benchmarks, and Adversarial Test Results  
 **Branch:** `feature/increment17-pipeline-parallelism-paged-kv`  
-**Status:** Completed, Verified, and Certified via Orchestrator Run `run-7658857465f94f53`
+**Status:** Prototype Diagnostics Completed via Orchestrator Runs `run-7658857465f94f53` and `run-90519858d3bd4773`; Real Model Layer Partitioning & True KV Reuse Unverified
 
 ---
 
 ## 1. Executive Summary
+
+### Honest Capability Baseline & Evidence Boundaries
+- **Implemented Prototype Components**: Page tables, chained SHA-256 block hashing, Radix prefix tree, QCACT1 binary framing protocol, multi-stage pipeline runner, and continuous stage topology validation.
+- **Local Simulated Compute**: The current runner and trial harness use simulated sinusoidal/tanh forward transforms. The sidecar hook records placeholder bytes while submitting full prompt messages to the backend. No prefill computation has been eliminated on the model backend.
+- **Actual Network Transport**: Real IEEE 754 float tensor passing was measured over Tailscale WireGuard mesh between Desktop, Laptop, and VPS. The reported rates reflect synthetic activation steps per second, not real 7B/14B model token generation throughput.
+- **Real Transformer-Layer Execution**: Currently unverified; installed Ollama backends execute models monolithically and do not expose layer partitioning or external KV state operations.
+- **Orchestrator Run Reconciliation**: Diagnostic runs `run-90519858d3bd4773` (completed 11:13:04 UTC, exported to health report) and `run-7658857465f94f53` (completed 11:13:48 UTC, documented below) are sequential local controller diagnostic projects. Neither certifies production readiness or real distributed model execution.
 
 Increment 17 introduces two core architectural capabilities designed to eliminate compute and memory bottlenecks across heterogeneous, low-power cluster nodes:
 
@@ -105,19 +112,19 @@ Empirical benchmarks were conducted across physical and virtual nodes over the p
 
 Evidence Artifact: [`docs/verified-work/INCREMENT_17_LIVE_PIPELINE_BENCHMARK.json`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/docs/verified-work/INCREMENT_17_LIVE_PIPELINE_BENCHMARK.json)
 
-| Link Topology | Hidden Dim & Dtype | Frame Size | Network RTT (p50) | Total Step Latency (p50) | Inter-Node Throughput |
+| Link Topology | Hidden Dim & Dtype | Frame Size | Network RTT (p50) | Total Step Latency (p50) | Synthetic Step Rate |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Desktop $\to$ Laptop** (LAN Mesh) | 1536 (`float32` - 1.5B) | 6.2 KB | **3.38 ms** | 7.17 ms | **130.7 tok/s** |
-| **Desktop $\to$ Laptop** (LAN Mesh) | 3584 (`float16` - 7B) | 7.2 KB | **3.52 ms** | 9.91 ms | **95.1 tok/s** |
-| **Desktop $\to$ Laptop** (LAN Mesh) | 4096 (`float16` - 14B) | 8.3 KB | **3.50 ms** | 10.94 ms | **86.8 tok/s** |
-| **Desktop $\to$ VPS** (WAN Mesh) | 1536 (`float32` - 1.5B) | 6.2 KB | **11.34 ms** | 13.72 ms | **72.9 tok/s** |
-| **Desktop $\to$ VPS** (WAN Mesh) | 3584 (`float16` - 7B) | 7.2 KB | **11.45 ms** | 16.36 ms | **60.3 tok/s** |
-| **Desktop $\to$ VPS** (WAN Mesh) | 4096 (`float16` - 14B) | 8.3 KB | **11.58 ms** | 17.45 ms | **57.0 tok/s** |
-| **Laptop $\to$ VPS** (Cross-Continent) | 3584 (`float16` - 7B) | 7.2 KB | **14.20 ms** | 19.67 ms | **46.4 tok/s** |
+| **Desktop $\to$ Laptop** (LAN Mesh) | 1536 (`float32` - 1.5B) | 6.2 KB | **3.38 ms** | 7.17 ms | **130.7 steps/s** |
+| **Desktop $\to$ Laptop** (LAN Mesh) | 3584 (`float16` - 7B) | 7.2 KB | **3.52 ms** | 9.91 ms | **95.1 steps/s** |
+| **Desktop $\to$ Laptop** (LAN Mesh) | 4096 (`float16` - 14B) | 8.3 KB | **3.50 ms** | 10.94 ms | **86.8 steps/s** |
+| **Desktop $\to$ VPS** (WAN Mesh) | 1536 (`float32` - 1.5B) | 6.2 KB | **11.34 ms** | 13.72 ms | **72.9 steps/s** |
+| **Desktop $\to$ VPS** (WAN Mesh) | 3584 (`float16` - 7B) | 7.2 KB | **11.45 ms** | 16.36 ms | **60.3 steps/s** |
+| **Desktop $\to$ VPS** (WAN Mesh) | 4096 (`float16` - 14B) | 8.3 KB | **11.58 ms** | 17.45 ms | **57.0 steps/s** |
+| **Laptop $\to$ VPS** (Cross-Continent) | 3584 (`float16` - 7B) | 7.2 KB | **14.20 ms** | 19.67 ms | **46.4 steps/s** |
 
 #### Benchmark Observations
 - **Negligible Handover Overhead**: Over LAN mesh, activation streaming RTT is **$\approx 3.5\text{ ms}$**, which is small compared to typical layer forward execution (15–40 ms).
-- **WAN Feasibility**: Cross-country WAN RTT is **$11.4\text{ ms}$**, sustaining over **$60\text{ tok/s}$** for 7B parameter models.
+- **WAN Feasibility**: Cross-country WAN RTT is **$11.4\text{ ms}$**, sustaining over **$60\text{ steps/s}$** for synthetic 7B hidden dimension vectors (not real model token generation throughput).
 - **Cryptographic Framing Efficiency**: Packing, serialization, and HMAC-SHA256 signature generation adds only **$0.13\text{ ms} \dots 0.38\text{ ms}$** per frame.
 
 ---

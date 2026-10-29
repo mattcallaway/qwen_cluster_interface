@@ -6,12 +6,36 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 
 @dataclass(frozen=True)
+class ExecutionNamespace:
+    """
+    Immutable execution namespace binding cache entries to:
+    - model architecture, weights revision or unique hash
+    - tokenizer identity and chat template
+    - tensor KV layout and numerical dtype
+    - RoPE base and position configurations
+    - tenant or security scope
+    """
+    model_name: str
+    model_revision: str = "default"
+    tokenizer_id: str = "default"
+    chat_template_hash: str = "default"
+    kv_layout: str = "bshd_fp16"
+    rope_config_hash: str = "default"
+    tenant_id: str = "default"
+
+    def compute_digest(self) -> str:
+        s = f"{self.model_name}:{self.model_revision}:{self.tokenizer_id}:{self.chat_template_hash}:{self.kv_layout}:{self.rope_config_hash}:{self.tenant_id}"
+        return hashlib.sha256(s.encode("utf-8")).hexdigest()[:16]
+
+
+@dataclass(frozen=True)
 class TokenBlock:
     """Represents a fixed-size chunk of tokens with its cryptographic hash."""
     block_index: int
     tokens: Tuple[int, ...]
     parent_hash: Optional[str]
     block_hash: str
+    namespace_digest: str = "default"
     token_count: int = field(init=False)
 
     def __post_init__(self):
@@ -23,6 +47,7 @@ class TokenBlock:
             "tokens": list(self.tokens),
             "parent_hash": self.parent_hash,
             "block_hash": self.block_hash,
+            "namespace_digest": self.namespace_digest,
             "token_count": self.token_count,
         }
 
@@ -30,7 +55,7 @@ class TokenBlock:
 class PagedKVHasher:
     """
     Computes deterministic cryptographic prefix hash chains over token sequences.
-    Enforces fixed block sizing (default: 16 tokens/block).
+    Enforces fixed block sizing (default: 16 tokens/block) and namespace isolation.
     """
 
     def __init__(self, block_size: int = 16):
@@ -42,36 +67,60 @@ class PagedKVHasher:
         """Serializes integer token sequence into big-endian 32-bit packed bytes."""
         return struct.pack(f">{len(tokens)}i", *tokens)
 
-    def compute_block_hash(self, tokens: Sequence[int], parent_hash: Optional[str] = None) -> str:
+    def compute_block_hash(
+        self,
+        tokens: Sequence[int],
+        parent_hash: Optional[str] = None,
+        namespace: Optional[Union[ExecutionNamespace, str]] = None,
+    ) -> str:
         """
-        Computes SHA-256 for a token block chained to its parent block hash.
+        Computes SHA-256 for a token block chained to its parent block hash
+        and bound to its immutable execution namespace.
         """
+        ns_digest = "default"
+        if isinstance(namespace, ExecutionNamespace):
+            ns_digest = namespace.compute_digest()
+        elif isinstance(namespace, str) and namespace:
+            ns_digest = hashlib.sha256(namespace.encode("utf-8")).hexdigest()[:16]
+
         hasher = hashlib.sha256()
+        hasher.update(b"NS:")
+        hasher.update(ns_digest.encode("ascii"))
         if parent_hash:
-            hasher.update(b"PARENT:")
+            hasher.update(b":PARENT:")
             hasher.update(parent_hash.encode("ascii"))
             hasher.update(b":TOKENS:")
         else:
-            hasher.update(b"ROOT:TOKENS:")
+            hasher.update(b":ROOT:TOKENS:")
         hasher.update(self.serialize_tokens(tokens))
         return hasher.hexdigest()
 
-    def chunk_tokens(self, tokens: Sequence[int]) -> List[TokenBlock]:
+    def chunk_tokens(
+        self,
+        tokens: Sequence[int],
+        namespace: Optional[Union[ExecutionNamespace, str]] = None,
+    ) -> List[TokenBlock]:
         """
-        Segments a sequence of tokens into fixed-size TokenBlocks with chained hashes.
-        Remaining trailing tokens (< block_size) form the final terminal block.
+        Segments a sequence of tokens into fixed-size TokenBlocks with chained hashes
+        bound to the given execution namespace.
         """
         blocks: List[TokenBlock] = []
         parent_hash: Optional[str] = None
+        ns_digest = "default"
+        if isinstance(namespace, ExecutionNamespace):
+            ns_digest = namespace.compute_digest()
+        elif isinstance(namespace, str) and namespace:
+            ns_digest = hashlib.sha256(namespace.encode("utf-8")).hexdigest()[:16]
 
         for idx, start in enumerate(range(0, len(tokens), self.block_size)):
             chunk = tuple(tokens[start : start + self.block_size])
-            b_hash = self.compute_block_hash(chunk, parent_hash)
+            b_hash = self.compute_block_hash(chunk, parent_hash, namespace=namespace)
             block = TokenBlock(
                 block_index=idx,
                 tokens=chunk,
                 parent_hash=parent_hash,
                 block_hash=b_hash,
+                namespace_digest=ns_digest,
             )
             blocks.append(block)
             parent_hash = b_hash
@@ -82,9 +131,15 @@ class PagedKVHasher:
 class RadixNode:
     """Node in the Radix Prefix Tree keyed by cryptographic block hashes."""
 
-    def __init__(self, block_hash: Optional[str] = None, block: Optional[TokenBlock] = None):
+    def __init__(
+        self,
+        block_hash: Optional[str] = None,
+        block: Optional[TokenBlock] = None,
+        namespace_digest: str = "default",
+    ):
         self.block_hash = block_hash
         self.block = block
+        self.namespace_digest = namespace_digest
         self.children: Dict[str, RadixNode] = {}
         self.payload: Optional[Dict[str, Any]] = None
         self.access_count: int = 0
@@ -93,7 +148,7 @@ class RadixNode:
 class PrefixRadixTree:
     """
     In-memory Radix tree for zero-prefill prefix matching across prompt sequences.
-    Enables O(K) lookup of pre-computed KV cache pages where K is the number of blocks.
+    Enables O(K) lookup of pre-computed KV cache pages with strict namespace isolation.
     """
 
     def __init__(self, hasher: Optional[PagedKVHasher] = None):
@@ -102,17 +157,25 @@ class PrefixRadixTree:
         self.total_nodes = 0
         self.total_stored_blocks = 0
 
-    def insert(self, tokens: Sequence[int], payload: Optional[Dict[str, Any]] = None) -> List[TokenBlock]:
+    def insert(
+        self,
+        tokens: Sequence[int],
+        payload: Optional[Dict[str, Any]] = None,
+        namespace: Optional[Union[ExecutionNamespace, str]] = None,
+    ) -> List[TokenBlock]:
         """
-        Inserts a token sequence into the prefix radix tree.
-        Associates metadata (e.g. physical page IDs, model name) with each node.
+        Inserts a token sequence into the prefix radix tree bound to its execution namespace.
         """
-        blocks = self.hasher.chunk_tokens(tokens)
+        blocks = self.hasher.chunk_tokens(tokens, namespace=namespace)
         current = self.root
 
         for block in blocks:
             if block.block_hash not in current.children:
-                node = RadixNode(block_hash=block.block_hash, block=block)
+                node = RadixNode(
+                    block_hash=block.block_hash,
+                    block=block,
+                    namespace_digest=block.namespace_digest,
+                )
                 current.children[block.block_hash] = node
                 self.total_nodes += 1
                 self.total_stored_blocks += 1
@@ -125,15 +188,16 @@ class PrefixRadixTree:
 
         return blocks
 
-    def match_prefix(self, tokens: Sequence[int]) -> Tuple[List[TokenBlock], int, List[Dict[str, Any]]]:
+    def match_prefix(
+        self,
+        tokens: Sequence[int],
+        namespace: Optional[Union[ExecutionNamespace, str]] = None,
+    ) -> Tuple[List[TokenBlock], int, List[Dict[str, Any]]]:
         """
-        Finds the longest contiguous prefix of blocks present in the tree.
-        Returns:
-            - matched_blocks: List[TokenBlock]
-            - matched_tokens_count: int
-            - page_payloads: List[Dict[str, Any]] corresponding to each matched block
+        Finds the longest contiguous prefix of blocks present in the tree matching
+        the exact execution namespace.
         """
-        blocks = self.hasher.chunk_tokens(tokens)
+        blocks = self.hasher.chunk_tokens(tokens, namespace=namespace)
         matched_blocks: List[TokenBlock] = []
         page_payloads: List[Dict[str, Any]] = []
         matched_tokens = 0
@@ -141,7 +205,11 @@ class PrefixRadixTree:
 
         for block in blocks:
             if block.block_hash in current.children:
-                current = current.children[block.block_hash]
+                child = current.children[block.block_hash]
+                # Enforce namespace isolation
+                if child.namespace_digest != block.namespace_digest:
+                    break
+                current = child
                 current.access_count += 1
                 matched_blocks.append(block)
                 matched_tokens += block.token_count

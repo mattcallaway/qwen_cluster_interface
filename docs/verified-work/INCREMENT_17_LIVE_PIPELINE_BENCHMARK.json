@@ -1,4 +1,11 @@
 {
+  "_benchmark_metadata": {
+    "benchmark_type": "Synthetic Transport Microbenchmark",
+    "disclaimer": "This benchmark measures network transport, serialization, and deserialization latency of synthetic activation vectors over WireGuard using simulate_stage_compute. It does NOT measure real transformer forward passes or genuine model token generation throughput.",
+    "compute_type": "simulated",
+    "activation_source": "synthetic_vectors",
+    "real_inference_verified": false
+  },
   "desktop_to_laptop": [
     {
       "hidden_dim": 1536,
