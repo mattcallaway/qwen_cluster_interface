@@ -172,7 +172,7 @@ def test_unicode_and_special_character_tokenization():
     assert all(0 <= t <= 255 for t in tokens)
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        mgr = PagedKVManager(storage_dir=Path(tmpdir), max_ram_blocks=32)
+        mgr = PagedKVManager(storage_dir=Path(tmpdir), auth_key=b"robustness-test-key-32-bytes-ok!", max_ram_blocks=32)
         report1 = mgr.ingest_prompt("unicode-seq-1", tokens, model_name="qwen2.5:1.5b")
         assert report1["total_tokens"] == len(tokens)
         assert report1["matched_tokens"] == 0
@@ -253,7 +253,7 @@ def test_virtual_block_table_ref_count_correctness():
 def test_lru_eviction_churn_under_tight_ram():
     with tempfile.TemporaryDirectory() as tmpdir:
         # Max RAM = 4 blocks
-        mgr = PagedKVManager(storage_dir=Path(tmpdir), max_ram_blocks=4, block_size=16)
+        mgr = PagedKVManager(storage_dir=Path(tmpdir), auth_key=b"robustness-test-key-32-bytes-ok!", max_ram_blocks=4, block_size=16)
 
         # Ingest 10 distinct sequences of 32 tokens each (2 blocks per sequence)
         for i in range(10):

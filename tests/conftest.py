@@ -15,7 +15,6 @@ empty_cfg.touch()
 os.environ["QC_CONFIG_FILE"] = str(empty_cfg)
 os.environ["QC_DATA_DIR"] = test_dir
 os.environ["QC_SECRET_KEY"] = "test-secret-key-12345"
-os.environ["PAGED_KV_STORAGE_KEY"] = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 from app.config import settings, ensure_directories
 from app.database import init_db

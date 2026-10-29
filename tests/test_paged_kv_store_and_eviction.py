@@ -13,7 +13,7 @@ def temp_kv_dir():
 
 
 def test_paged_kv_store_persistence_and_eviction(temp_kv_dir):
-    store = PagedKVStore(storage_dir=temp_kv_dir, compress=True)
+    store = PagedKVStore(storage_dir=temp_kv_dir, auth_key=b"k" * 32, compress=True)
 
     block_hash = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
     tensor_data = b"TENSOR_PAYLOAD_SIMULATION_RAW_BYTES_FOR_KV_CACHE_PAGING_VERIFICATION"
@@ -44,6 +44,7 @@ def test_paged_kv_store_persistence_and_eviction(temp_kv_dir):
 def test_paged_kv_manager_zero_prefill_reuse(temp_kv_dir):
     manager = PagedKVManager(
         storage_dir=temp_kv_dir,
+        auth_key=b"k" * 32,
         max_ram_blocks=8,
         block_size=16,
         compress=True,
@@ -92,6 +93,7 @@ def test_paged_kv_manager_lru_ram_eviction(temp_kv_dir):
     # Set strict RAM quota: maximum 3 blocks in RAM
     manager = PagedKVManager(
         storage_dir=temp_kv_dir,
+        auth_key=b"k" * 32,
         max_ram_blocks=3,
         block_size=16,
         compress=True,

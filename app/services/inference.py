@@ -12,7 +12,35 @@ import os
 from app.config import settings
 from app.services.network_security import validate_endpoint_url
 
+import threading
+
+class PagedKVCacheConfigurationError(RuntimeError):
+    """Raised when paged KV cache is enabled but configuration is invalid or missing."""
+    pass
+
+
+_paged_kv_init_lock = threading.Lock()
 _paged_kv_manager: Optional[Any] = None
+_paged_kv_init_error: Optional[str] = None
+
+
+def is_paged_kv_enabled() -> bool:
+    """Returns True if paged KV cache subsystem is explicitly enabled."""
+    val = os.environ.get("QC_PAGED_KV_ENABLED", "false").strip().lower()
+    return val in ("1", "true", "yes", "enabled")
+
+
+def get_paged_kv_on_error_policy() -> str:
+    """Returns 'fail_closed' (default) or 'bypass'."""
+    return os.environ.get("QC_PAGED_KV_ON_ERROR", "fail_closed").strip().lower()
+
+
+def reset_paged_kv_state() -> None:
+    """Resets cached manager singleton and error state (for configuration changes or tests)."""
+    global _paged_kv_manager, _paged_kv_init_error
+    with _paged_kv_init_lock:
+        _paged_kv_manager = None
+        _paged_kv_init_error = None
 
 
 def encode_text_to_tokens(text: str) -> List[int]:
@@ -23,25 +51,78 @@ def encode_text_to_tokens(text: str) -> List[int]:
     return [int(b) for b in text.encode("utf-8")]
 
 
-def get_paged_kv_manager() -> Any:
-    global _paged_kv_manager
-    if _paged_kv_manager is None:
+def get_paged_kv_manager() -> Optional[Any]:
+    global _paged_kv_manager, _paged_kv_init_error
+    if not is_paged_kv_enabled():
+        return None
+
+    with _paged_kv_init_lock:
+        if _paged_kv_manager is not None:
+            return _paged_kv_manager
+
         from app.services.paged_kv import PagedKVManager
 
         kv_dir = settings.data_dir / "kv_cache"
         auth_key = os.environ.get("PAGED_KV_STORAGE_KEY") or os.environ.get("QC_PAGED_KV_STORAGE_KEY")
-        _paged_kv_manager = PagedKVManager(
-            storage_dir=kv_dir,
-            max_ram_blocks=int(os.getenv("QC_PAGED_KV_MAX_RAM_BLOCKS", "128")),
-            block_size=int(os.getenv("QC_PAGED_KV_BLOCK_SIZE", "16")),
-            compress=True,
-            auth_key=auth_key,
-        )
-    return _paged_kv_manager
+
+        try:
+            _paged_kv_manager = PagedKVManager(
+                storage_dir=kv_dir,
+                max_ram_blocks=int(os.getenv("QC_PAGED_KV_MAX_RAM_BLOCKS", "128")),
+                block_size=int(os.getenv("QC_PAGED_KV_BLOCK_SIZE", "16")),
+                compress=True,
+                auth_key=auth_key,
+            )
+            _paged_kv_init_error = None
+            return _paged_kv_manager
+        except Exception as e:
+            _paged_kv_manager = None
+            _paged_kv_init_error = f"Storage key configuration error: {type(e).__name__}"
+            policy = get_paged_kv_on_error_policy()
+            if policy == "bypass":
+                logger.warning("Paged KV cache initialization failed (%s); bypassing cache per policy.", type(e).__name__)
+                return None
+            else:
+                raise PagedKVCacheConfigurationError(
+                    "Paged KV cache is enabled but storage key configuration is invalid or missing. "
+                    "Configure 'PAGED_KV_STORAGE_KEY' (256-bit key) or set 'QC_PAGED_KV_ENABLED=false'."
+                ) from None
+
+
+def _get_default_paged_kv_metrics(enabled: bool, status: str, error: Optional[str] = None) -> Dict[str, Any]:
+    return {
+        "enabled": enabled,
+        "status": status,
+        "error": error,
+        "total_queries": 0,
+        "total_evaluated_tokens": 0,
+        "total_matched_tokens": 0,
+        "prefix_hit_rate_percent": 0.0,
+        "total_evictions": 0,
+        "current_ram_pages": 0,
+        "max_ram_blocks": 0,
+        "current_ram_bytes": 0,
+        "max_ram_bytes": 0,
+        "free_physical_blocks": 0,
+        "active_sequences": 0,
+        "verified_reuse_authorized": False,
+    }
 
 
 def get_paged_kv_metrics() -> Dict[str, Any]:
-    return get_paged_kv_manager().get_metrics()
+    if not is_paged_kv_enabled():
+        return _get_default_paged_kv_metrics(False, "disabled")
+    try:
+        mgr = get_paged_kv_manager()
+        if mgr is None:
+            return _get_default_paged_kv_metrics(True, "bypassed_unavailable", _paged_kv_init_error)
+        metrics = mgr.get_metrics()
+        metrics["enabled"] = True
+        metrics["status"] = "active"
+        metrics["verified_reuse_authorized"] = False
+        return metrics
+    except PagedKVCacheConfigurationError as e:
+        return _get_default_paged_kv_metrics(True, "unavailable", str(e))
 
 
 async def test_inference_endpoint(backend_type: str, endpoint_url: str, api_key: Optional[str] = None) -> Tuple[bool, Optional[str], Optional[str]]:
@@ -340,17 +421,43 @@ async def send_chat_completion(
     attempts_log = []
 
     # Sidecar Paged KV Prefix Search Hook
-    paged_kv = get_paged_kv_manager()
-    prompt_str = "\n".join(f"{m.get('role', '')}:{m.get('content', '')}" for m in messages)
-    tokens = encode_text_to_tokens(prompt_str)
+    paged_kv = None
+    paged_kv_report = {
+        "enabled": False,
+        "status": "disabled",
+        "reused_blocks_count": 0,
+        "prefill_saved_percent": 0.0,
+    }
     seq_id = f"inf-seq-{uuid.uuid4().hex[:8]}"
-    default_model_name = candidates[0].get("model_name") or "qwen2.5"
+    tokens: List[int] = []
 
-    paged_kv_report = paged_kv.ingest_prompt(
-        sequence_id=seq_id,
-        tokens=tokens,
-        model_name=default_model_name,
-    )
+    if is_paged_kv_enabled():
+        try:
+            paged_kv = get_paged_kv_manager()
+        except PagedKVCacheConfigurationError as err:
+            logger.error("Paged KV cache configuration error: %s", err)
+            return {
+                "success": False,
+                "error": f"Paged KV cache error: {str(err)}",
+                "error_code": "paged_kv_configuration_error",
+            }
+
+        if paged_kv is not None:
+            prompt_str = "\n".join(f"{m.get('role', '')}:{m.get('content', '')}" for m in messages)
+            tokens = encode_text_to_tokens(prompt_str)
+            default_model_name = candidates[0].get("model_name") or "qwen2.5"
+            paged_kv_report = paged_kv.ingest_prompt(
+                sequence_id=seq_id,
+                tokens=tokens,
+                model_name=default_model_name,
+            )
+        else:
+            paged_kv_report = {
+                "enabled": True,
+                "status": "bypassed_unavailable",
+                "reused_blocks_count": 0,
+                "prefill_saved_percent": 0.0,
+            }
 
     try:
         for idx, backend in enumerate(candidates):
@@ -386,16 +493,16 @@ async def send_chat_completion(
 
                             update_backend_status(backend_id, "ready", error_details=None)
 
-                            # Cache completion continuation in paged KV store
-                            full_tokens = tokens + encode_text_to_tokens(content)
-                            reply_seq = f"{seq_id}-reply"
-                            paged_kv.ingest_prompt(
-                                sequence_id=reply_seq,
-                                tokens=full_tokens,
-                                model_name=backend.get("model_name") or default_model_name,
-                            )
-                            # Release transient reply sequence mapping from table
-                            paged_kv.release_sequence(reply_seq)
+                            # Cache completion continuation in paged KV store if active
+                            if paged_kv is not None and tokens:
+                                full_tokens = tokens + encode_text_to_tokens(content)
+                                reply_seq = f"{seq_id}-reply"
+                                paged_kv.ingest_prompt(
+                                    sequence_id=reply_seq,
+                                    tokens=full_tokens,
+                                    model_name=backend.get("model_name") or default_model_name,
+                                )
+                                paged_kv.release_sequence(reply_seq)
 
                             return {
                                 "success": True,
@@ -432,16 +539,16 @@ async def send_chat_completion(
 
                             update_backend_status(backend_id, "ready", error_details=None)
 
-                            # Cache completion continuation in paged KV store
-                            full_tokens = tokens + encode_text_to_tokens(content)
-                            reply_seq = f"{seq_id}-reply"
-                            paged_kv.ingest_prompt(
-                                sequence_id=reply_seq,
-                                tokens=full_tokens,
-                                model_name=backend.get("model_name") or default_model_name,
-                            )
-                            # Release transient reply sequence mapping from table
-                            paged_kv.release_sequence(reply_seq)
+                            # Cache completion continuation in paged KV store if active
+                            if paged_kv is not None and tokens:
+                                full_tokens = tokens + encode_text_to_tokens(content)
+                                reply_seq = f"{seq_id}-reply"
+                                paged_kv.ingest_prompt(
+                                    sequence_id=reply_seq,
+                                    tokens=full_tokens,
+                                    model_name=backend.get("model_name") or default_model_name,
+                                )
+                                paged_kv.release_sequence(reply_seq)
 
                             return {
                                 "success": True,
@@ -484,4 +591,5 @@ async def send_chat_completion(
         }
     finally:
         # Deterministically clean up the transient prompt sequence table entry
-        paged_kv.release_sequence(seq_id)
+        if paged_kv is not None:
+            paged_kv.release_sequence(seq_id)

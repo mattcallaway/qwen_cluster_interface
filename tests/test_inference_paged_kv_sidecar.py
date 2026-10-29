@@ -41,7 +41,11 @@ def test_encode_text_to_tokens():
     assert encode_text_to_tokens(text) == tokens
 
 
-def test_paged_kv_manager_initialization_and_metrics():
+def test_paged_kv_manager_initialization_and_metrics(monkeypatch):
+    from app.services.inference import reset_paged_kv_state
+    monkeypatch.setenv("QC_PAGED_KV_ENABLED", "true")
+    monkeypatch.setenv("PAGED_KV_STORAGE_KEY", "b" * 64)
+    reset_paged_kv_state()
     mgr = get_paged_kv_manager()
     assert mgr is not None
     metrics = get_paged_kv_metrics()
@@ -51,7 +55,11 @@ def test_paged_kv_manager_initialization_and_metrics():
 
 
 @pytest.mark.anyio
-async def test_send_chat_completion_with_paged_kv_sidecar_hit():
+async def test_send_chat_completion_with_paged_kv_sidecar_hit(monkeypatch):
+    from app.services.inference import reset_paged_kv_state
+    monkeypatch.setenv("QC_PAGED_KV_ENABLED", "true")
+    monkeypatch.setenv("PAGED_KV_STORAGE_KEY", "c" * 64)
+    reset_paged_kv_state()
     # Register mock backend
     b = register_inference_backend(
         name="Mock Ollama Engine",

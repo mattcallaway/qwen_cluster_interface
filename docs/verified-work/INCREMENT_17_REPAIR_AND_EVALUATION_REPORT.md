@@ -37,19 +37,21 @@ All four correctness defects were reproduced with dedicated, independently speci
 | Source File | SHA-256 Digest | Status |
 |---|---|---|
 | `app/services/paged_kv/page_table.py` | `7a1b1bb2e66e02bafbc798b66478e26fd081f348bd17c2739bbbf2563803f24c` | Repaired (F-7) |
-| `app/services/paged_kv/hasher.py` | `7b06bd8cff5df5c408d007f179c15349e6cba25ba97b98e09bce0f3c453f68b4` | Repaired (F-8, F-12, F-16) |
+| `app/services/paged_kv/hasher.py` | `d94cc3130d4f6cd5fd0d2da308831ace1a35a8bd60a9fc7a375ea98fd3eeaa21` | Repaired (F-8, F-12, F-16, F-17) |
 | `app/services/paged_kv/store.py` | `00fa9c8be8098c93ea030479013f51fbbaadede46d76d2f2385151346604b628` | Repaired (F-9, F-10, F-13, F-14, F-15) |
-| `app/services/paged_kv/manager.py` | `9d61955eb0993a9cd6110e3a96a24e38fbd21600a5a4b8c91e589f076b9fbf34` | Repaired (F-7, F-10, F-12, F-13, F-14, F-15, F-16) |
-| `app/services/inference.py` | `723ee4d4e664507818d02facdb299f1603298a5728993de2721d2f0f05a2e610` | Repaired (F-10) |
+| `app/services/paged_kv/manager.py` | `c11142d602ccb3e3236c9bae164f623cf27762c35d258eb1d1bb60cb350ff30f` | Repaired (F-7, F-10, F-12, F-13, F-14, F-15, F-16, F-17) |
+| `app/services/paged_kv/identity.py` | `57fb71084be0cad46d5955bff8908782fbbd02e56fcd50a6dbd79525a458a525` | New Module (F-17) |
+| `app/services/inference.py` | `930bddf630b19a786ac6592d16c493a3a6a5cdecc679c6f6fd9b009bc21f8ac1` | Repaired (F-10, F-18) |
 | `app/services/pipeline_parallel/activation_protocol.py` | `77f299667d76cc4c32838517fb7ca9e067b061d1f156f7377a792c8ae7bcd509` | Verified |
 | `app/services/pipeline_parallel/topology.py` | `f19d5b0c3eb12bdf8def548b434101dc775e5490bb94a19c79fbc93e1e926a6f` | Verified |
 | `app/services/pipeline_parallel/runner.py` | `da6f70714acb245cacd7f584b600044d0d677d2c3def83a05c65611aba71419b` | Verified |
 | `tests/test_paged_kv_page_ownership.py` | `1a4e9582c8e48ab4a8cdd2fd7d23cb3de89feac0838984bab510663fe8b3bc63` | Regression Suite A |
-| `tests/test_paged_kv_namespace_isolation.py` | `d986114b19512f41813463d18a27de2d016096ab6eb7326781db71c0aac13670` | Regression Suite B (11 tests) |
-| `tests/test_paged_kv_stored_integrity.py` | `e71075a053e6b1974528b81bde14fdcec844afc5097a3ee191df773277806690` | Regression Suite C (9 tests) |
-| `tests/test_paged_kv_memory_accounting.py` | `3e4812df644c4fde4c9eb3043c8c82f3d097b23725d1f565283641f91c0f839a` | Regression Suite D |
-| `tests/test_paged_kv_auth_and_identity.py` | `08c06ba5086b733f5eb1db4cf7ffad7f1e6c4edda14f82665c4771c77413a07b` | Regression Suite E (12 tests) |
-| `docs/architecture/INCREMENT_17_STORAGE_FORMAT_AND_SECURITY_SPEC.md` | `9cd8e4c5fba40fd2b8a562afffba95883e88090d874ff863c4208ea0bbc52560` | Format Specification v2.1 |
+| `tests/test_paged_kv_namespace_isolation.py` | `3f8fa3dddf14ff732bc07b629ce074fc600fc9e66bfbc456d8c47b59633e9d89` | Regression Suite B (11 tests) |
+| `tests/test_paged_kv_stored_integrity.py` | `e2a2c85b5463fa79eeff1841d15be87fe7fa2ca8588f615be564f26b528b4c73` | Regression Suite C (9 tests) |
+| `tests/test_paged_kv_memory_accounting.py` | `fece8e932b730ebfa5b5f8cb47d9595856e729a43a85b9bda165b4c1aa564b73` | Regression Suite D |
+| `tests/test_paged_kv_auth_and_identity.py` | `6b973059883ea0e13715ecda083d696d594fcbeec59473d0a2936798e6d2bc8a` | Regression Suite E (12 tests) |
+| `tests/test_paged_kv_authority_and_app_behavior.py` | `1cb7532e2b22c4db1d89a33a5924978cf3b1e619dc615674a8ef508bf4ca65bb` | Regression Suite F (14 tests) |
+| `docs/architecture/INCREMENT_17_STORAGE_FORMAT_AND_SECURITY_SPEC.md` | `b348f934ea277f98e82ef6ff726414995f59045b4c852fc631553c442436d400` | Format Specification v2.2 |
 
 ---
 
@@ -176,7 +178,34 @@ All four correctness defects were reproduced with dedicated, independently speci
   - Implemented `ModelIdentityManifest` dataclass binding immutable 64-char hex SHA-256 digests for model weights, tokenizer vocabularies, chat templates, and RoPE configurations.
   - Partitioned namespaces via `identity_scope`: `"verified_runtime"` (authorized for genuine tensor reuse, `is_verified_for_reuse = True`) vs `"prototype_simulation"` (restricted to simulated testing, `is_verified_for_reuse = False`).
   - Bound `identity_scope` and `runtime_compatibility` into canonical JSON serialization, ensuring prototype simulations and verified runtimes never share namespace digests.
-- **Verification:** 4 tests in `tests/test_paged_kv_auth_and_identity.py` verifying changed weight isolation, prototype reuse isolation, digest format validation, and RAM cache integrity/failure cleanup.
+### J. Identity Issuance Authority & Verification Enforcement (Defect F-17)
+- **Reproduction:** Direct construction of `ExecutionNamespace(..., identity_scope="verified_runtime")` resulted in `is_verified_for_reuse = True` without verifying any artifacts on disk. Similarly, instantiating `ModelIdentityManifest(weight_digest="11"*32, ...)` granted `is_verified_for_reuse = True` for arbitrary formatted hex strings.
+- **Failing Baseline:** Independent probe `test_self_asserted_label_authorizes_reuse` and `test_format_only_manifest_treated_as_verified` reproduced true reuse authority conferred by caller-supplied labels.
+- **Root Cause:** Reliance on caller-selected string labels and unvalidated manifest declarations without a trusted issuance authority or live artifact checking.
+- **Architectural Fix:**
+  - Implemented real three-tier identity and authority separation in `app/services/paged_kv/identity.py`:
+    1. **Declared Manifest (`ModelIdentityManifest`):** Declared identity claims supplied by callers. `ExecutionNamespace.is_verified_for_reuse` strictly returns `False`.
+    2. **Approved Registry & Verified Artifacts (`ApprovedManifestRegistry` & `IdentityIssuanceAuthority`):** Manifests must be pre-approved in the registry. The issuance authority verifies actual on-disk files (weights, tokenizer, chat template, RoPE configuration, and numerical layout) before issuing authority.
+    3. **Issued Reuse Authority (`IssuedReuseAuthority`):** Cryptographically bound runtime object that validates live disk artifacts (`verify_live_artifacts()`) prior to any cache page reuse, eliminating TOCTOU path substitution.
+  - Enforced authority at the manager entry point: `PagedKVManager.ingest_prompt(..., authority=...)` strictly mandates `isinstance(authority, IssuedReuseAuthority)` and `authority.is_valid_for(namespace)`. Calls without valid authority return `verified_reuse_authorized: False`.
+- **Verification:** 8 focused tests in `tests/test_paged_kv_authority_and_app_behavior.py` verifying direct label rejection, unapproved manifest rejection, tampered artifact rejection, synthetic artifact verification, TOCTOU post-issuance tampering detection, prototype simulation isolation, and serialized authority impersonation rejection.
+
+### K. Controlled Application Caching Modes & Error Policies (Defect F-18)
+- **Reproduction:** Ordinary inference (`send_chat_completion`) without a configured storage key crashed with an uncaught `ValueError: Missing storage authentication key`. In addition, `tests/conftest.py` silently injected `PAGED_KV_STORAGE_KEY` for the entire test session, masking missing-key failures across all tests.
+- **Failing Baseline:** Independent probe `test_inference_without_key_raises_uncaught_valueerror` reproduced an uncaught exception escaping the inference service.
+- **Root Cause:** Paged KV cache initialization was an unconditional dependency of ordinary inference, with no configuration-driven mode or error boundary.
+- **Architectural Fix:**
+  - Defined explicit application modes in `app/services/inference.py`:
+    - `QC_PAGED_KV_ENABLED=false` *(Default)*: Ordinary inference runs cleanly without touching persistent cache storage or requiring authentication keys.
+    - `QC_PAGED_KV_ENABLED=true`: Cache is active and requires valid 256-bit authentication.
+    - `QC_PAGED_KV_ON_ERROR`: Controlled error policies:
+      - `fail_closed` *(Default)*: Returns a clean, structured API error response (`error_code="paged_kv_configuration_error"`) without leaking internal paths, keys, or credentials.
+      - `bypass`: Logs a bounded warning and continues un-cached inference with status `bypassed_unavailable`.
+  - Guarded sequence release: `finally: if paged_kv is not None: paged_kv.release_sequence(seq_id)`.
+  - Added thread-safe singleton initialization with `_paged_kv_init_lock` and `reset_paged_kv_state()` for clean reconfiguration and recovery.
+  - Complete baseline metrics returned by `get_paged_kv_metrics()` under disabled/unavailable modes to prevent API/observatory crashes while truthfully reporting status.
+  - Zero-trust test audit: removed `os.environ["PAGED_KV_STORAGE_KEY"]` auto-injection from `tests/conftest.py`. Positive tests explicitly declare test fixtures or pass test-generated secrets.
+- **Verification:** 6 focused tests in `tests/test_paged_kv_authority_and_app_behavior.py` verifying disabled-mode inference without keys, enabled-mode fail-closed structured error, bypass fallback, truthful metrics reporting under all modes, clean post-error recovery upon configuration correction, and concurrent initialization thread safety.
 
 ---
 
@@ -242,7 +271,7 @@ All relevant entries in `docs/verified-work/ACCEPTANCE_MATRIX.md` have been upda
 - **REQ-10 (Paged KV Cache):** Status **PARTIAL / REPAIRED PROTOTYPE**. Core memory safety, pinning, generation identities, immutable execution namespaces, and cryptographic envelope validation are fully implemented and verified. Real tensor kernel reuse remains gated on inference engine integration.
 - **REQ-11 (Pipeline Activation Transport):** Status **PROVED (SYNTHETIC TRANSPORT)**. WireGuard network transport of IEEE 754 float16 activation frames with HMAC-SHA256 authentication verified across LAN and WAN. Real model layer execution remains gated on PyTorch backend.
 - **REQ-12 (Pipeline & Cache Diagnostics):** Status **PROVED**. Orchestrator DAG validation, adversarial frame rejection, and dashboard widgets verified.
-- **Defect Findings F-7, F-8, F-9, F-10, F-11:** Documented, tested, and resolved.
+- **Defect Findings F-7 through F-18:** Documented, tested, and resolved across 160 unit, robustness, adversarial, identity authority, and application mode test cases.
 
 ---
 

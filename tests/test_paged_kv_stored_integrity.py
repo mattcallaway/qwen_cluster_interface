@@ -13,7 +13,7 @@ def test_reproduce_tampered_disk_page_returned_without_verification():
     """
     with tempfile.TemporaryDirectory() as tmpdir:
         # Uncompressed or compressed
-        store = PagedKVStore(storage_dir=Path(tmpdir), compress=False)
+        store = PagedKVStore(storage_dir=Path(tmpdir), auth_key=b"k" * 32, compress=False)
         block_hash = "c" * 64
         original_payload = b"GENUINE_KV_TENSOR_BYTES_PAYLOAD"
 
@@ -39,7 +39,7 @@ def test_payload_bit_flip_tampering_rejected():
     Modifying a single byte inside the serialized payload must trigger a SHA-256 digest failure.
     """
     with tempfile.TemporaryDirectory() as tmpdir:
-        store = PagedKVStore(storage_dir=Path(tmpdir), compress=False)
+        store = PagedKVStore(storage_dir=Path(tmpdir), auth_key=b"k" * 32, compress=False)
         block_hash = "d" * 64
         original_payload = b"X" * 128
 
@@ -61,7 +61,7 @@ def test_header_tampering_hmac_rejected():
     Modifying any byte inside the authenticated envelope header must fail HMAC verification.
     """
     with tempfile.TemporaryDirectory() as tmpdir:
-        store = PagedKVStore(storage_dir=Path(tmpdir), compress=False)
+        store = PagedKVStore(storage_dir=Path(tmpdir), auth_key=b"k" * 32, compress=False)
         block_hash = "f" * 64
         original_payload = b"GENUINE_AUTHENTICATED_PAYLOAD"
 
@@ -84,7 +84,7 @@ def test_deprecated_v1_envelope_rejected_fail_closed():
     must be rejected fail-closed, never silently accepted as valid QCKVP2 pages.
     """
     with tempfile.TemporaryDirectory() as tmpdir:
-        store = PagedKVStore(storage_dir=Path(tmpdir), compress=False)
+        store = PagedKVStore(storage_dir=Path(tmpdir), auth_key=b"k" * 32, compress=False)
         block_hash = "1" * 64
         disk_path = store._get_disk_path(block_hash)
         # Write legacy QCKVP1 mock envelope
@@ -100,7 +100,7 @@ def test_trailing_data_in_envelope_rejected():
     Envelopes with extra trailing data past the declared payload must be rejected.
     """
     with tempfile.TemporaryDirectory() as tmpdir:
-        store = PagedKVStore(storage_dir=Path(tmpdir), compress=False)
+        store = PagedKVStore(storage_dir=Path(tmpdir), auth_key=b"k" * 32, compress=False)
         block_hash = "2" * 64
         store.write_page(block_hash, b"bounded_payload", persist_to_disk=True)
         store.evict_from_ram(block_hash)
@@ -118,7 +118,7 @@ def test_truncated_envelope_rejected():
     Envelopes truncated before completing declared payload must fail closed.
     """
     with tempfile.TemporaryDirectory() as tmpdir:
-        store = PagedKVStore(storage_dir=Path(tmpdir), compress=False)
+        store = PagedKVStore(storage_dir=Path(tmpdir), auth_key=b"k" * 32, compress=False)
         block_hash = "3" * 64
         store.write_page(block_hash, b"payload_to_truncate", persist_to_disk=True)
         store.evict_from_ram(block_hash)
@@ -137,7 +137,7 @@ def test_path_traversal_rejected_fail_closed():
     Malformed hashes attempting directory traversal must be rejected immediately.
     """
     with tempfile.TemporaryDirectory() as tmpdir:
-        store = PagedKVStore(storage_dir=Path(tmpdir), compress=True)
+        store = PagedKVStore(storage_dir=Path(tmpdir), auth_key=b"k" * 32, compress=True)
 
         with pytest.raises(ValueError, match="Invalid block hash identifier"):
             store.write_page("../../../etc/passwd", b"bad", persist_to_disk=True)
@@ -151,7 +151,7 @@ def test_corrupt_magic_bytes_rejected():
     Pages with corrupted magic bytes must fail closed.
     """
     with tempfile.TemporaryDirectory() as tmpdir:
-        store = PagedKVStore(storage_dir=Path(tmpdir), compress=False)
+        store = PagedKVStore(storage_dir=Path(tmpdir), auth_key=b"k" * 32, compress=False)
         block_hash = "e" * 64
         store.write_page(block_hash, b"valid payload", persist_to_disk=True)
         store.evict_from_ram(block_hash)
@@ -178,7 +178,7 @@ def test_reproduce_valid_page_substitution_across_keys_and_namespaces():
     import shutil
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        store = PagedKVStore(storage_dir=Path(tmpdir), compress=False)
+        store = PagedKVStore(storage_dir=Path(tmpdir), auth_key=b"k" * 32, compress=False)
         hash_a = "a" * 64
         hash_b = "b" * 64
         payload_a = b"PAGE_A_GENUINE_TENSOR"

@@ -1,9 +1,9 @@
 # Increment 17: Storage Format, Cache Identity, and Security Specification
-## Document Identifier: `SPEC-INC17-PAGED-KV-V2.1`
-**Version:** 2.1  
+## Document Identifier: `SPEC-INC17-PAGED-KV-V2.2`
+**Version:** 2.2  
 **Status:** Implemented & Verified  
 **Date:** 2026-10-28  
-**Scope:** `app/services/paged_kv` subsystem  
+**Scope:** `app/services/paged_kv` subsystem, identity issuance authority, and inference lifecycle  
 
 ---
 
@@ -152,3 +152,46 @@ When `read_page(block_hash, expected_namespace_digest, expected_payload_sha)` is
 1. **Legacy V1 Invalidation:** Prototype `QCKVP1` pages lacked stored block keys, truncated namespace digests, and had no authentication tags. All `QCKVP1` envelopes are rejected fail-closed upon detection.
 2. **Safe Cache Miss:** When a legacy, unauthenticated, or incompatible page is encountered, the storage engine rejects the page, treating it as an authentic cache miss.
 3. **Directory Isolation:** Production caches are not modified or deleted. Development and isolated testing use dedicated disposable temporary directories.
+
+---
+
+## 7. Trusted Identity Issuance & Artifact Verification Authority
+
+To eliminate caller-selected or label-based authorization bypasses, identity claims and runtime reuse authority are decoupled into three distinct layers:
+
+1. **Declared Manifest (`ModelIdentityManifest`):**
+   - Identity claims provided by a caller or configuration.
+   - Declares expected cryptographic digests for model weights, tokenizer vocabularies, chat templates, RoPE configuration, KV layout, and runtime compatibility.
+   - *Invariable Rule:* A declared manifest or correctly-formatted digest alone **never confers reuse authority** (`is_verified_for_reuse = False`).
+2. **Verified Artifacts on Disk (`ApprovedManifestRegistry` & Disk Verification):**
+   - Manifests must be explicitly registered and approved within `ApprovedManifestRegistry`. Self-authored or unknown manifests are rejected.
+   - `IdentityIssuanceAuthority.verify_artifacts_and_issue(...)` inspects the actual files on disk matching the approved manifest:
+     - Model weight tensors (SHA-256 byte digest over all weight files).
+     - Tokenizer files and vocabulary assets.
+     - Chat template configuration.
+     - Positional embedding and RoPE hyperparameters (`rope_theta`, dimensions, scaling).
+     - Execution numerical layout (`bshd_fp16`, etc.) and runtime compatibility version.
+3. **Issued Reuse Authority (`IssuedReuseAuthority`):**
+   - Cryptographically bound runtime object issued **only** upon successful completion of artifact verification against an approved manifest.
+   - Binds the verified manifest, model instance ID, execution namespace, approved tenant scope, and recorded artifact digests.
+   - **TOCTOU / Substitution Protection:** The issued authority provides `verify_live_artifacts()`, actively re-checking file hashes prior to loading or re-using cache pages. If an on-disk artifact changes or is swapped after issuance, authority is immediately invalidated.
+   - **Enforcement Entry Point:** `PagedKVManager.ingest_prompt(..., authority=...)` mandates `isinstance(authority, IssuedReuseAuthority)` and `authority.is_valid_for(namespace)`. Calls without valid authority or under prototype simulation are marked `verified_reuse_authorized: False`.
+
+---
+
+## 8. Controlled Application Caching Modes & Error Policies
+
+Application inference (`app/services/inference.py`) operates under explicit, deterministic caching modes configured via environment variables:
+
+| Mode | Environment Settings | Behavior on Inference | Cache Status Reported |
+|---|---|---|---|
+| **Cache Disabled** *(Default)* | `QC_PAGED_KV_ENABLED=false` | Normal inference proceeds without accessing storage or initializing `PagedKVManager`. No storage key required. | `"enabled": False, "status": "disabled", "verified_reuse_authorized": False` |
+| **Cache Enabled & Configured** | `QC_PAGED_KV_ENABLED=true`<br>`PAGED_KV_STORAGE_KEY=<valid_key>` | Storage initialized and authenticated. Prefill savings and paging active. | `"enabled": True, "status": "active", "verified_reuse_authorized": True/False` |
+| **Cache Enabled, Key Missing / Invalid (`fail_closed`)** *(Default on error)* | `QC_PAGED_KV_ENABLED=true`<br>`QC_PAGED_KV_ON_ERROR=fail_closed` | Halts inference with a structured, secret-free error: `error_code="paged_kv_configuration_error"`. Fails closed. | `"enabled": True, "status": "unavailable", "verified_reuse_authorized": False` |
+| **Cache Enabled, Key Missing / Invalid (`bypass`)** | `QC_PAGED_KV_ENABLED=true`<br>`QC_PAGED_KV_ON_ERROR=bypass` | Bypasses cache access, logs a bounded warning without credentials, and runs ordinary inference without caching. | `"enabled": True, "status": "bypassed_unavailable", "verified_reuse_authorized": False` |
+
+### Error & Health Safety Invariants
+1. **Secret-Free Error Surfaces:** User-visible and API error responses contain no raw keys, paths, or tensor payloads.
+2. **Metrics & Observatory Invariant:** Observatory metrics endpoints (`/api/v1/inference/paged-kv/metrics`) return complete baseline metrics (with zeros for tokens and pages) even when caching is disabled or unavailable, preventing client-side crashes while truthfully reporting status.
+3. **Deterministic Singleton Lifecycle:** `get_paged_kv_manager()` uses thread locks to prevent race conditions during concurrent initialization. `reset_paged_kv_state()` cleanly clears cached singletons to allow dynamic reconfiguration without leaking stale authority.
+

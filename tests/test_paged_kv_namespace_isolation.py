@@ -11,7 +11,7 @@ def test_reproduce_cross_model_prefix_collision():
     Reusable pages must be bound to immutable execution namespaces.
     """
     with tempfile.TemporaryDirectory() as tmpdir:
-        mgr = PagedKVManager(storage_dir=Path(tmpdir), max_ram_blocks=16, block_size=16)
+        mgr = PagedKVManager(storage_dir=Path(tmpdir), auth_key=b"k" * 32, max_ram_blocks=16, block_size=16)
 
         # 16 identical tokens
         common_tokens = list(range(16))
@@ -42,7 +42,7 @@ def test_compatible_namespace_prefix_reuse():
     Identical tokens within the SAME model namespace MUST hit and reuse cached pages.
     """
     with tempfile.TemporaryDirectory() as tmpdir:
-        mgr = PagedKVManager(storage_dir=Path(tmpdir), max_ram_blocks=16, block_size=16)
+        mgr = PagedKVManager(storage_dir=Path(tmpdir), auth_key=b"k" * 32, max_ram_blocks=16, block_size=16)
 
         common_tokens = list(range(32))
 
@@ -185,7 +185,7 @@ def test_manager_lifecycle_and_restoration_isolation():
     from app.services.paged_kv.hasher import ExecutionNamespace
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        mgr = PagedKVManager(storage_dir=Path(tmpdir), max_ram_blocks=4, block_size=16)
+        mgr = PagedKVManager(storage_dir=Path(tmpdir), auth_key=b"k" * 32, max_ram_blocks=4, block_size=16)
 
         ns_a = ExecutionNamespace.create_canonical("qwen2.5:1.5b", model_revision="rev_a")
         ns_b = ExecutionNamespace.create_canonical("qwen2.5:1.5b", model_revision="rev_b")

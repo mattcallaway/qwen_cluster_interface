@@ -100,7 +100,7 @@ def run_diagnostics() -> Dict[str, Any]:
     # -------------------------------------------------------------------------
     try:
         with tempfile.TemporaryDirectory(prefix="paged_kv_evict_") as td:
-            mgr = PagedKVManager(storage_dir=td, max_ram_blocks=4, block_size=4, compress=False)
+            mgr = PagedKVManager(storage_dir=td, auth_key=b"diagnostic-auth-key-32-bytes-ok!", max_ram_blocks=4, block_size=4, compress=False)
             # Ingest multiple distinct prompts to saturate RAM blocks
             for i in range(10):
                 tokens = [i * 10 + j for j in range(8)]

@@ -115,7 +115,12 @@ class ExecutionNamespace:
 
     @property
     def is_verified_for_reuse(self) -> bool:
-        return self.identity_scope == "verified_runtime"
+        """
+        ExecutionNamespace cannot self-certify reuse authority.
+        A caller-selected string label or manifest does not confer genuine reuse authority;
+        genuine reuse requires an IssuedReuseAuthority issued by IdentityIssuanceAuthority.
+        """
+        return False
 
     def __post_init__(self):
         fields = [

@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 from .hasher import ExecutionNamespace, PagedKVHasher, PrefixRadixTree, TokenBlock
+from .identity import IssuedReuseAuthority
 from .page_table import PhysicalBlock, PhysicalBlockPool, VirtualBlockTable
 from .store import PagedKVStore
 
@@ -47,11 +48,14 @@ class PagedKVManager:
         tokens: Sequence[int],
         model_name: Optional[str] = None,
         namespace: Optional[Union[ExecutionNamespace, str]] = None,
+        authority: Optional[Any] = None,
         dummy_tensor_generator: Optional[Callable[[TokenBlock], bytes]] = None,
     ) -> Dict[str, Any]:
         """
         Ingests a prompt sequence bound to an immutable execution namespace,
         identifies cached prefix blocks, and attaches them to the sequence table.
+        Genuine cross-request prefix reuse is authorized ONLY when accompanied
+        by an authentic IssuedReuseAuthority valid for the execution namespace.
         """
         if namespace is None:
             namespace = ExecutionNamespace.create_canonical(model_name=model_name or "qwen2.5:1.5b")
@@ -64,11 +68,21 @@ class PagedKVManager:
         total_tokens = len(tokens)
         self.total_evaluated_tokens += total_tokens
 
-        # Step 1: Prefix search in Radix Tree bound to execution namespace
-        matched_blocks, matched_token_count, payloads = self.radix_tree.match_prefix(
-            tokens, namespace=namespace
+        # Authority verification: genuine reuse requires an authentic IssuedReuseAuthority
+        is_authorized = (
+            authority is not None
+            and isinstance(authority, IssuedReuseAuthority)
+            and authority.is_valid_for(namespace)
         )
-        self.total_matched_tokens += matched_token_count
+
+        matched_blocks: List[TokenBlock] = []
+        matched_token_count = 0
+        if is_authorized or namespace.identity_scope == "prototype_simulation":
+            # For authorized runs or explicit prototype simulation, search Radix tree
+            matched_blocks, matched_token_count, payloads = self.radix_tree.match_prefix(
+                tokens, namespace=namespace
+            )
+            self.total_matched_tokens += matched_token_count
 
         if sequence_id not in self.table.seq_tables:
             self.table.create_sequence(sequence_id)
@@ -128,8 +142,9 @@ class PagedKVManager:
             "total_sequence_blocks": len(self.table.get_physical_blocks(sequence_id)),
             "ram_blocks_in_use": self.store.get_ram_page_count(),
             "ram_bytes_in_use": self.store.get_ram_bytes(),
-            "verified_reuse_authorized": namespace.is_verified_for_reuse,
+            "verified_reuse_authorized": is_authorized,
             "identity_scope": namespace.identity_scope,
+            "authority_id": authority.authority_id if is_authorized else None,
         }
 
     def _evict_lru_page_to_disk(self) -> bool:

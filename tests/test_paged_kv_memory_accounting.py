@@ -13,7 +13,7 @@ def test_reproduce_restore_bypasses_ram_quota():
     """
     with tempfile.TemporaryDirectory() as tmpdir:
         # Max RAM: 2 blocks
-        mgr = PagedKVManager(storage_dir=Path(tmpdir), max_ram_blocks=2, block_size=16)
+        mgr = PagedKVManager(storage_dir=Path(tmpdir), auth_key=b"0" * 32, max_ram_blocks=2, block_size=16)
 
         # Ingest seq-1 (2 blocks = 32 tokens)
         mgr.ingest_prompt("seq-1", list(range(32)), model_name="qwen2.5:1.5b")
@@ -39,7 +39,7 @@ def test_byte_level_accounting_and_metrics():
     not just dictionary entry counts.
     """
     with tempfile.TemporaryDirectory() as tmpdir:
-        mgr = PagedKVManager(storage_dir=Path(tmpdir), max_ram_blocks=4, block_size=16)
+        mgr = PagedKVManager(storage_dir=Path(tmpdir), auth_key=b"0" * 32, max_ram_blocks=4, block_size=16)
         mgr.ingest_prompt("seq-1", list(range(32)), model_name="qwen2.5:1.5b")
 
         metrics = mgr.get_metrics()

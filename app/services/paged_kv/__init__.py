@@ -1,14 +1,25 @@
 """
 Searchable Paged KV Cache Architecture for Qwen Collective.
-Provides virtual block paging, prefix hashing, and tiered KV cache storage.
+Provides virtual block paging, prefix hashing, tiered KV cache storage,
+and cryptographic identity issuance authority.
 """
 
-from .hasher import PagedKVHasher, PrefixRadixTree, TokenBlock
-from .page_table import VirtualBlockTable, PhysicalBlockPool, BlockMapping
-from .store import PagedKVStore
+from .hasher import ExecutionNamespace, ModelIdentityManifest, PagedKVHasher, PrefixRadixTree, TokenBlock
+from .identity import (
+    ApprovedManifestRegistry,
+    BoundArtifactInfo,
+    IdentityIssuanceAuthority,
+    IssuedReuseAuthority,
+    get_default_issuance_authority,
+    get_default_manifest_registry,
+)
 from .manager import PagedKVManager
+from .page_table import BlockMapping, PhysicalBlockPool, VirtualBlockTable
+from .store import PagedKVStore
 
 __all__ = [
+    "ExecutionNamespace",
+    "ModelIdentityManifest",
     "PagedKVHasher",
     "PrefixRadixTree",
     "TokenBlock",
@@ -17,4 +28,10 @@ __all__ = [
     "BlockMapping",
     "PagedKVStore",
     "PagedKVManager",
+    "ApprovedManifestRegistry",
+    "BoundArtifactInfo",
+    "IdentityIssuanceAuthority",
+    "IssuedReuseAuthority",
+    "get_default_issuance_authority",
+    "get_default_manifest_registry",
 ]

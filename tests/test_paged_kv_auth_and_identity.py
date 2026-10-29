@@ -253,8 +253,9 @@ def test_changed_weights_under_same_display_name_changes_namespace():
     ns2 = ExecutionNamespace.from_manifest(manifest_v2)
 
     assert ns1.compute_digest() != ns2.compute_digest()
-    assert ns1.is_verified_for_reuse is True
-    assert ns2.is_verified_for_reuse is True
+    # A declared manifest alone does not confer verified authority
+    assert ns1.is_verified_for_reuse is False
+    assert ns2.is_verified_for_reuse is False
 
 
 def test_prototype_simulation_cannot_authorize_genuine_reuse():
