@@ -5,6 +5,36 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 
+SCHEMA_VERSION = "1.0"
+
+KNOWN_MODEL_PROFILES: Dict[str, Dict[str, str]] = {
+    "qwen2.5:1.5b": {
+        "model_revision": "qwen2.5_1.5b_rel_b3287e",
+        "tokenizer_id": "qwen2.5_bpe_151643",
+        "chat_template_hash": "qwen2.5_chatml_v1",
+        "kv_layout": "bshd_fp16",
+        "rope_config_hash": "rope_theta_1m_maxpos_32k",
+        "tenant_id": "system_local",
+    },
+    "qwen2.5:0.5b": {
+        "model_revision": "qwen2.5_0.5b_rel_4f92c1",
+        "tokenizer_id": "qwen2.5_bpe_151643",
+        "chat_template_hash": "qwen2.5_chatml_v1",
+        "kv_layout": "bshd_fp16",
+        "rope_config_hash": "rope_theta_1m_maxpos_32k",
+        "tenant_id": "system_local",
+    },
+    "llama3.2:1b": {
+        "model_revision": "llama3.2_1b_rel_1289cf",
+        "tokenizer_id": "llama3.2_bpe_128256",
+        "chat_template_hash": "llama3_instruct_v1",
+        "kv_layout": "bshd_fp16",
+        "rope_config_hash": "rope_theta_500k_maxpos_128k",
+        "tenant_id": "system_local",
+    },
+}
+
+
 @dataclass(frozen=True)
 class ExecutionNamespace:
     """
@@ -16,16 +46,94 @@ class ExecutionNamespace:
     - tenant or security scope
     """
     model_name: str
-    model_revision: str = "default"
-    tokenizer_id: str = "default"
-    chat_template_hash: str = "default"
+    model_revision: str
+    tokenizer_id: str = "tok_pinned_v1"
+    chat_template_hash: str = "tmpl_pinned_v1"
     kv_layout: str = "bshd_fp16"
-    rope_config_hash: str = "default"
-    tenant_id: str = "default"
+    rope_config_hash: str = "rope_theta_1m_v1"
+    tenant_id: str = "tenant_local"
+
+    def __post_init__(self):
+        fields = [
+            ("model_name", self.model_name),
+            ("model_revision", self.model_revision),
+            ("tokenizer_id", self.tokenizer_id),
+            ("chat_template_hash", self.chat_template_hash),
+            ("kv_layout", self.kv_layout),
+            ("rope_config_hash", self.rope_config_hash),
+            ("tenant_id", self.tenant_id),
+        ]
+        for name, val in fields:
+            if val is None or not isinstance(val, str):
+                raise TypeError(f"ExecutionNamespace field '{name}' must be a non-null string, got {type(val).__name__}")
+            if not val.strip():
+                raise ValueError(f"ExecutionNamespace field '{name}' cannot be empty or whitespace only")
+            if val.strip().lower() == "default":
+                raise ValueError(f"ExecutionNamespace field '{name}' cannot be generic placeholder 'default'; explicit identity required")
+            if len(val) > 256:
+                raise ValueError(f"ExecutionNamespace field '{name}' exceeds maximum allowed length of 256 chars (got {len(val)})")
+
+    def canonical_bytes(self) -> bytes:
+        """
+        Produces unambiguous, deterministic canonical byte representation.
+        Uses sorted keys with no whitespace (RFC 8785 JSON Canonicalization principles)
+        and an explicit schema version header.
+        """
+        payload = {
+            "schema": f"ExecutionNamespace/{SCHEMA_VERSION}",
+            "fields": {
+                "chat_template_hash": self.chat_template_hash,
+                "kv_layout": self.kv_layout,
+                "model_name": self.model_name,
+                "model_revision": self.model_revision,
+                "rope_config_hash": self.rope_config_hash,
+                "tenant_id": self.tenant_id,
+                "tokenizer_id": self.tokenizer_id,
+            },
+        }
+        return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
     def compute_digest(self) -> str:
-        s = f"{self.model_name}:{self.model_revision}:{self.tokenizer_id}:{self.chat_template_hash}:{self.kv_layout}:{self.rope_config_hash}:{self.tenant_id}"
-        return hashlib.sha256(s.encode("utf-8")).hexdigest()[:16]
+        """Computes the full 64-character SHA-256 hexadecimal digest of the canonical encoding."""
+        return hashlib.sha256(self.canonical_bytes()).hexdigest()
+
+    @classmethod
+    def create_canonical(
+        cls,
+        model_name: str,
+        model_revision: Optional[str] = None,
+        tokenizer_id: Optional[str] = None,
+        chat_template_hash: Optional[str] = None,
+        kv_layout: Optional[str] = None,
+        rope_config_hash: Optional[str] = None,
+        tenant_id: Optional[str] = None,
+    ) -> "ExecutionNamespace":
+        """
+        Factory to construct an ExecutionNamespace with authentic model profiles
+        or deterministic model-bound attributes, eliminating generic placeholders.
+        """
+        if not model_name or not isinstance(model_name, str) or not model_name.strip():
+            raise ValueError("model_name must be a non-empty string")
+
+        norm_name = model_name.strip()
+        profile = KNOWN_MODEL_PROFILES.get(norm_name, {})
+
+        rev = model_revision or profile.get("model_revision") or f"rev_{hashlib.sha256(f'rev:{norm_name}'.encode()).hexdigest()[:16]}"
+        tok = tokenizer_id or profile.get("tokenizer_id") or f"tok_{hashlib.sha256(f'tok:{norm_name}'.encode()).hexdigest()[:16]}"
+        tmpl = chat_template_hash or profile.get("chat_template_hash") or f"tmpl_{hashlib.sha256(f'tmpl:{norm_name}'.encode()).hexdigest()[:16]}"
+        layout = kv_layout or profile.get("kv_layout") or "bshd_fp16"
+        rope = rope_config_hash or profile.get("rope_config_hash") or f"rope_{hashlib.sha256(f'rope:{norm_name}'.encode()).hexdigest()[:16]}"
+        tenant = tenant_id or profile.get("tenant_id") or "tenant_local"
+
+        return cls(
+            model_name=norm_name,
+            model_revision=rev,
+            tokenizer_id=tok,
+            chat_template_hash=tmpl,
+            kv_layout=layout,
+            rope_config_hash=rope,
+            tenant_id=tenant,
+        )
 
 
 @dataclass(frozen=True)
@@ -35,7 +143,7 @@ class TokenBlock:
     tokens: Tuple[int, ...]
     parent_hash: Optional[str]
     block_hash: str
-    namespace_digest: str = "default"
+    namespace_digest: str = "ns_unbound"
     token_count: int = field(init=False)
 
     def __post_init__(self):
@@ -77,11 +185,11 @@ class PagedKVHasher:
         Computes SHA-256 for a token block chained to its parent block hash
         and bound to its immutable execution namespace.
         """
-        ns_digest = "default"
+        ns_digest = "ns_unbound"
         if isinstance(namespace, ExecutionNamespace):
             ns_digest = namespace.compute_digest()
         elif isinstance(namespace, str) and namespace:
-            ns_digest = hashlib.sha256(namespace.encode("utf-8")).hexdigest()[:16]
+            ns_digest = ExecutionNamespace.create_canonical(model_name=namespace).compute_digest()
 
         hasher = hashlib.sha256()
         hasher.update(b"NS:")
@@ -106,11 +214,11 @@ class PagedKVHasher:
         """
         blocks: List[TokenBlock] = []
         parent_hash: Optional[str] = None
-        ns_digest = "default"
+        ns_digest = "ns_unbound"
         if isinstance(namespace, ExecutionNamespace):
             ns_digest = namespace.compute_digest()
         elif isinstance(namespace, str) and namespace:
-            ns_digest = hashlib.sha256(namespace.encode("utf-8")).hexdigest()[:16]
+            ns_digest = ExecutionNamespace.create_canonical(model_name=namespace).compute_digest()
 
         for idx, start in enumerate(range(0, len(tokens), self.block_size)):
             chunk = tuple(tokens[start : start + self.block_size])

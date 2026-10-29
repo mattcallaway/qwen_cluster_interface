@@ -106,16 +106,19 @@ Updated 2026-10-28. Architectural specifications and baseline results documented
 - **Actual Network Transport**: Measured IEEE 754 float tensor passing over Tailscale WireGuard mesh between Desktop, Laptop, and VPS. (Rates are synthetic activation steps/sec, not real model token-generation throughput).
 - **Real Transformer-Layer Execution**: Currently **blocked**; installed Ollama backends execute models monolithically and do not expose layer partitioning or external KV states.
 - **Real Model KV-Cache Reuse**: Currently **unverified**; placeholder bytes do not constitute genuine model attention KV state reuse.
-- **Reconciliation of Orchestrator Run IDs**: Health report was generated from diagnostic run 
-un-90519858d3bd4773 (completed 11:13:04 UTC); the progress report documented subsequent project run 
-un-7658857465f94f53 (completed 11:13:48 UTC). Both were sequential diagnostic runs on the local controller.
+- **Reconciliation of Orchestrator Run IDs**: Health report was generated from diagnostic run `run-90519858d3bd4773` (completed 11:13:04 UTC); the progress report documented subsequent project run `run-7658857465f94f53` (completed 11:13:48 UTC). Both were sequential diagnostic runs on the local controller.
 
-### Prototype Status & Known Defect Remediation:
-1. **Searchable Paged KV Cache Virtual Memory**:
-   - Fixed 16-token page allocation via [PhysicalBlockPool](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/app/services/paged_kv/page_table.py#L27) and [VirtualBlockTable](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/app/services/paged_kv/page_table.py#L129).
-   - *Defects under active repair*: Eliminating live-block recycling under memory pressure; adding immutable execution namespace binding to prevent cross-model cache hits; adding versioned envelope and cryptographic verification to disk storage; implementing byte-accurate accounting.
+### Prototype Status & Defect Remediation:
+1. **Searchable Paged KV Cache Virtual Memory (Repaired & Verified)**:
+   - Fixed 16-token page allocation via [`PhysicalBlockPool`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/app/services/paged_kv/page_table.py#L27) and [`VirtualBlockTable`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/app/services/paged_kv/page_table.py#L129).
+   - *Live-page ownership (F-7)*: Enforced reference owner check (`ref_count == 0 and not pinned`), monotonic `generation` tracking, and fail-closed `MemoryError` on pool exhaustion.
+   - *Namespace isolation (F-8, F-12)*: Bound block hashes and radix prefix trees to canonical JSON [`ExecutionNamespace/1.0`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/docs/architecture/INCREMENT_17_STORAGE_FORMAT_AND_SECURITY_SPEC.md), eliminating delimiter collisions and generic `"default"` placeholder substitutions.
+   - *Stored-page integrity & identity binding (F-9, F-13)*: Implemented `QCKVP2` authenticated 186-byte binary envelope binding stored block key, 32-byte namespace digest, payload length, and HMAC-SHA256 authentication tag; `read_page` verifies stored metadata against caller expected identity.
+   - *Memory accounting (F-10)*: Added byte-accurate tracking, RAM restore quota enforcement, and deterministic sequence release in inference `finally` blocks.
 2. **Distributed Pipeline Parallelism Transport**:
-   - High-throughput binary activation streaming protocol ([ActivationProtocol](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/app/services/pipeline_parallel/activation_protocol.py#L25)) using QCACT1 frame format and HMAC-SHA256 signature verification.
-   - Microbenchmarks in [INCREMENT_17_LIVE_PIPELINE_BENCHMARK.json](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/docs/verified-work/INCREMENT_17_LIVE_PIPELINE_BENCHMARK.json) measure synthetic activation transport overhead (<15 ms LAN/WAN step latency), not real model generation throughput.
+   - Binary activation streaming protocol ([`ActivationProtocol`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/app/services/pipeline_parallel/activation_protocol.py#L25)) using `QCACT1` frame format and HMAC-SHA256 verification.
+   - Microbenchmarks in [`INCREMENT_17_LIVE_PIPELINE_BENCHMARK.json`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/docs/verified-work/INCREMENT_17_LIVE_PIPELINE_BENCHMARK.json) measure synthetic activation transport overhead (<15 ms LAN/WAN step latency), not real model token generation throughput.
+   - Real inference layer execution requirements and blockers documented in [ADR: Increment 17 Inference Backend Decision](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/docs/architecture/INCREMENT_17_INFERENCE_BACKEND_DECISION.md).
 3. **Observatory UI & Telemetry**:
-   - Live widgets on /inference and /observatory display virtual memory page metrics and pipeline topology status, clearly labeled as prototype instrumentation.
+   - Live widgets on `/inference` and `/observatory` display virtual memory page metrics and pipeline topology status, clearly labeled as prototype instrumentation.
+

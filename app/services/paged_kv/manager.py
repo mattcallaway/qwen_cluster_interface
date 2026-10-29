@@ -32,6 +32,7 @@ class PagedKVManager:
 
         # Connect physical pool eviction callback to safely offload unpinned blocks to disk
         self.pool.eviction_callback = self._evict_lru_page_to_disk
+        self.sequence_namespaces: Dict[str, ExecutionNamespace] = {}
 
         # Statistics
         self.total_queries = 0
@@ -52,10 +53,11 @@ class PagedKVManager:
         identifies cached prefix blocks, and attaches them to the sequence table.
         """
         if namespace is None:
-            namespace = ExecutionNamespace(model_name=model_name or "qwen2.5:1.5b")
+            namespace = ExecutionNamespace.create_canonical(model_name=model_name or "qwen2.5:1.5b")
         elif isinstance(namespace, str):
-            namespace = ExecutionNamespace(model_name=namespace)
+            namespace = ExecutionNamespace.create_canonical(model_name=namespace)
 
+        self.sequence_namespaces[sequence_id] = namespace
         effective_model_name = namespace.model_name
         self.total_queries += 1
         total_tokens = len(tokens)
@@ -73,8 +75,8 @@ class PagedKVManager:
         # Step 2: Attach matched prefix blocks to sequence
         for block in matched_blocks:
             self.table.append_block(sequence_id, block.block_hash)
-            # Ensure block tensor is loaded into RAM if needed
-            self.store.read_page(block.block_hash)
+            # Ensure block tensor is loaded into RAM if needed with namespace verification
+            self.store.read_page(block.block_hash, expected_namespace_digest=block.namespace_digest)
 
         # Step 3: Chunk and allocate remaining novel suffix tokens
         remaining_tokens = tokens[matched_token_count:]
@@ -159,14 +161,16 @@ class PagedKVManager:
     def restore_sequence_to_ram(self, sequence_id: str) -> int:
         """
         Ensures all physical blocks of a sequence are loaded in Tier 1 RAM,
-        remapping unmapped pages from disk and re-enforcing RAM quotas.
+        remapping unmapped pages from disk, validating identities, and re-enforcing RAM quotas.
         """
         hashes = self.table.get_block_hashes(sequence_id)
+        ns = self.sequence_namespaces.get(sequence_id)
+        expected_ns_digest = ns.compute_digest() if ns else None
         restored = 0
         for idx, h in enumerate(hashes):
             was_in_ram = self.store.is_in_ram(h)
-            # read_page touches the block and moves it to MRU in RAM
-            self.store.read_page(h)
+            # read_page touches the block, validates namespace and key identity, moves it to MRU
+            self.store.read_page(h, expected_namespace_digest=expected_ns_digest)
             if not was_in_ram:
                 restored += 1
             if idx < len(self.table.seq_tables[sequence_id]):
@@ -180,6 +184,7 @@ class PagedKVManager:
 
     def release_sequence(self, sequence_id: str) -> int:
         """Releases sequence resources and cleans up table mappings."""
+        self.sequence_namespaces.pop(sequence_id, None)
         freed_bids = self.table.release_sequence(sequence_id)
         return len(freed_bids)
 

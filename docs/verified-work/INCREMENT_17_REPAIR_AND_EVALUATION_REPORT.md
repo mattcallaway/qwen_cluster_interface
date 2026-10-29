@@ -37,16 +37,16 @@ All four correctness defects were reproduced with dedicated, independently speci
 | Source File | SHA-256 Digest | Status |
 |---|---|---|
 | `app/services/paged_kv/page_table.py` | `7a1b1bb2e66e02bafbc798b66478e26fd081f348bd17c2739bbbf2563803f24c` | Repaired (F-7) |
-| `app/services/paged_kv/hasher.py` | `0f292bcdebea27e6ef5b5b0d1d7caa005721b621174d0cd7d2ceadf5308cea9f` | Repaired (F-8) |
-| `app/services/paged_kv/store.py` | `4dc8dd3f9bdb834b7586caf0dd724437e6796e5ed793981314d705bc485db032` | Repaired (F-9, F-10) |
-| `app/services/paged_kv/manager.py` | `fbc8ee2dfc0aa4d1c13ae96b340442a14b8389c5d638dbf4a0af6028cefa63c6` | Repaired (F-7, F-10) |
+| `app/services/paged_kv/hasher.py` | `864c9dcc438b16a28914a81f4c350e3d2006cf370e14067352aa54a43c3d02ec` | Repaired (F-8, F-12) |
+| `app/services/paged_kv/store.py` | `7f7f7302d07c37ff4eb7bdc44b93c643b3ad3481845093503ccb9d8c0bb4216b` | Repaired (F-9, F-10, F-13) |
+| `app/services/paged_kv/manager.py` | `880f94d97c67936de020467628960fbe9c569d35d2d82df60458e020964bfb02` | Repaired (F-7, F-10, F-12, F-13) |
 | `app/services/inference.py` | `723ee4d4e664507818d02facdb299f1603298a5728993de2721d2f0f05a2e610` | Repaired (F-10) |
 | `app/services/pipeline_parallel/activation_protocol.py` | `77f299667d76cc4c32838517fb7ca9e067b061d1f156f7377a792c8ae7bcd509` | Verified |
 | `app/services/pipeline_parallel/topology.py` | `f19d5b0c3eb12bdf8def548b434101dc775e5490bb94a19c79fbc93e1e926a6f` | Verified |
 | `app/services/pipeline_parallel/runner.py` | `da6f70714acb245cacd7f584b600044d0d677d2c3def83a05c65611aba71419b` | Verified |
 | `tests/test_paged_kv_page_ownership.py` | `1a4e9582c8e48ab4a8cdd2fd7d23cb3de89feac0838984bab510663fe8b3bc63` | Regression Suite A |
-| `tests/test_paged_kv_namespace_isolation.py` | `ef15e23fdb24f0ecdb941c9c6bdc00ea10673058a0f915fdc6e88cce8bf9d875` | Regression Suite B |
-| `tests/test_paged_kv_stored_integrity.py` | `ac592f3d1a9e078564936f8120177779ee00482751cc69c2655521b425e6c514` | Regression Suite C |
+| `tests/test_paged_kv_namespace_isolation.py` | `d986114b19512f41813463d18a27de2d016096ab6eb7326781db71c0aac13670` | Regression Suite B (11 tests) |
+| `tests/test_paged_kv_stored_integrity.py` | `e71075a053e6b1974528b81bde14fdcec844afc5097a3ee191df773277806690` | Regression Suite C (9 tests) |
 | `tests/test_paged_kv_memory_accounting.py` | `3e4812df644c4fde4c9eb3043c8c82f3d097b23725d1f565283641f91c0f839a` | Regression Suite D |
 
 ---
@@ -100,7 +100,44 @@ All four correctness defects were reproduced with dedicated, independently speci
   - Updated `app/services/inference.py` to wrap completion generation in a deterministic `finally: paged_kv.release_sequence(seq_id)` block.
 - **Verification:** 2 passing tests confirming strict RAM byte quota compliance during restores and deterministic release upon sequence completion.
 
+### E. Ambiguous Namespace Delimiter Collision (Defect F-12)
+- **Reproduction:** In `ExecutionNamespace`, string concatenation with `:` delimiters caused collisions: `model_name="a:b", model_revision="c"` and `model_name="a", model_revision="b:c"` both evaluated to `"a:b:c:..."`, yielding identical digests `9d7e024b9e8e7b76`.
+- **Failing Test:** `tests/test_paged_kv_namespace_isolation.py::test_reproduce_ambiguous_namespace_delimiter_collision`
+  ```text
+  AssertionError: Ambiguous delimiter collision: Namespace A ExecutionNamespace(...) and Namespace B ExecutionNamespace(...) both produced identical digest 9d7e024b9e8e7b76
+  assert '9d7e024b9e8e7b76' != '9d7e024b9e8e7b76'
+  ```
+- **Root Cause:** Naive delimiter concatenation without length-prefixing or canonical field structuring, combined with truncation of the SHA-256 digest to 16 hex chars.
+- **Architectural Fix:**
+  - Implemented RFC 8785 JSON canonical encoding schema `ExecutionNamespace/1.0` with sorted keys, no whitespace, and UTF-8 bytes.
+  - Strict type, length, and non-empty validation on all identity fields.
+  - Eliminated generic `"default"` placeholder substitutions; callers must supply genuine model attributes or use authentic model profiles (`KNOWN_MODEL_PROFILES`).
+  - Switched to the full 64-character SHA-256 hexadecimal digest (`hashlib.sha256(canonical_bytes).hexdigest()`).
+- **Verification:** 11 passing tests in `tests/test_paged_kv_namespace_isolation.py` verifying delimiter safety, type enforcement, empty field rejection, individual field variations, unicode handling, and full lifecycle isolation across manager lookup, insertion, persistence, and restoration.
+
+### F. Valid-Page Substitution Across Identities (Defect F-13)
+- **Reproduction:** Writing Page A and Page B, evicting both to disk, and copying Page B's valid envelope file over Page A's file caused `store.read_page("a"*64)` to return Page B's payload. The checksum verified internal consistency but failed to verify that the envelope belonged to the requested identity.
+- **Failing Test:** `tests/test_paged_kv_stored_integrity.py::test_reproduce_valid_page_substitution_across_keys_and_namespaces`
+  ```text
+  AssertionError: Valid-page substitution defect reproduced: Reading page A returned page B's payload!
+  assert b'PAGE_B_SUBSTITUTE_TENSOR' != b'PAGE_B_SUBSTITUTE_TENSOR'
+  ```
+- **Root Cause:** Envelope header lacked stored block key identity, truncated namespace digest, and lacked an authentication tag. `read_page` trusted the file on disk and did not compare stored metadata against caller expected identity.
+- **Architectural Fix:**
+  - Designed authenticated binary envelope `QCKVP2` (186-byte header) embedding:
+    - Magic `b"QCKVP2"` and Version `2`.
+    - 64-byte stored block key (`stored_hash`).
+    - 32-byte stored namespace digest (`stored_ns`).
+    - 64-bit uncompressed and compressed lengths.
+    - 32-byte payload SHA-256 checksum.
+    - 32-byte HMAC-SHA256 authentication tag over header metadata.
+  - `store.read_page(block_hash, expected_namespace_digest)` verifies that stored block hash matches requested key, stored namespace matches expected namespace, and HMAC tag is valid before returning or caching bytes.
+  - Enforced equivalent identity checks on Tier 1 RAM hits and disk reloads.
+  - Legacy `QCKVP1` envelopes fail closed with explicit deprecation error (`ValueError("Deprecated or unsupported stored page version 1")`).
+- **Verification:** 9 passing tests in `tests/test_paged_kv_stored_integrity.py` covering whole-envelope substitution rejection, payload bit flips, header tampering, trailing data rejection, truncation rejection, path traversal prevention, and corrupt magic rejection.
+
 ---
+
 
 ## 4. Capability Distinction Matrix
 
