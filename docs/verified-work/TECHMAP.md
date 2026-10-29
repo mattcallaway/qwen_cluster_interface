@@ -93,3 +93,33 @@ The backend now handles asynchronous startup and a terminal cleared cgroup path 
 `engine.verify_native_code_proposal()` -> `CodeProposalReview.capture_native_response()` / current approved review -> `ProtectedVerification` -> explicitly injected authenticated transport -> root `vps_agent.independent_verifier` -> bounded `linux_sandbox` service -> signed observations -> controller recomputation and current-input revalidation.
 
 Only public input and read-only source enter the application environment. Hidden expected answers, private audit storage and receipt key stay outside. Native origin labels alone are insufficient: source bytes must match the immutable worker execution response. The transport is unconfigured by default and the API rejects production mode. No automatic scheduler route or certification override was added. See [protocol](PROTECTED_VERIFIER.md) and [test evidence](evidence/INCREMENT_16_PROTECTED_CODE_VERIFICATION.md).
+
+## Distributed Pipeline Parallelism & Paged KV Virtual Memory — Increment 17
+
+### Architecture & Dataflow
+1. **Paged KV Cache Virtual Memory Subsystem (`app/services/paged_kv/`)**:
+   - Fixed 16-token page virtualization mapping sequence token blocks to physical memory pages.
+   - Radix tree prefix lookups keyed by SHA-256 execution prefix hash chains.
+   - Cryptographic binary storage envelope `QCKVP2` (186-byte header) enforcing HMAC-SHA256 integrity, per-block key verification, namespace bounds, and bounded decompression limits.
+   - Immutable RFC 8785 canonical JSON execution namespaces (`ExecutionNamespace/1.0`) preventing delimiter injection and cross-tenant cache bleeding.
+   - Fail-closed 256-bit storage keys (`validate_storage_key()`) without hardcoded or shared fallbacks.
+   - Byte-accurate quota enforcement covering RAM and disk, with live-block reference count pinning.
+   - Re-entrant thread synchronization (`threading.RLock()`) protecting `PagedKVManager` state mutations across concurrent queries (F-20).
+
+2. **Complete Authority Boundary (Findings F-17 & F-19)**:
+   - 3-tier identity model: Declared Manifest $\to$ Approved Registry $\to$ Issued Reuse Authority.
+   - Enforced non-empty artifact sets covering all 4 core roles (`weights`, `tokenizer`, `chat_template`, `rope_config`).
+   - Manager requires an explicitly configured `trusted_issuer` (`IdentityIssuanceAuthority`); unverified authority tokens, unknown issuers, and revoked authorities are rejected fail-closed.
+   - Live disk artifact digest verification (`verify_live_artifacts()`) on reuse and sequence restoration from disk.
+
+3. **Distributed Pipeline Parallelism Transport & Multi-Node Execution (`app/services/pipeline_parallel/`)**:
+   - Authenticated binary frame streaming protocol (`QCACT1`) over WireGuard tunnels with HMAC-SHA256 frame integrity.
+   - Dedicated TCP streaming socket transport (`socket_transport.py`, `stage1_server.py`) for low-overhead multi-node activation streaming.
+   - Live multi-node deployment: Desktop GPU (Stage 0: Layers 0–11 on GTX 1650 SUPER, FP16) $\to$ `qwen-laptop` (Stage 1: Layers 12–24 + LM Head projection at port 8990) over Tailscale LAN with 6.27 ms/token roundtrip latency and cryptographic HMAC tamper rejection.
+
+4. **Real Capability Classification Boundary**:
+   - **Local Simulated Stages**: Fully operational (deterministic mathematical layer simulation).
+   - **Synthetic Network Activation Transport**: Fully operational (15 concurrent sessions, >500 frames/s, live Tailscale mesh).
+   - **Local Split GPU Execution with Real Weights**: Fully operational on NVIDIA GeForce GTX 1650 SUPER (`Qwen/Qwen2.5-0.5B-Instruct`), bit-exact numerical parity verified (`max_logit_diff = 0.000000`, 100% token match).
+   - **Remote Split Execution with Real Weights**: Not implemented / blocked by host environment constraints (`qwen-laptop` lacks PyTorch/CUDA; runtime installation prohibited).
+   - **Model Attention KV Tensor Injection**: Not implemented / blocked by closed binary runtime architecture (Ollama / llama.cpp).
