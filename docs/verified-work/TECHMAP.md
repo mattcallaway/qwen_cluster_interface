@@ -122,4 +122,5 @@ Only public input and read-only source enter the application environment. Hidden
    - **Synthetic Network Activation Transport**: Fully operational (15 concurrent sessions, >500 frames/s, live Tailscale mesh).
    - **Local Split GPU Execution with Real Weights**: Fully operational on NVIDIA GeForce GTX 1650 SUPER (`Qwen/Qwen2.5-0.5B-Instruct`), bit-exact numerical parity verified (`max_logit_diff = 0.000000`, 100% token match).
    - **Remote Split Execution with Real Weights**: Not implemented / blocked by host environment constraints (`qwen-laptop` lacks PyTorch/CUDA; runtime installation prohibited).
-   - **Model Attention KV Tensor Injection**: Not implemented / blocked by closed binary runtime architecture (Ollama / llama.cpp).
+   - **Model Attention KV Tensor Injection**: Fully operational locally via [`PyTorchPagedKVAdapter`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/app/services/paged_kv/pytorch_adapter.py) (F-21) on NVIDIA GeForce GTX 1650 SUPER. Maps 16-token page blocks to Hugging Face `DynamicCache`; demonstrated +74.2% prefill latency reduction with bit-exact predicted token match, cryptographic tenant isolation, and byte-exact `QCKVP2` disk envelope reconstruction. (Ollama/llama.cpp binary injection remains blocked by closed executables).
+

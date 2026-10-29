@@ -105,15 +105,18 @@ Updated 2026-10-28. Architectural specifications and baseline results documented
 - **2. Actual Network Transport of Synthetic Activations**: Fully operational over WireGuard mesh (`QCACT1` binary socket framing, port 8990, 6.27 ms/token roundtrip between Desktop GPU and `qwen-laptop`; saturated at >500 frames/sec across 15 concurrent sessions with 0 errors).
 - **3. Local Split Execution with Real Transformer Weights**: Fully operational and verified on local NVIDIA GeForce GTX 1650 SUPER GPU with `Qwen/Qwen2.5-0.5B-Instruct` across multiple split boundaries (Layers 0-11 / 12-24, 0-7 / 8-24, 0-15 / 16-24). Bit-exact numerical equivalence demonstrated against single-GPU reference (`max_logit_diff = 0.000000`, 100% token generation match across English, Unicode, and long prefill prompts).
 - **4. Remote Split Execution with Real Weights**: **NOT IMPLEMENTED / BLOCKED** by remote host constraints (`qwen-laptop` lacks PyTorch/CUDA runtime; installing new runtimes on remote nodes is strictly prohibited under current safety authorizations).
-- **5. Genuine Model KV-Cache Tensor Reuse**: **NOT IMPLEMENTED / BLOCKED** by closed binary runtime architecture (production inference uses monolithic Ollama/llama.cpp binaries lacking external KV-cache injection interfaces).
+- **5. Genuine Model KV-Cache Tensor Reuse**: **FULLY OPERATIONAL LOCALLY (PASS)** via [`PyTorchPagedKVAdapter`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/app/services/paged_kv/pytorch_adapter.py) (F-21) on NVIDIA GeForce GTX 1650 SUPER. Maps 16-token page blocks to Hugging Face `DynamicCache`; demonstrated **+74.2% prefill latency reduction** (from 355.63 ms down to 91.78 ms) with bit-exact predicted token match, cryptographic tenant isolation, and byte-exact `QCKVP2` disk envelope reconstruction. (Closed binary Ollama/llama.cpp injection remains blocked by executable architecture).
 
 ### Stress Testing & Security Defect Remediation:
-1. **Concurrent Ingestion Race Condition Fixed (F-20)**:
+1. **PyTorch Attention KV-Cache Virtual Memory Adapter (F-21)**:
+   - Built `PyTorchPagedKVAdapter` bridging `PagedKVManager` virtual memory blocks directly to PyTorch `DynamicCache` attention states. Validated candidate blocks for authentic serialized tensor payloads; verified +74.2% prefill speedup on GTX 1650 SUPER GPU, bit-exact numerical parity, tenant isolation, and disk restoration.
+2. **Concurrent Ingestion Race Condition Fixed (F-20)**:
    - Re-entrant mutex (`threading.RLock`) added to `PagedKVManager` synchronizing radix tree operations, physical block allocation, and eviction routines. 10 concurrent threads sharing prefixes now verify thread-safe execution without race conditions.
-2. **Adversarial & Fault Injection Hardening**:
+3. **Adversarial & Fault Injection Hardening**:
    - Validated in [`tests/test_increment17_stress_and_adversarial.py`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/tests/test_increment17_stress_and_adversarial.py): corrupted HMAC tokens rejected, malformed magic headers (`BADACT`) aborted immediately, truncated payloads cleanly severed, rapid connection churn (50 cycles) verified zero socket/fd leaks, and tampered disk pages rejected fail-closed during restoration.
-3. **Complete Authority Boundary (F-17, F-19)**:
+4. **Complete Authority Boundary (F-17, F-19)**:
    - Required roles (`weights`, `tokenizer`, `chat_template`, `rope_config`) strictly enforced; manager denies unverified authorities and unconfigured issuers; authority revocation verified fail-closed on disk restoration.
-4. **Observatory UI & Telemetry**:
+5. **Observatory UI & Telemetry**:
    - Live widgets on `/inference` and `/observatory` display virtual memory page metrics and pipeline topology status, with clear prototype labeling and truthful metrics reporting under disabled/degraded modes.
+
 

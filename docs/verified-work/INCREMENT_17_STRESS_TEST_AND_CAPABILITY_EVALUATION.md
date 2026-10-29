@@ -64,7 +64,8 @@ All stress tests and fault injection routines were executed under strict finite 
 | **Asymmetric Splits (Layers 8 & 16)** | Real Weights | Exact parity under non-equal stage partitions | `max_diff = 0.000000` across both 8/16 and 16/8 splits | **PASS** | `scratch/stress_test_real_execution.py` |
 | **Long Prefill Chunk (91 tokens)** | Real Weights | Exact parity across large multi-token hidden state tensors | `max_diff = 0.000000`, predicted token `'D'` identical | **PASS** | `scratch/stress_test_real_execution.py` |
 | **Remote Real Weights Execution** | Remote Execution | Run real transformer layers on remote node | Not possible without PyTorch/CUDA runtime on `qwen-laptop` | **NOT IMPLEMENTED** | Documented host runtime constraint |
-| **Attention KV Tensor Injection** | Real Model Cache | Inject paged KV blocks into active generation | Blocked by closed binary executable (Ollama / llama.cpp) | **NOT IMPLEMENTED** | `INCREMENT_17_INFERENCE_BACKEND_DECISION.md` |
+| **Attention KV Tensor Injection** | Real Model Cache | Inject paged KV blocks into active generation | Fully operational on GPU via `PyTorchPagedKVAdapter` (F-21): maps 16-token blocks to `DynamicCache`, +74.2% prefill speedup, bit-exact parity | **PASS** | [`scratch/validate_pytorch_paged_kv_injection.py`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/scratch/validate_pytorch_paged_kv_injection.py) |
+
 
 ---
 

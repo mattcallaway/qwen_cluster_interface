@@ -46,7 +46,7 @@ This Pull Request incorporates Increment 17 into the Qwen Collective codebase:
 | Verification Artifact | Location | Key Observations |
 |---|---|---|
 | **Storage Format & Security Spec** | [`docs/architecture/INCREMENT_17_STORAGE_FORMAT_AND_SECURITY_SPEC.md`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/docs/architecture/INCREMENT_17_STORAGE_FORMAT_AND_SECURITY_SPEC.md) | Specification `SPEC-INC17-PAGED-KV-V2.3` documenting `QCKVP2` envelope layout, authentication invariants, and authority boundaries. |
-| **Acceptance Matrix** | [`docs/verified-work/ACCEPTANCE_MATRIX.md`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/docs/verified-work/ACCEPTANCE_MATRIX.md) | Complete matrix resolving findings F-1 through F-20. |
+| **Acceptance Matrix** | [`docs/verified-work/ACCEPTANCE_MATRIX.md`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/docs/verified-work/ACCEPTANCE_MATRIX.md) | Complete matrix resolving findings F-1 through F-21. |
 | **Technical Map Overlay** | [`docs/verified-work/TECHMAP.md`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/docs/verified-work/TECHMAP.md) | Architecture boundaries, verified primitives, and implementation overlays. |
 | **Evaluation & Repair Report** | [`docs/verified-work/INCREMENT_17_REPAIR_AND_EVALUATION_REPORT.md`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/docs/verified-work/INCREMENT_17_REPAIR_AND_EVALUATION_REPORT.md) | Exhaustive report with source hashes, pre-fix reproduction outputs, and post-fix outcomes. |
 | **Stress Test & Capability Evaluation** | [`docs/verified-work/INCREMENT_17_STRESS_TEST_AND_CAPABILITY_EVALUATION.md`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/docs/verified-work/INCREMENT_17_STRESS_TEST_AND_CAPABILITY_EVALUATION.md) | Comprehensive 5-tier capability boundary assessment, stress budgets, fault injection matrix, and safe operating envelope. |
@@ -58,12 +58,12 @@ This Pull Request incorporates Increment 17 into the Qwen Collective codebase:
 ## 3. Test & Rehearsal Results
 
 1. **Focused Increment 17 Test Suites:**
-   - 14 test files (`tests/test_paged_kv_*.py`, `tests/test_pipeline_*.py`, `tests/test_inference_paged_kv_sidecar.py`, `tests/test_increment17_stress_and_adversarial.py`).
-   - Result: **104 passed in 5.55s** (0 failed).
+   - 15 test files (`tests/test_paged_kv_*.py`, `tests/test_pipeline_*.py`, `tests/test_inference_paged_kv_sidecar.py`, `tests/test_increment17_stress_and_adversarial.py`, `tests/test_paged_kv_pytorch_adapter.py`).
+   - Result: **106 passed in 5.52s** (0 failed).
 2. **Broader Application Regression Selection:**
    - 12 test files covering startup, inference, health/metrics, worker authorization, script permits, certification holds, and migrations.
    - Result: **142 passed, 2 warnings in 56.02s** (0 failed).
-3. **Combined Suite Total:** **246 passed, 0 failed**.
+3. **Combined Suite Total:** **248 passed, 0 failed**.
 4. **Clean-Environment Disabled-by-Default Results:**
    - Verified default settings evaluate to `paged_kv_enabled = False`.
    - Verified ordinary inference succeeds through controlled backend without cache keys.
@@ -77,5 +77,7 @@ This Pull Request incorporates Increment 17 into the Qwen Collective codebase:
 ## 4. Operational Boundaries & Holds
 
 - **Caching Default:** Strictly disabled by default (`QC_PAGED_KV_ENABLED=false`).
-- **Real-Model Execution Boundary:** Real model transformer layer execution and attention KV tensor kernel reuse remain separate unproven capabilities pending operator approval for PyTorch provisioning.
+- **Real-Model Attention KV Injection (Tier 5):** Fully verified locally on NVIDIA GTX 1650 SUPER via `PyTorchPagedKVAdapter` (+74.2% prefill speedup, bit-exact parity, tenant isolation, and disk restoration).
+- **Remote Multi-Node Execution (Tier 4):** Remote execution on `qwen-laptop` remains held pending operator approval for headless PyTorch CPU worker daemon provisioning.
 - **Production Safety Holds:** Main merge approval does NOT authorize production deployment, cache activation, database migrations, live service restarts, or safety-hold removal.
+
