@@ -42,7 +42,7 @@ In accordance with strict operational safety policies, **administrative safety h
   - cgroup v2 active, `mksquashfs` available.
   - Image `43b057aa6a7133de2bbed57a8caaeecd07aea9228fa7cb6bec1608286b967b61.raw` deployed to `/var/lib/qwen-sandbox/images/`.
 - **Readiness Evidence:**
-  - Artifact: [`docs/verified-work/evidence/vps-dryrun-rehearsal.json`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/docs/verified-work/evidence/vps-dryrun-rehearsal.json).
+  - Artifact: [`docs/verified-work/evidence/vps-dryrun-rehearsal.json`](evidence/vps-dryrun-rehearsal.json).
   - Verified 5 live containment scenarios: dynamic user isolation, read-only rootfs mount, network egress denial (`IPAddressDeny=any`), deadline timeout enforcement, output overflow bounding.
   - All 11 transient systemd units cleaned up to empty cgroups (`populated 0`, `pids.current == 0`).
   - Existing worker daemon remained 100% active and unperturbed.
@@ -66,8 +66,8 @@ In accordance with strict operational safety policies, **administrative safety h
   - Tailscale proxy `qc-ollama-ts.service` active (`MainPID=519545`).
   - Worker daemon `qwen-worker.service` active (`MainPID=554427`).
 - **Readiness Evidence:**
-  - Artifact 1: [`docs/verified-work/evidence/laptop-native-canary-f706a49af04d4182a27a5887d1f9fc85.json`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/docs/verified-work/evidence/laptop-native-canary-f706a49af04d4182a27a5887d1f9fc85.json) (Integer arithmetic canary).
-  - Artifact 2: [`docs/verified-work/evidence/laptop-native-canary-json-io-a6d04c66c76c49d88b0005b85387c123.json`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/docs/verified-work/evidence/laptop-native-canary-json-io-a6d04c66c76c49d88b0005b85387c123.json) (Broader JSON I/O canary).
+  - Artifact 1: [`docs/verified-work/evidence/laptop-native-canary-f706a49af04d4182a27a5887d1f9fc85.json`](evidence/laptop-native-canary-f706a49af04d4182a27a5887d1f9fc85.json) (Integer arithmetic canary).
+  - Artifact 2: [`docs/verified-work/evidence/laptop-native-canary-json-io-a6d04c66c76c49d88b0005b85387c123.json`](evidence/laptop-native-canary-json-io-a6d04c66c76c49d88b0005b85387c123.json) (Broader JSON I/O canary).
   - Demonstrated: Naive model failure on malformed input $\rightarrow$ bounded revision without test oracle leakage $\rightarrow$ pass on all 6 cases (nominal, empty, unicode, malformed type, malformed missing, boundary spaces).
 - **Rollout Procedure (Phase 2):**
   1. Update worker software package to support bounded revision retry loops.

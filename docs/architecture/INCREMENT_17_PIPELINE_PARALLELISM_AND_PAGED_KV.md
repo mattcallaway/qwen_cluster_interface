@@ -148,19 +148,21 @@ Phase 5: Documentation & Map Updates
 
 Conducted on October 28, 2026 across heterogeneous nodes running authenticated activation streaming (`ActivationProtocol`, HMAC-SHA256, `QCACT1` frame).
 
-Artifact: [`docs/verified-work/INCREMENT_17_LIVE_PIPELINE_BENCHMARK.json`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/docs/verified-work/INCREMENT_17_LIVE_PIPELINE_BENCHMARK.json)
+Artifact: [`docs/verified-work/INCREMENT_17_LIVE_PIPELINE_BENCHMARK.json`](../verified-work/INCREMENT_17_LIVE_PIPELINE_BENCHMARK.json)
+
+> **Superseding Note (2026-11-03):** The rates below measure **synthetic activation frame transport (`QCACT1`) steps/sec**, never real transformer model token generation throughput. See [`docs/verified-work/INCREMENT_17_STRESS_TEST_AND_CAPABILITY_EVALUATION.md`](../verified-work/INCREMENT_17_STRESS_TEST_AND_CAPABILITY_EVALUATION.md) for the reconciled 6-row capability matrix.
 
 ### Summary Results
 
-| Link Topology | Hidden Dim & Dtype | Frame Size | Network RTT (p50) | Total Step (p50) | Inter-Node Throughput |
+| Link Topology | Hidden Dim & Dtype | Frame Size | Network RTT (p50) | Total Step (p50) | Synthetic Frame Rate |
 |---|---|---|---|---|---|
-| **Desktop $\to$ Laptop** (LAN Mesh) | 1536 (`float32` - 1.5B) | 6.2 KB | **3.38 ms** | 7.17 ms | **130.7 tok/s** |
-| **Desktop $\to$ Laptop** (LAN Mesh) | 3584 (`float16` - 7B) | 7.2 KB | **3.52 ms** | 9.91 ms | **95.1 tok/s** |
-| **Desktop $\to$ Laptop** (LAN Mesh) | 4096 (`float16` - 14B) | 8.3 KB | **3.50 ms** | 10.94 ms | **86.8 tok/s** |
-| **Desktop $\to$ VPS** (WAN Mesh) | 1536 (`float32` - 1.5B) | 6.2 KB | **11.34 ms** | 13.72 ms | **72.9 tok/s** |
-| **Desktop $\to$ VPS** (WAN Mesh) | 3584 (`float16` - 7B) | 7.2 KB | **11.45 ms** | 16.36 ms | **60.3 tok/s** |
-| **Desktop $\to$ VPS** (WAN Mesh) | 4096 (`float16` - 14B) | 8.3 KB | **11.58 ms** | 17.45 ms | **57.0 tok/s** |
-| **Laptop $\to$ VPS** (Cross-Continent) | 3584 (`float16` - 7B) | 7.2 KB | **14.20 ms** | 19.67 ms | **46.4 tok/s** |
+| **Desktop $\to$ Laptop** (LAN Mesh) | 1536 (`float32` - 1.5B) | 6.2 KB | **3.38 ms** | 7.17 ms | **130.7 steps/s (synthetic)** |
+| **Desktop $\to$ Laptop** (LAN Mesh) | 3584 (`float16` - 7B) | 7.2 KB | **3.52 ms** | 9.91 ms | **95.1 steps/s (synthetic)** |
+| **Desktop $\to$ Laptop** (LAN Mesh) | 4096 (`float16` - 14B) | 8.3 KB | **3.50 ms** | 10.94 ms | **86.8 steps/s (synthetic)** |
+| **Desktop $\to$ VPS** (WAN Mesh) | 1536 (`float32` - 1.5B) | 6.2 KB | **11.34 ms** | 13.72 ms | **72.9 steps/s (synthetic)** |
+| **Desktop $\to$ VPS** (WAN Mesh) | 3584 (`float16` - 7B) | 7.2 KB | **11.45 ms** | 16.36 ms | **60.3 steps/s (synthetic)** |
+| **Desktop $\to$ VPS** (WAN Mesh) | 4096 (`float16` - 14B) | 8.3 KB | **11.58 ms** | 17.45 ms | **57.0 steps/s (synthetic)** |
+| **Laptop $\to$ VPS** (Cross-Continent) | 3584 (`float16` - 7B) | 7.2 KB | **14.20 ms** | 19.67 ms | **46.4 steps/s (synthetic)** |
 
 ### Key Takeaways
 - **Inter-Stage Handover Overhead**: Network RTT over Tailscale WireGuard is only **3.5 ms on LAN mesh** and **11.5 ms over cross-country WAN**, adding negligible delay relative to typical transformer layer compute times (15–40 ms).

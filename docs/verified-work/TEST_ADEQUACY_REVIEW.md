@@ -77,7 +77,7 @@ To verify that the test suite is genuinely discerning and not superficial:
 
 ## 4. Empirical Mutation Testing & Kill Rate Verification
 
-To independently verify that the approved test suites reject plausible defective implementations, we executed [`tests/test_independent_test_adequacy_mutations.py`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/tests/test_independent_test_adequacy_mutations.py).
+To independently verify that the approved test suites reject plausible defective implementations, we executed [`tests/test_independent_test_adequacy_mutations.py`](../../tests/test_independent_test_adequacy_mutations.py).
 
 Seven deliberate mutant implementations were tested against the declarative test oracle:
 

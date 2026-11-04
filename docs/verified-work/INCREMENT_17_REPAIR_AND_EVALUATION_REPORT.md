@@ -224,7 +224,7 @@ All entries in `docs/verified-work/ACCEPTANCE_MATRIX.md` have been updated throu
 - **Remote `origin/main` Base SHA:** `4be7f547f4919380a22abdd2122961d559d2f46f`
 - **Tested Implementation Feature Commit SHA (`feature/increment17-pipeline-parallelism-paged-kv`):** `53576c16ef96f64797478825b38b00d625748b25` (with subsequent metadata-only documentation freeze commit at `HEAD` containing zero code changes across `app/` and `tests/`)
 - **Tested Disposable Integration Rehearsal Merge SHA:** `1b4bf42d43097546371544e9ae7233ebcf98cbe2`
-- **Tracked Evidence Artifact:** [`docs/verified-work/evidence/increment17-integration-rehearsal-20261103.json`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/docs/verified-work/evidence/increment17-integration-rehearsal-20261103.json)
+- **Tracked Evidence Artifact:** [`docs/verified-work/evidence/increment17-integration-rehearsal-20261103.json`](evidence/increment17-integration-rehearsal-20261103.json)
 
 ### Merge & Conflict Resolution
 - **Command:** `git merge --no-ff feature/increment17-pipeline-parallelism-paged-kv` into disposable worktree branch `disposable/inc17-final-rehearsal` rooted at `origin/main` (`4be7f547f4919380a22abdd2122961d559d2f46f`).

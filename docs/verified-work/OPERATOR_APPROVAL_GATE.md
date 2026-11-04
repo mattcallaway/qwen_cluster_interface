@@ -36,10 +36,10 @@ Any modification to these assets requires **separate, explicit, interactive oper
 Before an operator grants approval for any production rollout or schema migration, each of the following evidentiary artifacts must be verified and signed off:
 
 - [x] **Prerequisite 1: Independent Test Adequacy Review**
-  - **Artifact:** [`docs/verified-work/TEST_ADEQUACY_REVIEW.md`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/docs/verified-work/TEST_ADEQUACY_REVIEW.md)
+  - **Artifact:** [`docs/verified-work/TEST_ADEQUACY_REVIEW.md`](TEST_ADEQUACY_REVIEW.md)
   - **Verification:** Evaluated broader declarative software contract profile (`qc.json_io_cases.v1`) beyond integer arithmetic. Verified strict typing, payload boundaries (32KB), equivalence partitioning, negative assertion fault injection, and mutation resistance criteria. 54 unit tests passing in integration suite.
 - [x] **Prerequisite 2: Non-Production VPS Sandbox Dry-Run Rehearsal**
-  - **Artifact:** [`docs/verified-work/evidence/vps-dryrun-rehearsal.json`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/docs/verified-work/evidence/vps-dryrun-rehearsal.json)
+  - **Artifact:** [`docs/verified-work/evidence/vps-dryrun-rehearsal.json`](evidence/vps-dryrun-rehearsal.json)
   - **Verification:** Executed live on Ubuntu 24.04.3 LTS VPS (`100.71.194.68`). Demonstrated rootfs squashfs isolation, DynamicUser isolation, read-only rootfs mount, network egress denial (`IPAddressDeny=any`), deadline timeout SIGKILL enforcement, output overflow bounding, and nonce replay rejection. Verified that all 11 transient systemd units cleaned up to empty cgroups (`populated 0`, `pids.current == 0`) and existing production service (`qwen-worker.service` PID 270445) remained completely unaffected.
 - [x] **Prerequisite 3: Separate Explicit Operator Approval Ceremony**
   - **Status:** **APPROVED BY OPERATOR** (2026-10-28)
