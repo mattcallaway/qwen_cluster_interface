@@ -34,7 +34,7 @@
 | `app/services/paged_kv/__init__.py` | `4c599870251fb9f2b0d4ef8ca91c348fc98b099c09d0b1a46a7d392766bd3877` | `f829cf9812c9942514e83a38282ef5b7ff6f8a5fbbc62e4cbf97da8643453af2` |
 | `app/services/paged_kv/hasher.py` | `d94cc3130d4f6cd5fd0d2da308831ace1a35a8bd60a9fc7a375ea98fd3eeaa21` | `d94cc3130d4f6cd5fd0d2da308831ace1a35a8bd60a9fc7a375ea98fd3eeaa21` |
 | `app/services/paged_kv/identity.py` | `4f896359cb3af9b5263c9c3579a1a82e6255129919a94bfc25a37cbda463cc2b` | `3d3d8ed5a1110b51d34b9a2215b3084204ac609d66f5f79ebe3b517e9730874a` |
-| `app/services/paged_kv/model_loader.py` | *(not present in tree)* | `47aeea18804bc15e33d31dce5e0ea6a8694942eaf3b554bf2a660ad14e318c63` |
+| `app/services/paged_kv/model_loader.py` | *(not present in tree)* | `d619be3f6b19791e8d49e34b48ca8b7af806de1c5e4f0cadf9030d8379919283` (LF: `47aeea18804bc15e33d31dce5e0ea6a8694942eaf3b554bf2a660ad14e318c63`) |
 | `app/services/paged_kv/page_table.py` | `7a1b1bb2e66e02bafbc798b66478e26fd081f348bd17c2739bbbf2563803f24c` | `283970b59cf13ea8c63940ae51fa74d2dd24c8d68a1267908b8ae5dc0cefa0ed` |
 | `app/services/paged_kv/store.py` | `00fa9c8be8098c93ea030479013f51fbbaadede46d76d2f2385151346604b628` | `a5280f1138293d3882da459fa1c80663d5f3a92565e2ed60af8a9ea581613837` |
 | `app/services/paged_kv/manager.py` | `55e146f7a34ef240ac0b3da267589294c2662747c33fffb47733d3473978f3a4` | `b99565b5791dc7dd92e0c223b688d566be7419a311e8fe36dd9381b2c6562bd2` |

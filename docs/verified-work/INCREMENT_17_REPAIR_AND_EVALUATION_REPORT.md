@@ -43,7 +43,7 @@ All correctness and authority defects were reproduced with dedicated regression 
 | `app/services/paged_kv/store.py` | `00fa9c8be8098c93ea030479013f51fbbaadede46d76d2f2385151346604b628` | `a5280f1138293d3882da459fa1c80663d5f3a92565e2ed60af8a9ea581613837` | Repaired (F-9, F-10, F-13, F-14, F-15, F-24) |
 | `app/services/paged_kv/manager.py` | `55e146f7a34ef240ac0b3da267589294c2662747c33fffb47733d3473978f3a4` | `b99565b5791dc7dd92e0c223b688d566be7419a311e8fe36dd9381b2c6562bd2` | Repaired (F-7..F-20, F-24, F-26) |
 | `app/services/paged_kv/identity.py` | `4f896359cb3af9b5263c9c3579a1a82e6255129919a94bfc25a37cbda463cc2b` | `3d3d8ed5a1110b51d34b9a2215b3084204ac609d66f5f79ebe3b517e9730874a` | Repaired (F-17, F-19, F-26) |
-| `app/services/paged_kv/model_loader.py` | *(added in Nov 3 release validation)* | `47aeea18804bc15e33d31dce5e0ea6a8694942eaf3b554bf2a660ad14e318c63` | Real-Artifact Loader & Instance Binding (F-26) |
+| `app/services/paged_kv/model_loader.py` | *(added in Nov 3 release validation)* | `d619be3f6b19791e8d49e34b48ca8b7af806de1c5e4f0cadf9030d8379919283` (LF: `47aeea18804bc15e33d31dce5e0ea6a8694942eaf3b554bf2a660ad14e318c63`) | Real-Artifact Loader & Instance Binding (F-26) |
 | `app/services/paged_kv/pytorch_adapter.py` | `1c7e5aa3cea8d9f9d57b4a2710f4085d0a02d65d5e0b01417ba152b9ec91a8b2` | `0c8a27ec96370e292cadd83425b3a85177964e5fdef4c2273704865d322b23d5` | Repaired (F-21, F-25, F-26) |
 | `app/services/paged_kv/__init__.py` | *(module exports)* | `f829cf9812c9942514e83a38282ef5b7ff6f8a5fbbc62e4cbf97da8643453af2` | Updated exports (F-26) |
 | `app/services/inference.py` | `8420ff7b40eccd62bd896851313e33f475f46cf3c02f457ea1960205b2be3ef0` | `8420ff7b40eccd62bd896851313e33f475f46cf3c02f457ea1960205b2be3ef0` | Repaired (F-10, F-18, F-19) |
