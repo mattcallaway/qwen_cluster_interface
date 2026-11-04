@@ -21,6 +21,7 @@ class PagedKVManager:
         storage_dir: Union[str, Path],
         max_ram_blocks: int = 64,
         max_ram_bytes: Optional[int] = None,
+        max_disk_bytes: Optional[int] = None,
         block_size: int = 16,
         compress: bool = True,
         auth_key: Optional[Union[bytes, str]] = None,
@@ -30,11 +31,17 @@ class PagedKVManager:
         self.block_size = block_size
         self.max_ram_blocks = max_ram_blocks
         self.max_ram_bytes = max_ram_bytes or (max_ram_blocks * 64 * 1024)
+        self.max_disk_bytes = max_disk_bytes
         self.hasher = PagedKVHasher(block_size=block_size)
         self.radix_tree = PrefixRadixTree(hasher=self.hasher)
         self.pool = PhysicalBlockPool(total_blocks=max_ram_blocks * 4)
         self.table = VirtualBlockTable(pool=self.pool)
-        self.store = PagedKVStore(storage_dir=storage_dir, compress=compress, auth_key=auth_key)
+        self.store = PagedKVStore(
+            storage_dir=storage_dir,
+            compress=compress,
+            auth_key=auth_key,
+            max_disk_bytes=max_disk_bytes,
+        )
         self.trusted_issuer = trusted_issuer
 
         # Connect physical pool eviction callback to safely offload unpinned blocks to disk
@@ -70,11 +77,13 @@ class PagedKVManager:
             elif isinstance(namespace, str):
                 namespace = ExecutionNamespace.create_canonical(model_name=namespace)
 
+            if sequence_id in self.table.seq_tables:
+                # Prevent duplicate block mappings and ref_count leaks if an active sequence_id is re-ingested
+                self.release_sequence(sequence_id)
+
             self.sequence_namespaces[sequence_id] = namespace
             effective_model_name = namespace.model_name
-            self.total_queries += 1
             total_tokens = len(tokens)
-            self.total_evaluated_tokens += total_tokens
 
             # Authority verification: genuine reuse requires that the manager's configured trusted_issuer
             # confirms this authority token was issued by it, is active, non-empty, and valid.
@@ -97,47 +106,60 @@ class PagedKVManager:
                 matched_blocks, matched_token_count, payloads = self.radix_tree.match_prefix(
                     tokens, namespace=namespace
                 )
-                self.total_matched_tokens += matched_token_count
 
-            if sequence_id not in self.table.seq_tables:
-                self.table.create_sequence(sequence_id)
-
-            # Step 2: Attach matched prefix blocks to sequence
-            for block in matched_blocks:
-                self.table.append_block(sequence_id, block.block_hash)
-                # Ensure block tensor is loaded into RAM if needed with namespace verification
-                self.store.read_page(block.block_hash, expected_namespace_digest=block.namespace_digest)
-
-            # Step 3: Chunk and allocate remaining novel suffix tokens
+            self.table.create_sequence(sequence_id)
             remaining_tokens = tokens[matched_token_count:]
             new_blocks: List[TokenBlock] = []
 
-            if remaining_tokens:
-                all_blocks = self.hasher.chunk_tokens(tokens, namespace=namespace)
-                new_blocks = all_blocks[len(matched_blocks) :]
-
-                for block in new_blocks:
+            try:
+                # Step 2: Attach matched prefix blocks to sequence and verify stored page integrity
+                for block in matched_blocks:
                     self.table.append_block(sequence_id, block.block_hash)
-
-                    # Generate or record KV tensor bytes for the new block
-                    if dummy_tensor_generator:
-                        t_bytes = dummy_tensor_generator(block)
-                    else:
-                        t_bytes = f"TENSOR:{effective_model_name}:{block.block_hash}:{block.tokens}".encode()
-
-                    self.store.write_page(
+                    page_bytes = self.store.read_page(
                         block.block_hash,
-                        t_bytes,
-                        persist_to_disk=True,
-                        namespace_digest=block.namespace_digest,
+                        expected_namespace_digest=block.namespace_digest,
                     )
+                    if page_bytes is None:
+                        raise ValueError(
+                            f"Missing stored page for matched radix block {block.block_hash}"
+                        )
 
-                # Insert new sequence branch into Radix tree
-                self.radix_tree.insert(
-                    tokens,
-                    payload={"model": effective_model_name, "last_seq": sequence_id},
-                    namespace=namespace,
-                )
+                # Step 3: Chunk and allocate remaining novel suffix tokens
+                if remaining_tokens:
+                    all_blocks = self.hasher.chunk_tokens(tokens, namespace=namespace)
+                    new_blocks = all_blocks[len(matched_blocks) :]
+
+                    for block in new_blocks:
+                        self.table.append_block(sequence_id, block.block_hash)
+
+                        # Generate or record KV tensor bytes for the new block
+                        if dummy_tensor_generator:
+                            t_bytes = dummy_tensor_generator(block)
+                        else:
+                            t_bytes = f"TENSOR:{effective_model_name}:{block.block_hash}:{block.tokens}".encode()
+
+                        self.store.write_page(
+                            block.block_hash,
+                            t_bytes,
+                            persist_to_disk=True,
+                            namespace_digest=block.namespace_digest,
+                        )
+
+                    # Insert new sequence branch into Radix tree only after all allocations succeed
+                    self.radix_tree.insert(
+                        tokens,
+                        payload={"model": effective_model_name, "last_seq": sequence_id},
+                        namespace=namespace,
+                    )
+            except Exception:
+                # Transactional rollback: release any partially allocated blocks and sequence state
+                self.release_sequence(sequence_id)
+                raise
+
+            # Commit accounting only after full sequence ingestion succeeds
+            self.total_queries += 1
+            self.total_evaluated_tokens += total_tokens
+            self.total_matched_tokens += matched_token_count
 
             # Step 4: Check RAM quota and evict LRU blocks if necessary
             self._enforce_ram_quota()
@@ -213,7 +235,9 @@ class PagedKVManager:
             for idx, h in enumerate(hashes):
                 was_in_ram = self.store.is_in_ram(h)
                 # read_page touches the block, validates namespace and key identity, moves it to MRU
-                self.store.read_page(h, expected_namespace_digest=expected_ns_digest)
+                page_bytes = self.store.read_page(h, expected_namespace_digest=expected_ns_digest)
+                if page_bytes is None:
+                    raise ValueError(f"Cannot restore sequence '{sequence_id}': block {h} missing from storage.")
                 if not was_in_ram:
                     restored += 1
                 if idx < len(self.table.seq_tables[sequence_id]):

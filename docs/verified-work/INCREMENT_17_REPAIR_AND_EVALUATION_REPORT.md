@@ -28,33 +28,29 @@ All four correctness defects were reproduced with dedicated, independently speci
 
 ### Environment
 - **Host:** Windows 10 (Build 19045), Python 3.12.10
-- **Hardware:** AMD Ryzen 7 5700X 8-Core (16 threads), 32 GB RAM, NVIDIA GeForce RTX 3060 (12 GB VRAM)
+- **Hardware (Verified via Live Probe):** `Intel(R) Xeon(R) CPU W3680 @ 3.33GHz` (6 cores / 6 threads), 24.0 GB RAM, `NVIDIA GeForce GTX 1650 SUPER` (4095 MiB VRAM, Compute Capability 7.5); `.venv-gpu` with `torch 2.5.1+cu121` and `transformers 4.45.2`
 - **Local Runtime:** Ollama 0.15.2 (127.0.0.1:11434)
-- **Remote Nodes:** `qwen-laptop` (AMD 5800H, 16 GB RAM), `qwen-vps` (Ubuntu 24.04, 8 GB RAM), `qwen-pi` (Raspberry Pi 5, 8 GB RAM)
+- **Remote Nodes:** `qwen-laptop` (`100.101.187.115`, Ubuntu Linux `7.0.0-38-generic`, `Intel(R) Core(TM) i3-6100U CPU @ 2.30GHz`, 3.7 GiB RAM, Python 3.12.3 without `torch`/`transformers`)
 - **Network Fabric:** Tailscale WireGuard mesh (encrypted private subnet 100.64.0.0/10)
 
-### Tested Source Hashes (SHA-256)
-| Source File | SHA-256 Digest | Status |
-|---|---|---|
-| `app/services/paged_kv/page_table.py` | `7a1b1bb2e66e02bafbc798b66478e26fd081f348bd17c2739bbbf2563803f24c` | Repaired (F-7) |
-| `app/services/paged_kv/hasher.py` | `d94cc3130d4f6cd5fd0d2da308831ace1a35a8bd60a9fc7a375ea98fd3eeaa21` | Repaired (F-8, F-12, F-16, F-17) |
-| `app/services/paged_kv/store.py` | `00fa9c8be8098c93ea030479013f51fbbaadede46d76d2f2385151346604b628` | Repaired (F-9, F-10, F-13, F-14, F-15) |
-| `app/services/paged_kv/manager.py` | `c7e3de023ea427286ebf6a214fb67d2fd2cb310bcd25b1ff22e01b9dae0acfc4` | Repaired (F-7, F-10, F-12, F-13, F-14, F-15, F-16, F-17, F-19) |
-| `app/services/paged_kv/identity.py` | `4f896359cb3af9b5263c9c3579a1a82e6255129919a94bfc25a37cbda463cc2b` | Repaired (F-17, F-19) |
-| `app/services/inference.py` | `832f76362def762ed2ca7b9bf2c23304769be9fffbaad54a4c891a181837484d` | Repaired (F-10, F-18, F-19) |
-| `app/services/pipeline_parallel/activation_protocol.py` | `77f299667d76cc4c32838517fb7ca9e067b061d1f156f7377a792c8ae7bcd509` | Verified |
-| `app/services/pipeline_parallel/topology.py` | `f19d5b0c3eb12bdf8def548b434101dc775e5490bb94a19c79fbc93e1e926a6f` | Verified |
-| `app/services/pipeline_parallel/runner.py` | `da6f70714acb245cacd7f584b600044d0d677d2c3def83a05c65611aba71419b` | Verified |
-| `tests/test_paged_kv_page_ownership.py` | `1a4e9582c8e48ab4a8cdd2fd7d23cb3de89feac0838984bab510663fe8b3bc63` | Regression Suite A (6 tests) |
-| `tests/test_paged_kv_namespace_isolation.py` | `3f8fa3dddf14ff732bc07b629ce074fc600fc9e66bfbc456d8c47b59633e9d89` | Regression Suite B (11 tests) |
-| `tests/test_paged_kv_stored_integrity.py` | `e2a2c85b5463fa79eeff1841d15be87fe7fa2ca8588f615be564f26b528b4c73` | Regression Suite C (9 tests) |
-| `tests/test_paged_kv_memory_accounting.py` | `fece8e932b730ebfa5b5f8cb47d9595856e729a43a85b9bda165b4c1aa564b73` | Regression Suite D (2 tests) |
-| `tests/test_paged_kv_auth_and_identity.py` | `6b973059883ea0e13715ecda083d696d594fcbeec59473d0a2936798e6d2bc8a` | Regression Suite E (12 tests) |
-| `tests/test_paged_kv_authority_and_app_behavior.py` | `407b33ee40d04954183d675351a95dcb4eec2b7752739ae921c72be6ebc52590` | Regression Suite F (23 tests) |
-| `docs/architecture/INCREMENT_17_STORAGE_FORMAT_AND_SECURITY_SPEC.md` | `b3ea8f98f044bd49f9d8c0beacda29a6d0ee4519180c9eb8704a170ca2d42765` | Format Specification v2.3 |
-| `docs/verified-work/ACCEPTANCE_MATRIX.md` | `efbfb1894fb33b722a3a01b4e428b0b941c25854148eaa8cbfd326aebe974a78` | Acceptance Matrix (F-1 through F-19) |
-| `docs/verified-work/TECHMAP.md` | `16cbb29f26e93b0f6c514909d8bb39f3ac0d52fbe88ef7270d59745cf139d887` | Technical Map Overlay |
-| `docs/verified-work/README.md` | `9e981f269da00f598b5de2b7c63a4593d06bccafe930f8b53ce2c5e7223d5d50` | Work Register |
+### Tested Source Hashes (SHA-256 — Post-Repair `F-22` through `F-25`)
+| Source File | Pre-Fix SHA-256 (`12469444a1...`) | Post-Fix SHA-256 | Status |
+|---|---|---|---|
+| `app/services/paged_kv/page_table.py` | `7a1b1bb2e66e02bafbc798b66478e26fd081f348bd17c2739bbbf2563803f24c` | `283970b59cf13ea8c63940ae51fa74d2dd24c8d68a1267908b8ae5dc0cefa0ed` | Repaired (F-7, F-24) |
+| `app/services/paged_kv/hasher.py` | `d94cc3130d4f6cd5fd0d2da308831ace1a35a8bd60a9fc7a375ea98fd3eeaa21` | `d94cc3130d4f6cd5fd0d2da308831ace1a35a8bd60a9fc7a375ea98fd3eeaa21` | Repaired (F-8, F-12, F-16, F-17) |
+| `app/services/paged_kv/store.py` | `00fa9c8be8098c93ea030479013f51fbbaadede46d76d2f2385151346604b628` | `a5280f1138293d3882da459fa1c80663d5f3a92565e2ed60af8a9ea581613837` | Repaired (F-9, F-10, F-13, F-14, F-15, F-24) |
+| `app/services/paged_kv/manager.py` | `55e146f7a34ef240ac0b3da267589294c2662747c33fffb47733d3473978f3a4` | `0b5e7932a9b2c427c9a209252e7161028a1f625e18106e48cae8a5bf797d6f82` | Repaired (F-7..F-20, F-24) |
+| `app/services/paged_kv/identity.py` | `4f896359cb3af9b5263c9c3579a1a82e6255129919a94bfc25a37cbda463cc2b` | `4f896359cb3af9b5263c9c3579a1a82e6255129919a94bfc25a37cbda463cc2b` | Repaired (F-17, F-19) |
+| `app/services/paged_kv/pytorch_adapter.py` | `1c7e5aa3cea8d9f9d57b4a2710f4085d0a02d65d5e0b01417ba152b9ec91a8b2` | `4c82b5fc4e71c3f7a683fb00cfd7d231070b30bc7605819e58fca5e676d08d89` | Repaired (F-21, F-25) |
+| `app/services/inference.py` | `8420ff7b40eccd62bd896851313e33f475f46cf3c02f457ea1960205b2be3ef0` | `8420ff7b40eccd62bd896851313e33f475f46cf3c02f457ea1960205b2be3ef0` | Repaired (F-10, F-18, F-19) |
+| `app/services/pipeline_parallel/activation_protocol.py` | `77f299667d76cc4c32838517fb7ca9e067b061d1f156f7377a792c8ae7bcd509` | `1113e0eb8f37ded3fcbb31de3fe3f53d88f5e2554727e1c19486540614426d29` | Repaired (F-22) |
+| `app/services/pipeline_parallel/topology.py` | `f19d5b0c3eb12bdf8def548b434101dc775e5490bb94a19c79fbc93e1e926a6f` | `f19d5b0c3eb12bdf8def548b434101dc775e5490bb94a19c79fbc93e1e926a6f` | Verified |
+| `app/services/pipeline_parallel/runner.py` | `da6f70714acb245cacd7f584b600044d0d677d2c3def83a05c65611aba71419b` | `c7b6141d471d82910d210fc6675ab0bd1ee22ee36d5dfdec891ac5000ed0b9e6` | Repaired (F-22) |
+| `app/services/pipeline_parallel/socket_transport.py` | `fe3b74d9515be8d07b9922a9b94d366402534237e948e63129aadd9f3e3d9c06` | `4a94d042beb0740e24aeb203c28108140f8f2e494e2bf5fb2128c473201b7c2d` | Repaired (F-23) |
+| `app/services/pipeline_parallel/stage1_server.py` | `e8bdd761ecd73469e93598cc55f9f2c28f28daab43891966ad25fb1a49c2a00f` | `e8866a9a4af2ca137600c2a7f7c3557399cdd16e072ceae70c0bc10125dd7189` | Repaired (F-23) |
+| `app/services/pipeline_parallel/pytorch_split_engine.py` | *(added in post-fix)* | `abffa3ec83b06d8b812ad2961196078b88d31e0890e3496d541d2e4eeed3e7cc` | Tier 3 Split Engine |
+| `tests/test_increment17_defect_reproductions.py` | *(added in evaluation)* | `cac7a2d0045083ae18a09fc47d9983673109429300c27518423b1f9f32ef9164` | F-22..F-25 Reproductions (8 tests) |
+| `tests/test_increment17_comprehensive_verification.py` | *(added in evaluation)* | `bc29d66fe82aeb742e40c0080e27abdc7b18e66bb0f18833358ceac3337872cf` | Sections 3–7 Verification (12 tests) |
 
 ---
 

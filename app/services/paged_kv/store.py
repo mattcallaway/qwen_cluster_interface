@@ -110,15 +110,23 @@ class PagedKVStore:
         storage_dir: Union[str, Path],
         compress: bool = True,
         auth_key: Optional[Union[bytes, str]] = None,
+        max_disk_bytes: Optional[int] = None,
     ):
         self.storage_dir = Path(storage_dir)
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.compress = compress
+        self.max_disk_bytes = max_disk_bytes
         # Storage envelope authentication key (HMAC-SHA256) - fail closed if unconfigured
         self.auth_key = validate_storage_key(auth_key)
         # In-memory RAM cache: block_hash -> RamCacheEntry
         self._ram_cache: Dict[str, RamCacheEntry] = {}
         self.current_ram_bytes: int = 0
+        # Disk LRU tracking: block_hash -> file size on disk
+        self._disk_sizes: Dict[str, int] = {}
+        self.current_disk_bytes: int = 0
+        self.disk_evictions: int = 0
+        # Optional callback invoked when a page is evicted from RAM or disk
+        self.on_page_evicted = None
 
     def _validate_hash(self, block_hash: str) -> None:
         """Prevents path traversal and injection via malformed block hashes."""
@@ -196,7 +204,34 @@ class PagedKVStore:
                 f.write(disk_payload)
             os.replace(temp_path, disk_path)
 
+            file_bytes = len(header) + len(disk_payload)
+            old_disk_size = self._disk_sizes.pop(block_hash, None)
+            if old_disk_size is not None:
+                self.current_disk_bytes -= old_disk_size
+            self._disk_sizes[block_hash] = file_bytes
+            self.current_disk_bytes += file_bytes
+            self._enforce_disk_quota(exclude_hash=block_hash)
+
         return len(tensor_bytes)
+
+    def _enforce_disk_quota(self, exclude_hash: Optional[str] = None) -> int:
+        """Evicts oldest on-disk pages when max_disk_bytes is configured and exceeded."""
+        if self.max_disk_bytes is None or self.current_disk_bytes <= self.max_disk_bytes:
+            return 0
+        evicted = 0
+        for candidate_hash in list(self._disk_sizes.keys()):
+            if self.current_disk_bytes <= self.max_disk_bytes:
+                break
+            if candidate_hash == exclude_hash:
+                continue
+            disk_path = self._get_disk_path(candidate_hash)
+            size = self._disk_sizes.pop(candidate_hash, 0)
+            self.current_disk_bytes = max(0, self.current_disk_bytes - size)
+            if disk_path.exists():
+                disk_path.unlink()
+            self.disk_evictions += 1
+            evicted += 1
+        return evicted
 
     def read_page(
         self,
@@ -364,6 +399,8 @@ class PagedKVStore:
         entry = self._ram_cache.pop(block_hash, None)
         if entry is not None:
             self.current_ram_bytes -= len(entry.tensor_bytes)
+            if callable(self.on_page_evicted):
+                self.on_page_evicted(block_hash)
             return True
         return False
 
@@ -373,9 +410,14 @@ class PagedKVStore:
         ram_deleted = self.evict_from_ram(block_hash)
         disk_path = self._get_disk_path(block_hash)
         disk_deleted = False
+        old_disk_size = self._disk_sizes.pop(block_hash, None)
+        if old_disk_size is not None:
+            self.current_disk_bytes = max(0, self.current_disk_bytes - old_disk_size)
         if disk_path.exists():
             disk_path.unlink()
             disk_deleted = True
+        if callable(self.on_page_evicted):
+            self.on_page_evicted(block_hash)
         return ram_deleted or disk_deleted
 
     def is_in_ram(self, block_hash: str) -> bool:
@@ -393,3 +435,9 @@ class PagedKVStore:
 
     def get_ram_bytes(self) -> int:
         return self.current_ram_bytes
+
+    def get_disk_page_count(self) -> int:
+        return len(self._disk_sizes)
+
+    def get_disk_bytes(self) -> int:
+        return self.current_disk_bytes

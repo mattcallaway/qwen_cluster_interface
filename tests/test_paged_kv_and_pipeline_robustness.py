@@ -119,18 +119,14 @@ def test_activation_nan_and_inf_handling():
     )
     runner = PipelineStageRunner(config=stage_cfg, protocol=proto, hidden_dim=4)
 
-    # Frame with NaN and Inf
+    # Frame with NaN and Inf must be rejected fail-closed so NaN never silently poisons argmax
     nan_inf_activations = [float("nan"), float("inf"), float("-inf"), 0.0]
-    frame = proto.encode_frame("sess-nan", 0, 0, nan_inf_activations)
+    with pytest.raises(ValueError, match="non-finite"):
+        proto.encode_frame("sess-nan", 0, 0, nan_inf_activations)
 
-    # Should decode without crash
-    meta, decoded = proto.decode_frame(frame)
-    assert len(decoded) == 4
-    assert math.isnan(decoded[0])
-    assert math.isinf(decoded[1])
-
-    # Runner handles egress evaluation cleanly
-    result = runner.process_egress(frame)
+    # Valid finite frame still processes cleanly
+    valid_frame = proto.encode_frame("sess-finite", 0, 0, [0.1, 0.2, 0.3, 0.4])
+    result = runner.process_egress(valid_frame)
     assert "predicted_token_id" in result
     assert isinstance(result["predicted_token_id"], int)
 

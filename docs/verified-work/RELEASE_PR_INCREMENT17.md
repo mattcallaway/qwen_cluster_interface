@@ -57,13 +57,13 @@ This Pull Request incorporates Increment 17 into the Qwen Collective codebase:
 
 ## 3. Test & Rehearsal Results
 
-1. **Focused Increment 17 Test Suites:**
-   - 15 test files (`tests/test_paged_kv_*.py`, `tests/test_pipeline_*.py`, `tests/test_inference_paged_kv_sidecar.py`, `tests/test_increment17_stress_and_adversarial.py`, `tests/test_paged_kv_pytorch_adapter.py`).
-   - Result: **106 passed in 5.52s** (0 failed).
+1. **Focused Increment 17 + Inference/Orchestrator Test Suites:**
+   - 19 test files (`tests/test_increment17_defect_reproductions.py`, `tests/test_increment17_comprehensive_verification.py`, `tests/test_increment17_stress_and_adversarial.py`, `tests/test_paged_kv_*.py`, `tests/test_pipeline_*.py`, `tests/test_inference*.py`).
+   - Result: **140 passed in 31.88s** (0 failed).
 2. **Broader Application Regression Selection:**
-   - 12 test files covering startup, inference, health/metrics, worker authorization, script permits, certification holds, and migrations.
-   - Result: **142 passed, 2 warnings in 56.02s** (0 failed).
-3. **Combined Suite Total:** **248 passed, 0 failed**.
+   - 10 test files covering observatory, metric integrity, web routes, worker authorization, script permits, certification holds, claim contracts, and migrations.
+   - Result: **132 passed, 1 warning in 56.92s** (0 failed).
+3. **Combined Suite Total:** **272 passed, 0 failed**.
 4. **Clean-Environment Disabled-by-Default Results:**
    - Verified default settings evaluate to `paged_kv_enabled = False`.
    - Verified ordinary inference succeeds through controlled backend without cache keys.
@@ -77,7 +77,7 @@ This Pull Request incorporates Increment 17 into the Qwen Collective codebase:
 ## 4. Operational Boundaries & Holds
 
 - **Caching Default:** Strictly disabled by default (`QC_PAGED_KV_ENABLED=false`).
-- **Real-Model Attention KV Injection (Tier 5):** Fully verified locally on NVIDIA GTX 1650 SUPER via `PyTorchPagedKVAdapter` (+74.2% prefill speedup, bit-exact parity, tenant isolation, and disk restoration).
-- **Remote Multi-Node Execution (Tier 4):** Remote execution on `qwen-laptop` remains held pending operator approval for headless PyTorch CPU worker daemon provisioning.
+- **Local Split Execution (Tier 3) & Attention KV Injection (Tier 5):** Fully verified locally on NVIDIA GTX 1650 SUPER (`4095 MiB` VRAM) with `Qwen/Qwen2.5-0.5B-Instruct` via [`LocalSplitPipelineEngine`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/app/services/pipeline_parallel/pytorch_split_engine.py) (`0.000000` intermediate/logit diff across 2-stage and 3-stage splits) and [`PyTorchPagedKVAdapter`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/app/services/paged_kv/pytorch_adapter.py) (`3.41x–4.77x` warmed RAM prefill speedup, 100% greedy token match, tenant isolation, and `QCKVP2` disk restoration).
+- **Remote Multi-Node Execution with Real Weights (Tier 4):** **NOT IMPLEMENTED / HELD** — `qwen-laptop` (`Intel Core i3-6100U`, `3.7 GiB` RAM) lacks `torch`/`transformers`; provisioning a remote CPU PyTorch runtime requires separate operator approval.
 - **Production Safety Holds:** Main merge approval does NOT authorize production deployment, cache activation, database migrations, live service restarts, or safety-hold removal.
 

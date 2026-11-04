@@ -170,7 +170,7 @@ class VirtualBlockTable:
     """
     Maintains logical-to-physical block mappings per inference sequence.
     Enforces Copy-On-Write (COW) semantics for branching agent rollouts,
-    and supports safe offloading and remapping of virtual pages.
+    generation-bound stale-mapping detection, and safe offloading/remapping of virtual pages.
     """
 
     def __init__(self, pool: Optional[PhysicalBlockPool] = None):
@@ -179,12 +179,15 @@ class VirtualBlockTable:
         self.seq_tables: Dict[str, List[Optional[int]]] = {}
         # sequence_id -> list of block hashes
         self.seq_hashes: Dict[str, List[str]] = {}
+        # sequence_id -> list of physical block generations at mapping time
+        self.seq_generations: Dict[str, List[Optional[int]]] = {}
 
     def create_sequence(self, sequence_id: str) -> None:
         if sequence_id in self.seq_tables:
             raise KeyError(f"Sequence {sequence_id} already exists")
         self.seq_tables[sequence_id] = []
         self.seq_hashes[sequence_id] = []
+        self.seq_generations[sequence_id] = []
 
     def append_block(self, sequence_id: str, block_hash: str) -> PhysicalBlock:
         """Allocates or reuses a block and appends it to the sequence."""
@@ -194,6 +197,7 @@ class VirtualBlockTable:
         block = self.pool.allocate_block(block_hash=block_hash)
         self.seq_tables[sequence_id].append(block.block_id)
         self.seq_hashes[sequence_id].append(block_hash)
+        self.seq_generations[sequence_id].append(block.generation)
         return block
 
     def offload_block(self, block_hash: str) -> int:
@@ -208,29 +212,74 @@ class VirtualBlockTable:
         released_count = 0
         for seq_id, hashes in list(self.seq_hashes.items()):
             table = self.seq_tables.get(seq_id, [])
+            gens = self.seq_generations.get(seq_id, [])
             for idx, h in enumerate(hashes):
                 if h == block_hash and idx < len(table):
                     if table[idx] == bid:
                         table[idx] = None
+                        if idx < len(gens):
+                            gens[idx] = None
                         self.pool.release_block(bid)
                         released_count += 1
         return released_count
 
     def remap_block(self, sequence_id: str, logical_idx: int, new_block: PhysicalBlock) -> None:
-        """Remaps a restored physical block back into the sequence table."""
+        """
+        Remaps a physical block into the sequence table at logical_idx.
+        If logical_idx already held an active physical block, releases the previous block reference.
+        """
         if sequence_id not in self.seq_tables:
             raise KeyError(f"Sequence {sequence_id} not found")
-        if logical_idx >= len(self.seq_tables[sequence_id]):
+        if logical_idx < 0 or logical_idx >= len(self.seq_tables[sequence_id]):
             raise IndexError(f"Logical block index {logical_idx} out of range")
+        old_bid = self.seq_tables[sequence_id][logical_idx]
+        if old_bid is not None and old_bid != new_block.block_id:
+            self.pool.release_block(old_bid)
         self.seq_tables[sequence_id][logical_idx] = new_block.block_id
+        self.seq_generations[sequence_id][logical_idx] = new_block.generation
+        if new_block.block_hash is not None:
+            self.seq_hashes[sequence_id][logical_idx] = new_block.block_hash
+
+    def copy_on_write_block(self, sequence_id: str, logical_idx: int, new_block_hash: str) -> PhysicalBlock:
+        """
+        Executes Copy-On-Write (COW) for logical_idx in sequence_id:
+        Allocates a fresh physical block for new_block_hash, decrements the reference count
+        of the previously shared physical block without modifying other sequences, and updates
+        sequence_id's mapping and generation.
+        """
+        if sequence_id not in self.seq_tables:
+            raise KeyError(f"Sequence {sequence_id} not found")
+        if logical_idx < 0 or logical_idx >= len(self.seq_tables[sequence_id]):
+            raise IndexError(f"Logical block index {logical_idx} out of range")
+
+        new_block = self.pool.allocate_block(block_hash=new_block_hash)
+        old_bid = self.seq_tables[sequence_id][logical_idx]
+        if old_bid is not None and old_bid != new_block.block_id:
+            self.pool.release_block(old_bid)
+
+        self.seq_tables[sequence_id][logical_idx] = new_block.block_id
+        self.seq_hashes[sequence_id][logical_idx] = new_block_hash
+        self.seq_generations[sequence_id][logical_idx] = new_block.generation
+        return new_block
 
     def get_physical_blocks(self, sequence_id: str) -> List[Optional[int]]:
-        """Returns the list of physical block IDs for a sequence."""
+        """
+        Returns the list of physical block IDs for a sequence after validating
+        that all mapped blocks are live and match their recorded generation.
+        """
         if sequence_id not in self.seq_tables:
             raise KeyError(f"Sequence {sequence_id} not found")
-        for bid in self.seq_tables[sequence_id]:
+        gens = self.seq_generations.get(sequence_id, [])
+        for idx, bid in enumerate(self.seq_tables[sequence_id]):
             if bid is not None:
-                self.pool.blocks[bid].touch()
+                block = self.pool.blocks[bid]
+                expected_gen = gens[idx] if idx < len(gens) else None
+                if block.is_free or (expected_gen is not None and block.generation != expected_gen):
+                    raise RuntimeError(
+                        f"Stale physical block mapping detected for sequence {sequence_id!r} at index {idx} "
+                        f"(block_id={bid}, block_free={block.is_free}, expected_gen={expected_gen}, actual_gen={block.generation})"
+                    )
+                block.touch()
         return list(self.seq_tables[sequence_id])
 
     def get_block_hashes(self, sequence_id: str) -> List[str]:
@@ -248,8 +297,11 @@ class VirtualBlockTable:
         if child_seq_id in self.seq_tables:
             raise KeyError(f"Child sequence {child_seq_id} already exists")
 
+        # Validate parent blocks and generations first
+        _ = self.get_physical_blocks(parent_seq_id)
         parent_bids = self.seq_tables[parent_seq_id]
         parent_hashes = self.seq_hashes[parent_seq_id]
+        parent_gens = self.seq_generations[parent_seq_id]
 
         for bid in parent_bids:
             if bid is not None:
@@ -257,6 +309,7 @@ class VirtualBlockTable:
 
         self.seq_tables[child_seq_id] = list(parent_bids)
         self.seq_hashes[child_seq_id] = list(parent_hashes)
+        self.seq_generations[child_seq_id] = list(parent_gens)
 
     def release_sequence(self, sequence_id: str) -> List[int]:
         """
@@ -268,6 +321,7 @@ class VirtualBlockTable:
 
         bids = self.seq_tables.pop(sequence_id)
         self.seq_hashes.pop(sequence_id, None)
+        self.seq_generations.pop(sequence_id, None)
 
         freed_bids: List[int] = []
         for bid in bids:

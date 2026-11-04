@@ -84,10 +84,9 @@ It bridges the gap between **autonomous reasoning** and **safe, deterministic re
 - **Token-Budgeted Context Packets**: Dynamically synthesizes hardware facts into token-budgeted prompt packets (500 to 4,000 tokens) with priority pruning for small local models.
 
 ### 6. Distributed Pipeline Parallelism & Searchable Paged KV Cache
-- **Searchable Paged KV Virtual Memory**: Segments attention sequences into 16-token virtual pages mapped via virtual block tables. Cryptographic prefix hash chains enable instant Radix tree lookup of system prompts and workspace schemas, eliminating redundant prefill passes.
-- **Tiered Memory Offloading**: Active tokens execute in high-speed RAM/VRAM while idle contexts flush to local NVMe/mmap files, preventing OOM aborts under long contexts (16k–32k+).
-- **Cluster Pipeline Parallelism**: Partitions deep models (Qwen2.5-7B/14B) across heterogeneous cluster nodes (laptop CPU + workstation/VPS) via authenticated, bounded activation streaming over Tailscale.
-
+- **Searchable Paged KV Virtual Memory**: Segments attention sequences into 16-token virtual pages mapped via virtual block tables (`VirtualBlockTable`, `PhysicalBlockPool`) with copy-on-write forking, generation tracking, transactional rollback, and RAM/disk byte quotas. Cryptographic prefix hash chains (`ExecutionNamespace/1.0`) and `IdentityIssuanceAuthority` verification enable authenticated Radix tree prefix lookup and `PyTorchPagedKVAdapter` `DynamicCache` reuse on local GPU.
+- **Tiered Memory Offloading**: Active pages reside in Tier 1 RAM/VRAM while evicted pages flush to authenticated Tier 2 `QCKVP2` disk envelopes (HMAC-SHA256 + SHA-256 payload digest + bounded zlib decompression).
+- **Pipeline Parallelism (`QCACT1`)**: Provides local multi-stage transformer execution (`LocalSplitPipelineEngine` on `Qwen/Qwen2.5-0.5B-Instruct` with bit-exact parity) and bounded, HMAC-SHA256 authenticated `QCACT1` activation frame streaming over TCP/Tailscale (`Stage1SocketServer`). Remote multi-node execution with real transformer weights remains unimplemented pending remote PyTorch runtime provisioning; production Ollama/llama.cpp inference remains single-node (`QC_PAGED_KV_ENABLED=false` by default).
 ### 7. Zero-Trust Security Architecture
 - **Dedicated Worker Identities**: Granular Bearer tokens per machine; no shared administrative secrets.
 - **Secret Scrubbing**: Automatic redaction of passwords, tokens, and keys from AI prompts, execution logs, and knowledge notes.

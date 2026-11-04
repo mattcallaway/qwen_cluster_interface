@@ -45,17 +45,24 @@ class PyTorchPagedKVAdapter:
         # In-RAM tensor block lookup: block_hash -> (key_tensor_dict, value_tensor_dict)
         # Each dict maps layer_idx -> tensor of shape (batch, heads, 16, head_dim)
         self._ram_tensor_cache: Dict[str, Tuple[List[Any], List[Any]]] = {}
+        prev_callback = self.manager.store.on_page_evicted
+
+        def _on_evict(block_hash: str) -> None:
+            self._ram_tensor_cache.pop(block_hash, None)
+            if callable(prev_callback):
+                prev_callback(block_hash)
+
+        self.manager.store.on_page_evicted = _on_evict
 
     def serialize_page_tensors(
         self,
         key_layers: List[torch.Tensor],
         val_layers: List[torch.Tensor],
     ) -> bytes:
-        """Serializes 16-token KV tensor layers into portable binary bytes."""
+        """Serializes 16-token KV tensor layers into portable binary bytes preserving tensor dtype."""
         buffer = io.BytesIO()
-        # Save as CPU half-precision tensors
-        cpu_keys = [k.detach().cpu().to(torch.float16) for k in key_layers]
-        cpu_vals = [v.detach().cpu().to(torch.float16) for v in val_layers]
+        cpu_keys = [k.detach().cpu().contiguous() for k in key_layers]
+        cpu_vals = [v.detach().cpu().contiguous() for v in val_layers]
         torch.save({"k": cpu_keys, "v": cpu_vals}, buffer)
         return buffer.getvalue()
 
@@ -64,10 +71,10 @@ class PyTorchPagedKVAdapter:
         payload_bytes: bytes,
         device: Optional[str] = None,
     ) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
-        """Deserializes binary bytes into GPU/CPU KV tensor layers."""
+        """Deserializes binary bytes into GPU/CPU KV tensor layers safely."""
         dev = device or self.device
         buffer = io.BytesIO(payload_bytes)
-        data = torch.load(buffer, weights_only=False, map_location=dev)
+        data = torch.load(buffer, weights_only=True, map_location=dev)
         return data["k"], data["v"]
 
     def extract_and_cache_sequence_kv(
@@ -87,13 +94,22 @@ class PyTorchPagedKVAdapter:
         if num_full_blocks == 0:
             return 0
 
-        # Ensure sequence is mapped in manager
-        ingest_res = self.manager.ingest_prompt(
-            sequence_id=sequence_id,
-            tokens=token_ids,
-            namespace=namespace,
-            authority=authority,
+        expected_blocks = self.manager.hasher.chunk_tokens(token_ids, namespace=namespace)
+        expected_hashes = [b.block_hash for b in expected_blocks]
+        existing_hashes = (
+            self.manager.table.get_block_hashes(sequence_id)
+            if sequence_id in self.manager.table.seq_tables
+            else None
         )
+
+        # Only ingest if sequence is not already mapped with identical block hashes from prepare_prefill_context
+        if existing_hashes != expected_hashes:
+            self.manager.ingest_prompt(
+                sequence_id=sequence_id,
+                tokens=token_ids,
+                namespace=namespace,
+                authority=authority,
+            )
 
         block_hashes = self.manager.table.get_block_hashes(sequence_id)
         num_layers = (
@@ -188,6 +204,9 @@ class PyTorchPagedKVAdapter:
                 else:
                     break
 
+        # CausalLM forward requires at least 1 suffix token in input_ids to produce next-token logits
+        max_reusable_blocks = max(0, (len(token_ids) - 1) // 16)
+        valid_blocks = min(valid_blocks, max_reusable_blocks)
         reusable_tokens = valid_blocks * 16
         if reusable_tokens == 0:
             return {

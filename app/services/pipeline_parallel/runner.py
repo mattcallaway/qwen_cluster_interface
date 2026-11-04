@@ -1,4 +1,6 @@
+from collections import OrderedDict
 import math
+import threading
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 from .activation_protocol import ActivationProtocol
@@ -9,6 +11,8 @@ class PipelineStageRunner:
     """
     Executes an individual pipeline stage partition.
     Integrates with ActivationProtocol for streaming tensors between nodes.
+    Enforces stage index continuity, hidden dimension match, and per-session
+    token index ordering / replay rejection.
     """
 
     def __init__(
@@ -17,11 +21,62 @@ class PipelineStageRunner:
         protocol: ActivationProtocol,
         hidden_dim: int = 1536,  # Qwen2.5:1.5B default hidden dimension
         stage_compute_fn: Optional[Callable[[List[float], int, int], List[float]]] = None,
+        enforce_ordering: bool = True,
+        max_tracked_sessions: int = 256,
     ):
         self.config = config
         self.protocol = protocol
         self.hidden_dim = hidden_dim
         self.stage_compute_fn = stage_compute_fn
+        self.enforce_ordering = enforce_ordering
+        self.max_tracked_sessions = max(1, int(max_tracked_sessions))
+        self._lock = threading.Lock()
+        self._session_next_token: "OrderedDict[str, int]" = OrderedDict()
+
+    def release_session(self, session_id: str) -> None:
+        """Removes tracked ordering state for a completed or terminated session."""
+        with self._lock:
+            self._session_next_token.pop(session_id, None)
+
+    def reset_sessions(self) -> None:
+        """Clears all tracked session ordering states."""
+        with self._lock:
+            self._session_next_token.clear()
+
+    def get_tracked_session_count(self) -> int:
+        with self._lock:
+            return len(self._session_next_token)
+
+    def _validate_stage_and_order(self, session_id: str, stage_index: int, token_index: int, vec_len: int) -> None:
+        expected_upstream_stage = self.config.stage_index - 1
+        if stage_index != expected_upstream_stage:
+            raise ValueError(
+                f"Invalid upstream stage_index: expected {expected_upstream_stage} for stage {self.config.stage_index}, got {stage_index}"
+            )
+
+        if vec_len != self.hidden_dim:
+            raise ValueError(
+                f"Expected hidden_dim {self.hidden_dim}, got {vec_len}"
+            )
+
+        if not self.enforce_ordering:
+            return
+
+        with self._lock:
+            expected_tok = self._session_next_token.get(session_id, 0)
+            if token_index < expected_tok:
+                raise ValueError(
+                    f"Duplicate or replayed token_index for session {session_id!r}: expected {expected_tok}, got {token_index}"
+                )
+            if token_index > expected_tok:
+                raise ValueError(
+                    f"Out-of-order or missing token_index for session {session_id!r}: expected {expected_tok}, got {token_index}"
+                )
+
+            self._session_next_token[session_id] = expected_tok + 1
+            self._session_next_token.move_to_end(session_id)
+            while len(self._session_next_token) > self.max_tracked_sessions:
+                self._session_next_token.popitem(last=False)
 
     def _default_layer_transform(
         self, input_vec: List[float], start_l: int, end_l: int
@@ -90,11 +145,12 @@ class PipelineStageRunner:
             raise RuntimeError(f"process_intermediate called on stage {self.config.stage_index}")
 
         frame, activations = self.protocol.decode_frame(frame_bytes)
-
-        if len(activations) != self.hidden_dim:
-            raise ValueError(
-                f"Expected hidden_dim {self.hidden_dim}, got {len(activations)}"
-            )
+        self._validate_stage_and_order(
+            session_id=frame.session_id,
+            stage_index=frame.stage_index,
+            token_index=frame.token_index,
+            vec_len=len(activations),
+        )
 
         if self.stage_compute_fn:
             layer_out = self.stage_compute_fn(
@@ -122,6 +178,12 @@ class PipelineStageRunner:
             raise RuntimeError(f"process_egress called on non-terminal stage {self.config.stage_index}")
 
         frame, activations = self.protocol.decode_frame(frame_bytes)
+        self._validate_stage_and_order(
+            session_id=frame.session_id,
+            stage_index=frame.stage_index,
+            token_index=frame.token_index,
+            vec_len=len(activations),
+        )
 
         if self.stage_compute_fn:
             layer_out = self.stage_compute_fn(
