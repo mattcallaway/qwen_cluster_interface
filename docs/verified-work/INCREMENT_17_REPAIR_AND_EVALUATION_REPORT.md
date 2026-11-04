@@ -222,8 +222,8 @@ All entries in `docs/verified-work/ACCEPTANCE_MATRIX.md` have been updated throu
 
 ### Final November 3, 2026 Rehearsal Commits & SHAs
 - **Remote `origin/main` Base SHA:** `4be7f547f4919380a22abdd2122961d559d2f46f`
-- **Tested Feature Commit SHA (`feature/increment17-pipeline-parallelism-paged-kv`):** `e7552972cd46fb4efca851d7f461bb1cf0b2d307`
-- **Tested Disposable Integration Rehearsal Merge SHA:** `e46214c95817b68a00db12a21c7da5de4b7dfac9`
+- **Tested Implementation Feature Commit SHA (`feature/increment17-pipeline-parallelism-paged-kv`):** `53576c16ef96f64797478825b38b00d625748b25` (with subsequent metadata-only documentation freeze commit at `HEAD` containing zero code changes across `app/` and `tests/`)
+- **Tested Disposable Integration Rehearsal Merge SHA:** `1b4bf42d43097546371544e9ae7233ebcf98cbe2`
 - **Tracked Evidence Artifact:** [`docs/verified-work/evidence/increment17-integration-rehearsal-20261103.json`](file:///C:/Users/Matt%20C/.gemini/antigravity-ide/scratch/qwen-collective-integration/docs/verified-work/evidence/increment17-integration-rehearsal-20261103.json)
 
 ### Merge & Conflict Resolution
@@ -232,13 +232,13 @@ All entries in `docs/verified-work/ACCEPTANCE_MATRIX.md` have been updated throu
 - **Worktree Cleanup:** Disposable worktree and temporary branch cleanly removed after test completion; `main` was not modified.
 
 ### Test Execution in Integrated Tree (`.venv-gpu`, Python 3.12.10, Torch 2.5.1+cu121)
-1. **Increment 17 Focused Test Suites (20 files, including Real-Model GPU & Real-Artifact Authority Suites):**
+1. **Increment 17 Focused Test Suites (18 files, including Real-Model GPU & Real-Artifact Authority Suites):**
    - Command: `python -m pytest tests/test_paged_kv_real_model_authority.py tests/test_increment17_comprehensive_verification.py tests/test_increment17_defect_reproductions.py tests/test_increment17_stress_and_adversarial.py tests/test_paged_kv_*.py tests/test_pipeline_*.py tests/test_inference_paged_kv_sidecar.py`
-   - Result: **147 passed in 84.16s** (0 failed, 0 skipped).
+   - Result: **136 passed in 83.85s** (0 failed, 0 skipped, 0 errors).
 2. **Broader Application Regression Selection (12 files):**
    - Command: `python -m pytest tests/test_inference.py tests/test_inference_and_observatory_widgets.py tests/test_observatory.py tests/test_metric_integrity.py tests/test_web_routes.py tests/test_worker_authorization_enforcement.py tests/test_script_authorization.py tests/test_certification_block_reporting.py tests/test_claim_contracts.py tests/test_migrations.py tests/test_migration_compatibility.py tests/test_migration_robustness_and_backup.py`
-   - Result: **142 passed in 55.43s** (0 failed).
-3. **Combined Integrated Test Suite:** **289 passed, 0 failed**.
+   - Result: **143 passed, 1 warning in 59.63s** (0 failed).
+3. **Combined Integrated Test Suite:** **279 passed, 0 failed**.
 
 ---
 
@@ -277,8 +277,8 @@ Clean-environment testing was conducted without fixtures that automatically inje
 
 ### Boundary Summary & Operating Constraints:
 1. **Remote `origin/main` Base SHA:** `4be7f547f4919380a22abdd2122961d559d2f46f`
-2. **Tested Feature SHA:** `e7552972cd46fb4efca851d7f461bb1cf0b2d307`
-3. **Tested Integration Rehearsal Merge SHA:** `e46214c95817b68a00db12a21c7da5de4b7dfac9`
+2. **Tested Implementation Feature SHA:** `53576c16ef96f64797478825b38b00d625748b25` (and its metadata-only documentation freeze child commit at `HEAD`)
+3. **Tested Integration Rehearsal Merge SHA:** `1b4bf42d43097546371544e9ae7233ebcf98cbe2`
 4. **Caching Default:** Strictly disabled by default (`QC_PAGED_KV_ENABLED=false`).
 5. **Real-Model Execution Boundary:** Local single-host split execution (`LocalSplitPipelineEngine`) and local real-model KV-cache tensor reuse with real-artifact authority binding (`TrustedLocalModelLoader` + `PyTorchPagedKVAdapter`) are verified on the Desktop GPU (`Qwen/Qwen2.5-0.5B-Instruct`). Remote multi-node split execution with real transformer weights (`qwen-laptop`) and production Ollama tensor-level KV integration remain **NOT IMPLEMENTED / HELD**.
 6. **Production Safety Holds:** Main merge approval does NOT authorize production deployment, cache activation, database migrations, live service restarts, remote runtime provisioning, or safety-hold removal; those remain separate administrative decisions.

@@ -4,8 +4,8 @@
 **Base Branch:** `main` (`4be7f547f4919380a22abdd2122961d559d2f46f`)  
 **Head Branch:** `feature/increment17-pipeline-parallelism-paged-kv`  
 **Prior Historical Feature SHAs:** `4a5ce4e9eb298aee51b8670f1cc28fcdc5c611a8` (Oct 28), `5a4a873c11a5b3840ca13dca2d0a1a3866575b3d` (Oct 30), `0c6c840057705aa787ec2015936cdf5f4a0ca1a5` (Nov 3 review baseline)  
-**Tested Feature Commit SHA:** `e7552972cd46fb4efca851d7f461bb1cf0b2d307`  
-**Tested Integration Rehearsal SHA:** `e46214c95817b68a00db12a21c7da5de4b7dfac9` (rehearsal passed cleanly on disposable worktree from `origin/main`; disposable worktree and branch cleanly removed)  
+**Tested Implementation Feature Commit SHA:** `53576c16ef96f64797478825b38b00d625748b25` (with this metadata-only documentation freeze commit at `HEAD`, containing zero `app/` or `tests/` diffs relative to `53576c16ef96f64797478825b38b00d625748b25`)  
+**Tested Integration Rehearsal SHA:** `1b4bf42d43097546371544e9ae7233ebcf98cbe2` (rehearsal passed cleanly on disposable worktree from `origin/main`; disposable worktree and branch cleanly removed)  
 **GitHub PR State:** No open GitHub Pull Request exists on `origin`; this tracked document serves as the canonical draft release PR specification.  
 **Status:** DRAFT / FOR OPERATOR REVIEW ONLY — **Ready for independent approval to merge the exact tested result into main as a disabled development feature** (Caching disabled by default; production deployment, cache activation, database migration, service restart, remote runtime provisioning, and hold removal held fail-closed)
 
@@ -71,13 +71,13 @@ All Increment 17 release documents, architecture specs, and UI dashboard templat
 
 ## 4. Test & Disposable Integration Rehearsal Results
 
-1. **Focused Increment 17 + Real-Model Authority & GPU Verification Suites (20 test files):**
+1. **Focused Increment 17 + Real-Model Authority & GPU Verification Suites (18 test files):**
    - Includes `tests/test_paged_kv_real_model_authority.py` (7 real-artifact authority binding tests), `tests/test_increment17_comprehensive_verification.py` (12 real-model split & KV tests), `tests/test_increment17_defect_reproductions.py` (8 regression tests for `F-22`..`F-25`), `tests/test_increment17_stress_and_adversarial.py` (13 stress/fault tests), `tests/test_paged_kv_*.py`, `tests/test_pipeline_*.py`, and `tests/test_inference_paged_kv_sidecar.py`.
-   - Result on Integrated Rehearsal Tree: **147 passed in 84.16s** (0 failed, 0 skipped).
+   - Result on Integrated Rehearsal Tree: **136 passed in 83.85s** (0 failed, 0 skipped, 0 errors).
 2. **Broader Application Regression Selection (12 test files):**
    - Covers ordinary inference, observatory widgets, metric integrity, web routes, worker authorization enforcement, script permits, certification block reporting, claim contracts, and database migrations.
-   - Result on Integrated Rehearsal Tree: **142 passed in 55.43s** (0 failed).
-3. **Combined Integrated Suite Total:** **289 passed, 0 failed**.
+   - Result on Integrated Rehearsal Tree: **143 passed, 1 warning in 59.63s** (0 failed).
+3. **Combined Integrated Suite Total:** **279 passed, 0 failed**.
 4. **Clean-Environment Disabled-by-Default Results:**
    - Verified default settings evaluate to `paged_kv_enabled = False`.
    - Verified ordinary inference succeeds through controlled backend without `PAGED_KV_STORAGE_KEY`.
