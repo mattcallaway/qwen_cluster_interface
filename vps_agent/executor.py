@@ -29,9 +29,9 @@ CLASS_B_OPERATIONS = {"python_execution", "python_script", "approved_script"}
 CLASS_C_OPERATIONS = {"experimental_code", "untrusted_script", "ai_generated_code"}
 INFERENCE_OPERATIONS = {"inference", "model_inference", "local_inference"}
 
-MAX_OUTPUT_CHARS = 10000
+MAX_OUTPUT_CHARS = 12000
 MAX_PROMPT_CHARS = 8000
-MAX_NUM_PREDICT = 1024
+MAX_NUM_PREDICT = 2048
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 

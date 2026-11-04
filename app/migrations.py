@@ -2235,6 +2235,118 @@ _M19: List[str] = [
     "CREATE INDEX IF NOT EXISTS idx_pipeline_active ON pipeline_cluster_stages(is_active);",
 ]
 
+# ---------------------------------------------------------------------------
+# Migration 20 — Deliberate Task-Solving Loop, Durable Requirement Ledger & Project Memory (Increment 18)
+# ---------------------------------------------------------------------------
+_M20: List[str] = [
+    """
+    CREATE TABLE IF NOT EXISTS project_requirement_items (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        run_id TEXT REFERENCES orchestration_runs(id) ON DELETE SET NULL,
+        req_code TEXT NOT NULL,
+        version_number INTEGER NOT NULL DEFAULT 1,
+        kind TEXT NOT NULL CHECK (kind IN (
+            'objective', 'deliverable', 'acceptance_criterion', 'constraint',
+            'exclusion', 'assumption', 'missing_info', 'user_decision', 'dependency'
+        )),
+        hardness TEXT NOT NULL DEFAULT 'hard' CHECK (hardness IN ('hard', 'soft', 'preference')),
+        statement TEXT NOT NULL,
+        rationale TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN (
+            'active', 'superseded', 'resolved', 'cancelled', 'conflicted'
+        )),
+        verification_method TEXT NOT NULL DEFAULT 'deterministic_check',
+        verification_status TEXT NOT NULL DEFAULT 'proposed' CHECK (verification_status IN (
+            'proposed', 'observed', 'supported', 'verified_for_scope', 'partial', 'blocked', 'failed', 'unknown'
+        )),
+        verification_detail TEXT NOT NULL DEFAULT '',
+        depends_on_json TEXT NOT NULL DEFAULT '[]',
+        affected_artifacts_json TEXT NOT NULL DEFAULT '[]',
+        superseded_by_id TEXT,
+        source_turn_id TEXT,
+        created_by TEXT NOT NULL DEFAULT 'user',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_proj_req_items_project ON project_requirement_items(project_id, status);",
+    "CREATE INDEX IF NOT EXISTS idx_proj_req_items_run ON project_requirement_items(run_id, status);",
+    "CREATE INDEX IF NOT EXISTS idx_proj_req_items_code ON project_requirement_items(project_id, req_code, version_number);",
+    """
+    CREATE TABLE IF NOT EXISTS project_requirement_revisions (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        run_id TEXT REFERENCES orchestration_runs(id) ON DELETE SET NULL,
+        revision_number INTEGER NOT NULL,
+        change_type TEXT NOT NULL CHECK (change_type IN (
+            'initial_intake', 'scope_addition', 'constraint_change', 'clarification_answer',
+            'conflict_resolution', 'steering_update', 'cancellation', 'resumption'
+        )),
+        summary TEXT NOT NULL,
+        diff_json TEXT NOT NULL DEFAULT '{}',
+        invalidated_tasks_json TEXT NOT NULL DEFAULT '[]',
+        invalidated_artifacts_json TEXT NOT NULL DEFAULT '[]',
+        preserved_artifacts_json TEXT NOT NULL DEFAULT '[]',
+        actor TEXT NOT NULL DEFAULT 'user',
+        created_at TEXT NOT NULL,
+        UNIQUE(project_id, revision_number)
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_proj_req_rev_project ON project_requirement_revisions(project_id, revision_number);",
+    """
+    CREATE TABLE IF NOT EXISTS project_memory_state (
+        project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+        run_id TEXT REFERENCES orchestration_runs(id) ON DELETE SET NULL,
+        current_cycle_phase TEXT NOT NULL DEFAULT 'understand' CHECK (current_cycle_phase IN (
+            'understand', 'clarify', 'plan', 'select_action', 'retrieve_context',
+            'execute', 'inspect', 'verify', 'revise', 'deliver', 'blocked', 'cancelled', 'completed'
+        )),
+        escalation_step INTEGER NOT NULL DEFAULT 1 CHECK (escalation_step BETWEEN 1 AND 7),
+        next_action_json TEXT NOT NULL DEFAULT '{}',
+        subproblems_json TEXT NOT NULL DEFAULT '[]',
+        candidate_options_json TEXT NOT NULL DEFAULT '[]',
+        completed_work_json TEXT NOT NULL DEFAULT '[]',
+        evidence_summary_json TEXT NOT NULL DEFAULT '[]',
+        assumptions_json TEXT NOT NULL DEFAULT '[]',
+        unresolved_questions_json TEXT NOT NULL DEFAULT '[]',
+        contradictions_json TEXT NOT NULL DEFAULT '[]',
+        decision_summaries_json TEXT NOT NULL DEFAULT '[]',
+        failed_approaches_json TEXT NOT NULL DEFAULT '[]',
+        verification_results_json TEXT NOT NULL DEFAULT '{}',
+        invalidated_items_json TEXT NOT NULL DEFAULT '[]',
+        budget_snapshot_json TEXT NOT NULL DEFAULT '{}',
+        checkpoint_version INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS procedure_outcome_registry (
+        id TEXT PRIMARY KEY,
+        scope_type TEXT NOT NULL DEFAULT 'project' CHECK (scope_type IN ('project', 'task_category', 'collective')),
+        project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+        task_category TEXT NOT NULL,
+        procedure_key TEXT NOT NULL,
+        model_id TEXT,
+        outcome_status TEXT NOT NULL CHECK (outcome_status IN (
+            'verified_success', 'partial', 'failed', 'revoked'
+        )),
+        procedure_summary TEXT NOT NULL,
+        failure_pattern TEXT NOT NULL DEFAULT '',
+        evidence_run_id TEXT,
+        evidence_task_id TEXT,
+        verification_digest TEXT NOT NULL DEFAULT '',
+        latency_seconds REAL,
+        tokens_used INTEGER,
+        revoked INTEGER NOT NULL DEFAULT 0 CHECK (revoked IN (0, 1)),
+        revoked_reason TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_proc_outcome_cat ON procedure_outcome_registry(task_category, outcome_status, revoked);",
+]
+
 MIGRATIONS: List[Migration] = [
     (1, "project intelligence foundation", _M1),
     (2, "execution and evidence", _M2),
@@ -2255,6 +2367,7 @@ MIGRATIONS: List[Migration] = [
     (17, "artifact packaging, lineage actions, and link typing", _M17),
     (18, "knowledge vault trust tiers, review governance, and conflict ledger", _M18),
     (19, "paged kv cache storage and pipeline cluster topology", _M19),
+    (20, "deliberate task-solving loop, durable requirement ledger, and project memory", _M20),
 ]
 
 

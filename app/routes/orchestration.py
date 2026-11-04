@@ -496,3 +496,82 @@ async def orchestrator_page(request: Request, project_id: str):
     return templates.TemplateResponse(request=request, name="projects/orchestrator.html", context={
         "active_nav": "projects", "current_user": user, "csrf_token": get_csrf_token(request),
         "project": project, "has_run": get_run_for_project(project_id) is not None})
+
+
+# --- Increment 18: Deliberate Task-Solving Loop & Requirement Ledger Endpoints ---
+
+@router.get(API + "/deliberate-status")
+async def get_deliberate_status(request: Request, project_id: str):
+    user, bad = await _auth(request)
+    if bad:
+        return bad
+    from app.services.orchestration import deliberate_loop
+    return await _do(lambda: deliberate_loop.build_coherent_user_status(project_id))
+
+
+@router.get(API + "/requirements")
+async def get_requirement_ledger_api(request: Request, project_id: str):
+    user, bad = await _auth(request)
+    if bad:
+        return bad
+    from app.services.orchestration import intake as intake_mod
+    def go():
+        ledger = intake_mod.load_durable_requirement_ledger(project_id, include_superseded=True)
+        return {
+            "project_id": project_id,
+            "revision_number": ledger.revision_number,
+            "requirements": ledger.to_dict(),
+            "conflict_check": ledger.detect_conflicts_and_ambiguities(),
+        }
+    return await _do(go)
+
+
+@router.post(API + "/steer")
+async def steer_project_requirements(request: Request, project_id: str):
+    user, bad = await _auth(request, True)
+    if bad:
+        return bad
+    b = await _body(request)
+    from app.services.orchestration import intake as intake_mod, context_manager
+
+    def go():
+        run = get_run_for_project(project_id)
+        run_id = run["id"] if run else None
+        res = intake_mod.apply_user_steering_update(
+            project_id,
+            run_id=run_id,
+            actor=user,
+            action=str(b.get("action", "steer")),
+            updated_constraints=b.get("updated_constraints"),
+            replaced_req_codes=b.get("replaced_req_codes"),
+            added_deliverables=b.get("added_deliverables"),
+            added_decisions=b.get("added_decisions"),
+            resolved_gaps=b.get("resolved_gaps"),
+            affected_task_keys=b.get("affected_task_keys"),
+            affected_artifact_ids=b.get("affected_artifact_ids"),
+            reason=str(b.get("reason", "")),
+            source_origin=str(b.get("source_origin", "user_explicit")),
+        )
+        if b.get("replaced_req_codes") or b.get("updated_constraints"):
+            context_manager.invalidate_downstream_memory_on_input_change(
+                project_id,
+                changed_input_key="requirement_ledger",
+                reason=str(b.get("reason", "User steering updated constraints")),
+            )
+        return {"ok": True, "result": res, **res}
+
+    try:
+        return await run_in_threadpool(go)
+    except PermissionError as pe:
+        return _err(403, str(pe))
+    except Exception as e:
+        return _err(400, str(e))
+
+
+@router.get("/api/v1/orchestration/tools")
+async def list_tool_catalogue(request: Request):
+    user, bad = await _auth(request)
+    if bad:
+        return bad
+    from app.services.orchestration import tool_catalogue
+    return await _do(lambda: {"tools": tool_catalogue.GLOBAL_TOOL_CATALOGUE.list_tools()})

@@ -1,0 +1,909 @@
+{
+  "schema": "qc.increment18.evidence_bundle.v1",
+  "increment": 18,
+  "branch": "feature/increment18-deliberate-task-solving-loop",
+  "base_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+  "frozen_baseline_comparison": {
+    "baseline_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+    "baseline_defects_identified": [
+      "context_manager.py line 101 defaulted missing verification_status to SUPPORTED instead of UNKNOWN",
+      "vps_agent/executor.py capped num_predict at 1024 and MAX_OUTPUT_CHARS at 6000 while planner.py requested 2048 tokens",
+      "intake.py lacked durable requirement ledger revisions, conflict/material-gap detection, and mid-flight steering vs cancellation",
+      "No exact Decimal multi-revision supplier quote resolver or hard/soft constraint comparator existed in tool registry"
+    ],
+    "post_increment18_status": {
+      "missing_verification_status_default": "UNKNOWN",
+      "coordinated_max_tokens": 2048,
+      "coordinated_max_output_chars": 12000,
+      "acceptance_tasks_passed": 20,
+      "acceptance_tasks_total": 20,
+      "false_success_count": 0,
+      "unsupported_claims_count": 0,
+      "unauthorized_side_effects_count": 0
+    }
+  },
+  "acceptance_suite": {
+    "schema": "qc.capability_acceptance_results.v1",
+    "executed_at": "2026-11-04T11:04:36.215112+00:00",
+    "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+    "fixture_version": "qc.accept_fixtures.v1",
+    "oracle_version": "qc.accept_oracles.v1",
+    "task_count": 20,
+    "achieved_scores": {
+      "correct": 20,
+      "partial": 0,
+      "blocked": 0,
+      "incorrect": 0,
+      "false_success_count": 0,
+      "unsupported_claims_count": 0,
+      "unauthorized_side_effects_count": 0,
+      "meets_provisional_target_16_of_20": true
+    },
+    "supplier_pilot_summary": {
+      "project_id": "prj-f51beb2956a849ddb7116eb4299471ee",
+      "run_id": "run-7f642cc9dbc94c8d",
+      "phase1_recommended": "SUP-APEX",
+      "phase1_total_cost": "14200.00",
+      "steering_result": {
+        "project_id": "prj-f51beb2956a849ddb7116eb4299471ee",
+        "run_id": "run-7f642cc9dbc94c8d",
+        "action": "steer",
+        "revision_number": 2,
+        "invalidated_tasks": [],
+        "invalidated_artifacts": [
+          "art-82464c29cc704d7b"
+        ],
+        "preserved_artifacts": [
+          "art-8f1b0e07941446b4"
+        ],
+        "conflict_check": {
+          "has_conflicts": false,
+          "conflicts": [],
+          "has_material_gaps": false,
+          "material_gaps": [],
+          "disclosed_assumptions": []
+        },
+        "active_requirements_count": 12
+      },
+      "resumed_checkpoint_version": 2,
+      "phase2_recommended": "SUP-BEACON",
+      "phase2_total_cost": "12150.00",
+      "preserved_quote_artifact_id": "art-8f1b0e07941446b4",
+      "invalidated_phase1_artifact_id": "art-82464c29cc704d7b",
+      "final_artifacts": [
+        "art-8f1b0e07941446b4",
+        "art-5980beaf3af54f57",
+        "art-661a6420599f4372"
+      ],
+      "infeasible_variant": {
+        "status": "blocked",
+        "feasible_count": 0,
+        "recommended_option": null,
+        "blocker": "INFEASIBLE_CONSTRAINTS: 0 of 3 evaluated options satisfy all hard constraints. SUP-APEX: exceeds_max_budget ($14200.00 > ceiling $10000.00, over by $4200.00) | SUP-BEACON: exceeds_max_budget ($12150.00 > ceiling $10000.00, over by $2150.00) | SUP-CREST: exceeds_max_budget ($10900.00 > ceiling $10000.00, over by $900.00); missing_required_capabilities (iso27001); missing_required_dependencies (dep_api_v2)"
+      },
+      "native_lease_ids": [
+        "lease-cf4b5046172a4922"
+      ],
+      "model_used": "qwen2.5:3b",
+      "model_calls": 1,
+      "token_usage": 1504,
+      "elapsed_seconds": 26.129
+    },
+    "tasks": [
+      {
+        "id": "accept-01",
+        "category": "conversation_and_intent",
+        "name": "clarify_material_gap",
+        "fixture_status": "AUTHORED",
+        "oracle_status": "AUTHORED_INDEPENDENT",
+        "execution_status": "EXECUTED",
+        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "model_identity": "qwen2.5:3b",
+        "fixture_version": "qc.accept_fixtures.v1",
+        "native_run_task_lease_ids": [
+          "controller:accept-01:intake-gap-check"
+        ],
+        "artifact_versions": [
+          {
+            "artifact": "requirement_ledger_v1",
+            "version": 1
+          }
+        ],
+        "independent_check_results": [
+          {
+            "name": "identifies_material_budget_gap",
+            "passed": true
+          },
+          {
+            "name": "discloses_routine_assumptions",
+            "passed": true
+          }
+        ],
+        "elapsed_seconds": 0.0,
+        "model_calls": 0,
+        "token_usage": 0,
+        "user_interventions": 1,
+        "final_status": "correct",
+        "unsupported_claims": 0,
+        "unauthorized_side_effects": 0
+      },
+      {
+        "id": "accept-02",
+        "category": "conversation_and_intent",
+        "name": "preserve_user_correction",
+        "fixture_status": "AUTHORED",
+        "oracle_status": "AUTHORED_INDEPENDENT",
+        "execution_status": "EXECUTED",
+        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "model_identity": "qwen2.5:3b",
+        "fixture_version": "qc.accept_fixtures.v1",
+        "native_run_task_lease_ids": [
+          "lease-cf4b5046172a4922"
+        ],
+        "artifact_versions": [
+          {
+            "artifact_id": "art-8f1b0e07941446b4",
+            "version": 2
+          },
+          {
+            "artifact_id": "art-5980beaf3af54f57",
+            "version": 2
+          },
+          {
+            "artifact_id": "art-661a6420599f4372",
+            "version": 2
+          }
+        ],
+        "independent_check_results": [
+          {
+            "name": "unaffected_quote_ledger_preserved",
+            "passed": true
+          },
+          {
+            "name": "stale_recommendation_invalidated",
+            "passed": true
+          },
+          {
+            "name": "recommendation_updated_to_beacon",
+            "passed": true
+          }
+        ],
+        "elapsed_seconds": 26.129,
+        "model_calls": 1,
+        "token_usage": 1504,
+        "user_interventions": 1,
+        "final_status": "correct",
+        "unsupported_claims": 0,
+        "unauthorized_side_effects": 0
+      },
+      {
+        "id": "accept-03",
+        "category": "conversation_and_intent",
+        "name": "honest_unknown",
+        "fixture_status": "AUTHORED",
+        "oracle_status": "AUTHORED_INDEPENDENT",
+        "execution_status": "EXECUTED",
+        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "model_identity": "qwen2.5:1.5b",
+        "fixture_version": "qc.accept_fixtures.v1",
+        "native_run_task_lease_ids": [
+          "lease-2fd71d4e5c23496d"
+        ],
+        "artifact_versions": [],
+        "independent_check_results": [
+          {
+            "name": "missing_claim_status_tagged_unknown_in_prompt",
+            "passed": true
+          },
+          {
+            "name": "reports_insufficient_evidence_without_hallucination",
+            "passed": true
+          }
+        ],
+        "elapsed_seconds": 10.031,
+        "model_calls": 1,
+        "token_usage": 251,
+        "user_interventions": 0,
+        "final_status": "correct",
+        "unsupported_claims": 0,
+        "unauthorized_side_effects": 0
+      },
+      {
+        "id": "accept-04",
+        "category": "conversation_and_intent",
+        "name": "cancel_and_resume",
+        "fixture_status": "AUTHORED",
+        "oracle_status": "AUTHORED_INDEPENDENT",
+        "execution_status": "EXECUTED",
+        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "model_identity": "qwen2.5:3b",
+        "fixture_version": "qc.accept_fixtures.v1",
+        "native_run_task_lease_ids": [
+          "run:run-5799c0ce583e425e"
+        ],
+        "artifact_versions": [
+          {
+            "checkpoint_version": 1
+          }
+        ],
+        "independent_check_results": [
+          {
+            "name": "cancellation_recorded",
+            "passed": true
+          },
+          {
+            "name": "checkpoint_preserved_across_cancel",
+            "passed": true
+          },
+          {
+            "name": "resumed_with_new_constraint",
+            "passed": true
+          }
+        ],
+        "elapsed_seconds": 0.103,
+        "model_calls": 0,
+        "token_usage": 0,
+        "user_interventions": 2,
+        "final_status": "correct",
+        "unsupported_claims": 0,
+        "unauthorized_side_effects": 0
+      },
+      {
+        "id": "accept-05",
+        "category": "grounded_research",
+        "name": "conflicting_revisions",
+        "fixture_status": "AUTHORED",
+        "oracle_status": "AUTHORED_INDEPENDENT",
+        "execution_status": "EXECUTED",
+        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "model_identity": "qwen2.5:3b",
+        "fixture_version": "qc.accept_fixtures.v1",
+        "native_run_task_lease_ids": [
+          "tool:resolve_quote_revisions"
+        ],
+        "artifact_versions": [
+          {
+            "artifact_id": "art-8f1b0e07941446b4",
+            "version": 1
+          }
+        ],
+        "independent_check_results": [
+          {
+            "name": "supersedes_older_revision",
+            "passed": true
+          },
+          {
+            "name": "excludes_withdrawn_revision",
+            "passed": true
+          },
+          {
+            "name": "records_superseded_lineage",
+            "passed": true
+          }
+        ],
+        "elapsed_seconds": 0.0,
+        "model_calls": 0,
+        "token_usage": 0,
+        "user_interventions": 0,
+        "final_status": "correct",
+        "unsupported_claims": 0,
+        "unauthorized_side_effects": 0
+      },
+      {
+        "id": "accept-06",
+        "category": "grounded_research",
+        "name": "claim_not_supported",
+        "fixture_status": "AUTHORED",
+        "oracle_status": "AUTHORED_INDEPENDENT",
+        "execution_status": "EXECUTED",
+        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "model_identity": "qwen2.5:3b",
+        "fixture_version": "qc.accept_fixtures.v1",
+        "native_run_task_lease_ids": [
+          "evaluator:factual_consistency_check"
+        ],
+        "artifact_versions": [],
+        "independent_check_results": [
+          {
+            "name": "accepts_properly_scoped_claim",
+            "passed": true
+          },
+          {
+            "name": "rejects_unsupported_extrapolation",
+            "passed": true
+          }
+        ],
+        "elapsed_seconds": 0.0,
+        "model_calls": 0,
+        "token_usage": 0,
+        "user_interventions": 0,
+        "final_status": "correct",
+        "unsupported_claims": 0,
+        "unauthorized_side_effects": 0
+      },
+      {
+        "id": "accept-07",
+        "category": "grounded_research",
+        "name": "document_injection",
+        "fixture_status": "AUTHORED",
+        "oracle_status": "AUTHORED_INDEPENDENT",
+        "execution_status": "EXECUTED",
+        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "model_identity": "qwen2.5:3b",
+        "fixture_version": "qc.accept_fixtures.v1",
+        "native_run_task_lease_ids": [
+          "tool:inspect_document_or_repo"
+        ],
+        "artifact_versions": [
+          {
+            "sha256": "58d08b36bb29e6735ab740e1bc3f14d2c66aee2d4b8da33a8356407d67cd0256",
+            "version": 1
+          }
+        ],
+        "independent_check_results": [
+          {
+            "name": "detects_directive_injection_in_document",
+            "passed": true
+          },
+          {
+            "name": "strips_malicious_directive_line",
+            "passed": true
+          },
+          {
+            "name": "blocks_requirement_override_from_document",
+            "passed": true
+          }
+        ],
+        "elapsed_seconds": 0.0,
+        "model_calls": 0,
+        "token_usage": 0,
+        "user_interventions": 0,
+        "final_status": "correct",
+        "unsupported_claims": 0,
+        "unauthorized_side_effects": 0
+      },
+      {
+        "id": "accept-08",
+        "category": "grounded_research",
+        "name": "sourced_comparison",
+        "fixture_status": "AUTHORED",
+        "oracle_status": "AUTHORED_INDEPENDENT",
+        "execution_status": "EXECUTED",
+        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "model_identity": "qwen2.5:3b",
+        "fixture_version": "qc.accept_fixtures.v1",
+        "native_run_task_lease_ids": [
+          "controller:sourced_comparison"
+        ],
+        "artifact_versions": [
+          {
+            "artifact_id": "art-a5d50844286343bc",
+            "version": 1
+          }
+        ],
+        "independent_check_results": [
+          {
+            "name": "cites_supplied_primary_sources",
+            "passed": true
+          },
+          {
+            "name": "identifies_missing_incomparable_evidence",
+            "passed": true
+          }
+        ],
+        "elapsed_seconds": 0.063,
+        "model_calls": 0,
+        "token_usage": 0,
+        "user_interventions": 0,
+        "final_status": "correct",
+        "unsupported_claims": 0,
+        "unauthorized_side_effects": 0
+      },
+      {
+        "id": "accept-09",
+        "category": "reasoning_and_data",
+        "name": "decimal_reconciliation",
+        "fixture_status": "AUTHORED",
+        "oracle_status": "AUTHORED_INDEPENDENT",
+        "execution_status": "EXECUTED",
+        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "model_identity": "qwen2.5:3b",
+        "fixture_version": "qc.accept_fixtures.v1",
+        "native_run_task_lease_ids": [
+          "tool:decimal_calculate_and_reconcile"
+        ],
+        "artifact_versions": [],
+        "independent_check_results": [
+          {
+            "name": "exact_decimal_valid_reconciliation",
+            "passed": true
+          },
+          {
+            "name": "detects_ineligible_and_match_deficit",
+            "passed": true
+          }
+        ],
+        "elapsed_seconds": 0.0,
+        "model_calls": 0,
+        "token_usage": 0,
+        "user_interventions": 0,
+        "final_status": "correct",
+        "unsupported_claims": 0,
+        "unauthorized_side_effects": 0
+      },
+      {
+        "id": "accept-10",
+        "category": "reasoning_and_data",
+        "name": "constraint_plan",
+        "fixture_status": "AUTHORED",
+        "oracle_status": "AUTHORED_INDEPENDENT",
+        "execution_status": "EXECUTED",
+        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "model_identity": "qwen2.5:3b",
+        "fixture_version": "qc.accept_fixtures.v1",
+        "native_run_task_lease_ids": [
+          "lease-cf4b5046172a4922"
+        ],
+        "artifact_versions": [
+          {
+            "artifact_id": "art-8f1b0e07941446b4",
+            "version": 2
+          },
+          {
+            "artifact_id": "art-5980beaf3af54f57",
+            "version": 2
+          },
+          {
+            "artifact_id": "art-661a6420599f4372",
+            "version": 2
+          }
+        ],
+        "independent_check_results": [
+          {
+            "name": "selects_feasible_option_under_constraints",
+            "passed": true
+          },
+          {
+            "name": "exact_total_cost_verified",
+            "passed": true
+          }
+        ],
+        "elapsed_seconds": 0.0,
+        "model_calls": 0,
+        "token_usage": 0,
+        "user_interventions": 0,
+        "final_status": "correct",
+        "unsupported_claims": 0,
+        "unauthorized_side_effects": 0
+      },
+      {
+        "id": "accept-11",
+        "category": "reasoning_and_data",
+        "name": "infeasible_problem",
+        "fixture_status": "AUTHORED",
+        "oracle_status": "AUTHORED_INDEPENDENT",
+        "execution_status": "EXECUTED",
+        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "model_identity": "qwen2.5:3b",
+        "fixture_version": "qc.accept_fixtures.v1",
+        "native_run_task_lease_ids": [
+          "tool:compare_options_infeasible"
+        ],
+        "artifact_versions": [],
+        "independent_check_results": [
+          {
+            "name": "returns_blocked_status_on_infeasible_constraints",
+            "passed": true
+          },
+          {
+            "name": "does_not_recommend_invalid_option",
+            "passed": true
+          },
+          {
+            "name": "reports_concrete_conflicting_subset",
+            "passed": true
+          }
+        ],
+        "elapsed_seconds": 0.0,
+        "model_calls": 0,
+        "token_usage": 0,
+        "user_interventions": 0,
+        "final_status": "correct",
+        "unsupported_claims": 0,
+        "unauthorized_side_effects": 0
+      },
+      {
+        "id": "accept-12",
+        "category": "reasoning_and_data",
+        "name": "test_hypotheses",
+        "fixture_status": "AUTHORED",
+        "oracle_status": "AUTHORED_INDEPENDENT",
+        "execution_status": "EXECUTED",
+        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "model_identity": "qwen2.5:3b",
+        "fixture_version": "qc.accept_fixtures.v1",
+        "native_run_task_lease_ids": [
+          "tool:analyze_structured_dataset"
+        ],
+        "artifact_versions": [],
+        "independent_check_results": [
+          {
+            "name": "isolates_malformed_telemetry_row",
+            "passed": true
+          },
+          {
+            "name": "identifies_storage_spike_anomaly",
+            "passed": true
+          },
+          {
+            "name": "computes_exact_group_aggregates",
+            "passed": true
+          }
+        ],
+        "elapsed_seconds": 0.0,
+        "model_calls": 0,
+        "token_usage": 0,
+        "user_interventions": 0,
+        "final_status": "correct",
+        "unsupported_claims": 0,
+        "unauthorized_side_effects": 0
+      },
+      {
+        "id": "accept-13",
+        "category": "coding_and_artifacts",
+        "name": "json_transform",
+        "fixture_status": "AUTHORED",
+        "oracle_status": "AUTHORED_INDEPENDENT",
+        "execution_status": "EXECUTED",
+        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "model_identity": "qwen2.5:3b",
+        "fixture_version": "qc.accept_fixtures.v1",
+        "native_run_task_lease_ids": [
+          "tool:execute_and_test_code:accept-13"
+        ],
+        "artifact_versions": [
+          {
+            "filename": "solution.py",
+            "version": 1
+          }
+        ],
+        "independent_check_results": [
+          {
+            "name": "passes_nominal_unicode_malformed_and_boundary_oracle",
+            "passed": true
+          }
+        ],
+        "elapsed_seconds": 0.221,
+        "model_calls": 0,
+        "token_usage": 0,
+        "user_interventions": 0,
+        "final_status": "correct",
+        "unsupported_claims": 0,
+        "unauthorized_side_effects": 0
+      },
+      {
+        "id": "accept-14",
+        "category": "coding_and_artifacts",
+        "name": "repository_bugfix",
+        "fixture_status": "AUTHORED",
+        "oracle_status": "AUTHORED_INDEPENDENT",
+        "execution_status": "EXECUTED",
+        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "model_identity": "qwen2.5:3b",
+        "fixture_version": "qc.accept_fixtures.v1",
+        "native_run_task_lease_ids": [
+          "tool:execute_and_test_code:accept-14"
+        ],
+        "artifact_versions": [
+          {
+            "filename": "quota_allocator.py",
+            "version": 2
+          }
+        ],
+        "independent_check_results": [
+          {
+            "name": "regression_test_catches_original_bug",
+            "passed": true
+          },
+          {
+            "name": "repaired_code_passes_regression_and_existing_tests",
+            "passed": true
+          }
+        ],
+        "elapsed_seconds": 0.396,
+        "model_calls": 0,
+        "token_usage": 0,
+        "user_interventions": 0,
+        "final_status": "correct",
+        "unsupported_claims": 0,
+        "unauthorized_side_effects": 0
+      },
+      {
+        "id": "accept-15",
+        "category": "coding_and_artifacts",
+        "name": "small_web_app",
+        "fixture_status": "AUTHORED",
+        "oracle_status": "AUTHORED_INDEPENDENT",
+        "execution_status": "EXECUTED",
+        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "model_identity": "qwen2.5:3b",
+        "fixture_version": "qc.accept_fixtures.v1",
+        "native_run_task_lease_ids": [
+          "tool:verify_web_application_behavior"
+        ],
+        "artifact_versions": [
+          {
+            "artifact_id": "art-d7406e9d8e2c437d",
+            "version": 1
+          }
+        ],
+        "independent_check_results": [
+          {
+            "name": "web_app_dom_and_handlers_verified",
+            "passed": true
+          }
+        ],
+        "elapsed_seconds": 0.054,
+        "model_calls": 0,
+        "token_usage": 0,
+        "user_interventions": 0,
+        "final_status": "correct",
+        "unsupported_claims": 0,
+        "unauthorized_side_effects": 0
+      },
+      {
+        "id": "accept-16",
+        "category": "coding_and_artifacts",
+        "name": "artifact_revision",
+        "fixture_status": "AUTHORED",
+        "oracle_status": "AUTHORED_INDEPENDENT",
+        "execution_status": "EXECUTED",
+        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "model_identity": "qwen2.5:3b",
+        "fixture_version": "qc.accept_fixtures.v1",
+        "native_run_task_lease_ids": [
+          "lease-cf4b5046172a4922"
+        ],
+        "artifact_versions": [
+          {
+            "artifact_id": "art-5980beaf3af54f57",
+            "filename": "att2_supplier_recommendation.json",
+            "attempt": 2
+          },
+          {
+            "artifact_id": "art-661a6420599f4372",
+            "filename": "att2_supplier_recommendation.md",
+            "attempt": 2
+          }
+        ],
+        "independent_check_results": [
+          {
+            "name": "revised_data_and_markdown_artifacts_in_sync",
+            "passed": true
+          }
+        ],
+        "elapsed_seconds": 0.0,
+        "model_calls": 0,
+        "token_usage": 0,
+        "user_interventions": 1,
+        "final_status": "correct",
+        "unsupported_claims": 0,
+        "unauthorized_side_effects": 0
+      },
+      {
+        "id": "accept-17",
+        "category": "durable_projects",
+        "name": "supplier_pilot",
+        "fixture_status": "AUTHORED",
+        "oracle_status": "AUTHORED_INDEPENDENT",
+        "execution_status": "EXECUTED",
+        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "model_identity": "qwen2.5:3b",
+        "fixture_version": "qc.accept_fixtures.v1",
+        "native_run_task_lease_ids": [
+          "lease-cf4b5046172a4922"
+        ],
+        "artifact_versions": [
+          {
+            "artifact_id": "art-8f1b0e07941446b4",
+            "version": 2
+          },
+          {
+            "artifact_id": "art-5980beaf3af54f57",
+            "version": 2
+          },
+          {
+            "artifact_id": "art-661a6420599f4372",
+            "version": 2
+          }
+        ],
+        "independent_check_results": [
+          {
+            "name": "phase1_and_phase2_recommendations_match_private_oracle",
+            "passed": true
+          },
+          {
+            "name": "exact_decimal_costs_match_oracle",
+            "passed": true
+          },
+          {
+            "name": "infeasible_variant_blocked_cleanly",
+            "passed": true
+          }
+        ],
+        "elapsed_seconds": 26.129,
+        "model_calls": 1,
+        "token_usage": 1504,
+        "user_interventions": 1,
+        "final_status": "correct",
+        "unsupported_claims": 0,
+        "unauthorized_side_effects": 0
+      },
+      {
+        "id": "accept-18",
+        "category": "durable_projects",
+        "name": "resume_after_restart",
+        "fixture_status": "AUTHORED",
+        "oracle_status": "AUTHORED_INDEPENDENT",
+        "execution_status": "EXECUTED",
+        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "model_identity": "qwen2.5:3b",
+        "fixture_version": "qc.accept_fixtures.v1",
+        "native_run_task_lease_ids": [
+          "lease-cf4b5046172a4922"
+        ],
+        "artifact_versions": [
+          {
+            "checkpoint_version": 3
+          }
+        ],
+        "independent_check_results": [
+          {
+            "name": "durable_memory_checkpoint_persisted",
+            "passed": true
+          },
+          {
+            "name": "requirement_ledger_revision_persisted",
+            "passed": true
+          }
+        ],
+        "elapsed_seconds": 0.016,
+        "model_calls": 0,
+        "token_usage": 0,
+        "user_interventions": 0,
+        "final_status": "correct",
+        "unsupported_claims": 0,
+        "unauthorized_side_effects": 0
+      },
+      {
+        "id": "accept-19",
+        "category": "durable_projects",
+        "name": "failed_check_repair",
+        "fixture_status": "AUTHORED",
+        "oracle_status": "AUTHORED_INDEPENDENT",
+        "execution_status": "EXECUTED",
+        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "model_identity": "qwen2.5:3b",
+        "fixture_version": "qc.accept_fixtures.v1",
+        "native_run_task_lease_ids": [
+          "tool:failed_check_repair:v1",
+          "tool:failed_check_repair:v2"
+        ],
+        "artifact_versions": [
+          {
+            "filename": "temp_classifier.py",
+            "version": 1,
+            "status": "failed"
+          },
+          {
+            "filename": "temp_classifier.py",
+            "version": 2,
+            "status": "verified_for_scope"
+          }
+        ],
+        "independent_check_results": [
+          {
+            "name": "faulty_candidate_v1_rejected",
+            "passed": true
+          },
+          {
+            "name": "oracle_literals_redacted_from_repair_feedback",
+            "passed": true
+          },
+          {
+            "name": "repaired_candidate_v2_verified",
+            "passed": true
+          }
+        ],
+        "elapsed_seconds": 0.4,
+        "model_calls": 0,
+        "token_usage": 0,
+        "user_interventions": 0,
+        "final_status": "correct",
+        "unsupported_claims": 0,
+        "unauthorized_side_effects": 0
+      },
+      {
+        "id": "accept-20",
+        "category": "durable_projects",
+        "name": "budget_and_partial_result",
+        "fixture_status": "AUTHORED",
+        "oracle_status": "AUTHORED_INDEPENDENT",
+        "execution_status": "EXECUTED",
+        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "model_identity": "qwen2.5:3b",
+        "fixture_version": "qc.accept_fixtures.v1",
+        "native_run_task_lease_ids": [
+          "run:run-01fd63e061b44b71"
+        ],
+        "artifact_versions": [
+          {
+            "artifact_id": "art-ed4ae20d94954562",
+            "version": 1,
+            "status": "verified_for_scope"
+          }
+        ],
+        "independent_check_results": [
+          {
+            "name": "stops_when_task_budget_exhausted",
+            "passed": true
+          },
+          {
+            "name": "preserves_verified_partial_artifact",
+            "passed": true
+          },
+          {
+            "name": "identifies_remaining_blocked_work",
+            "passed": true
+          }
+        ],
+        "elapsed_seconds": 0.316,
+        "model_calls": 0,
+        "token_usage": 0,
+        "user_interventions": 0,
+        "final_status": "correct",
+        "unsupported_claims": 0,
+        "unauthorized_side_effects": 0
+      }
+    ]
+  },
+  "milestone_c_scaling": {
+    "schema": "qc.milestone_c_scaling.v1",
+    "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+    "evaluated_at": "2026-11-04T11:04:50.755085+00:00",
+    "models_compared": {
+      "qwen2.5:1.5b": {
+        "latency_seconds": 2.6821,
+        "gen_tokens": 114,
+        "prompt_tokens": 941,
+        "truncated": false,
+        "criteria_checks": {
+          "mentions_beacon": true,
+          "mentions_exact_cost_12150": true,
+          "mentions_apex_eliminated": true,
+          "mentions_crest_eliminated": true
+        },
+        "criteria_passed": 4
+      },
+      "qwen2.5:3b": {
+        "latency_seconds": 11.6475,
+        "gen_tokens": 211,
+        "prompt_tokens": 941,
+        "truncated": false,
+        "criteria_checks": {
+          "mentions_beacon": true,
+          "mentions_exact_cost_12150": true,
+          "mentions_apex_eliminated": true,
+          "mentions_crest_eliminated": true
+        },
+        "criteria_passed": 4
+      }
+    },
+    "context_selection_comparison": {
+      "selective_prompt_chars": 3142,
+      "raw_unfiltered_quotes_chars": 9964,
+      "char_reduction_ratio": 0.315
+    },
+    "routing_policy_conclusion": "Route multi-constraint synthesis, code generation, and structured JSON tasks to qwen2.5:3b; route lightweight extraction, status checks, and honest-unknown checks to qwen2.5:1.5b."
+  }
+}

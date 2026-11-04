@@ -487,3 +487,97 @@ def chat_clear(request: Request, csrf_token: str = Form(...), session_id: str = 
     conn.close()
 
     return RedirectResponse(url=f"/chat?session_id={active_session_id}", status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/api/v1/chat/deliberate")
+async def chat_deliberate_api(request: Request):
+    """Unified conversational entry point supporting direct-response mode and durable-project mode (Increment 18)."""
+    user = get_current_user(request)
+    if not user:
+        auth_hdr = request.headers.get("Authorization", "")
+        if auth_hdr.startswith("Bearer "):
+            from app.auth import verify_session_token
+            from app.config import settings
+            tok = auth_hdr[7:].strip()
+            user = verify_session_token(tok) or ("admin" if tok == settings.admin_password else None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    message = str(body.get("message") or "").strip()
+    project_id = body.get("project_id")
+    intake_override = body.get("intake")
+    action = str(body.get("action") or "auto")
+
+    from app.services.orchestration import deliberate_loop, intake as intake_mod, engine, context_manager
+
+    if action in ("steer", "cancel", "clarify") and project_id:
+        run = engine.get_run_for_project(project_id)
+        steer_res = intake_mod.apply_user_steering_update(
+            project_id,
+            run_id=run["id"] if run else None,
+            actor=user if isinstance(user, str) else user["username"],
+            action=action,
+            updated_constraints=body.get("updated_constraints"),
+            replaced_req_codes=body.get("replaced_req_codes"),
+            added_deliverables=body.get("added_deliverables"),
+            resolved_gaps=body.get("resolved_gaps"),
+            reason=message or "Conversational steering update",
+        )
+        return {
+            "ok": True,
+            "mode": "durable_project",
+            "action": action,
+            "steering_result": steer_res,
+            "project_status": deliberate_loop.build_coherent_user_status(project_id),
+        }
+
+    mode_info = deliberate_loop.classify_request_mode(message, explicit_intake=intake_override)
+    if mode_info["mode"] == "direct_response" and not project_id:
+        return {
+            "ok": True,
+            "mode": "direct_response",
+            "reason": mode_info["reason"],
+            "created_project": False,
+            "created_artifacts": [],
+            "message": message,
+        }
+
+    # Durable project mode
+    actor_name = user if isinstance(user, str) else user["username"]
+    if not project_id:
+        intake_payload = intake_override or {"objective": message}
+        created = engine.create_project_with_run(
+            name=message[:48] or "Deliberate Assignment",
+            actor=actor_name,
+            intake=intake_payload,
+            autonomy_level=2,
+        )
+        project_id = created["project"]["id"]
+        run_id = created["run"]["id"]
+        ledger = intake_mod.parse_intake_requirements(intake_payload)
+        intake_mod.persist_requirement_ledger(project_id, ledger, run_id=run_id, actor=actor_name)
+        conflict_info = ledger.detect_conflicts_and_ambiguities()
+        phase = "clarify" if (conflict_info["has_material_gaps"] or conflict_info["has_conflicts"]) else "plan"
+        context_manager.save_project_memory_state(
+            project_id,
+            run_id=run_id,
+            current_cycle_phase=phase,
+            escalation_step=1,
+            assumptions=conflict_info["disclosed_assumptions"],
+            unresolved_questions=conflict_info["material_gaps"],
+            contradictions=conflict_info["conflicts"],
+            next_action={"action": "await_clarification" if phase == "clarify" else "execute_plan"},
+        )
+
+    return {
+        "ok": True,
+        "mode": "durable_project",
+        "reason": mode_info["reason"],
+        "project_id": project_id,
+        "project_status": deliberate_loop.build_coherent_user_status(project_id),
+    }

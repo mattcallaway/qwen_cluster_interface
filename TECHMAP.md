@@ -141,6 +141,12 @@ M11 – M18 (Web Research, Persistent Knowledge & Audit Containment)
 M19 (Distributed Pipeline Parallelism & Searchable Paged KV Cache)
   ├── kv_cache_pages (Cryptographic page hashes, model/layer bindings, token chunks, storage paths)
   └── pipeline_cluster_stages (Cluster pipeline topologies, layer allocation ranges, active endpoints)
+
+M20 (Deliberate Task-Solving Loop, Requirement Ledger & Procedure Registry)
+  ├── project_requirement_items (Durable requirement ledger: hard/soft constraints, exclusions, assumptions, gaps, dependencies)
+  ├── project_requirement_revisions (Append-only audit trail of requirement revisions and mid-flight steering/cancellations)
+  ├── project_memory_state (Durable project working memory: cycle phase, escalation step, decisions, contradictions, budgets)
+  └── procedure_outcome_registry (Scoped verified procedure/outcome memory with provenance and revocation)
 ```
 
 ---
@@ -192,6 +198,14 @@ Scales model reasoning across heterogeneous nodes while eliminating RAM exhausti
   - **Layer Partitioning & Local Split Execution**: `PipelineTopology` validates contiguous layer slices; `LocalSplitPipelineEngine` (`pytorch_split_engine.py`) executes 2-stage and 3-stage splits on local GPU with `Qwen/Qwen2.5-0.5B-Instruct` (`0.000000` bit-exact parity; local partition equivalence does not establish distributed speedup, and `generate_greedy` recomputes the prefix with `use_cache=False`). Remote split execution with real transformer weights on `qwen-laptop` remains unimplemented (`qwen-laptop` lacks PyTorch/transformers).
   - **Activation Streaming Protocol**: Passes compact FP16/BF16 hidden state activation vectors ($1 \times \text{hidden\_dim}$ per token, ~3–7 KB) over Tailscale with HMAC frame authentication (`ActivationProtocol`) and bounded timeouts.
   - **Disaggregated Stage Storage**: Each node allocates memory and paged KV caches strictly for its assigned layer subset.
+
+### 3.7 Deliberate Task-Solving Loop, Requirement Ledger & Tool Catalogue (`app/services/orchestration/deliberate_loop.py`, `intake.py`, `tool_catalogue.py`, `context_manager.py`)
+Enables dependable multi-stage task completion on resource-constrained local Qwen models (`qwen2.5:3b` and `qwen2.5:1.5b`):
+- **Persisted Task-Solving Cycle**: Implements `Understand -> clarify material gaps -> plan -> select next action -> retrieve context -> execute -> inspect results -> verify -> revise or deliver` with dual modes (**Direct-Response Mode** for simple questions and **Durable-Project Mode** for multi-deliverable/multi-constraint assignments via `/api/v1/chat/deliberate`).
+- **Durable Requirement Ledger (`intake.py`)**: Persists structured requirements (`project_requirement_items`, `project_requirement_revisions`) with hard/soft constraint classification, exclusions, explicit assumptions, material missing info, and artifact dependencies. Supports mid-flight user steering (`apply_user_steering_update`) with selective downstream artifact invalidation while preserving unaffected verified work, and strips untrusted source directive injection (`inspect_untrusted_source_for_directive_injection`).
+- **Durable Project Memory & Qualifier-Preserving Context (`context_manager.py`)**: Persists `project_memory_state` across restarts; fixes missing claim `verification_status` so unverified claims default to `UNKNOWN` (never `SUPPORTED`); preserves negations, dates, units, and uncertainty qualifiers during prompt budget truncation; and invalidates downstream decisions when upstream inputs change.
+- **Typed Tool Catalogue & Bounded Verification (`tool_catalogue.py`)**: Provides 7 typed tool domains including exact `Decimal` multi-revision supplier quote arithmetic (`resolve_quote_revisions`, `calculate_option_total_cost`, `compare_options_against_constraints`), WindowsJob-bounded Python verification (`run_bounded_python_verification`), web application DOM/interaction checks (`verify_web_application_behavior`), and structured dataset outlier analysis (`analyze_structured_dataset`).
+- **7-Step Escalation Ladder, Role Routing & Scoped Procedure Registry (`deliberate_loop.py`)**: Coordinates `MAX_NUM_PREDICT = 2048` and `MAX_OUTPUT_CHARS = 12000` across `planner.py` and `vps_agent/executor.py`, detects truncated model output, routes complex reasoning/JSON/code to `qwen2.5:3b` and fast extraction/status checks to `qwen2.5:1.5b`, redacts hidden oracle literals during repair (`build_sanitized_repair_feedback`), and records verified procedures with revocation (`procedure_outcome_registry`).
 
 ---
 
