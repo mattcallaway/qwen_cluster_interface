@@ -14,9 +14,14 @@ from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote_plus
 
 import httpx
-from bs4 import BeautifulSoup
+
+try:
+    from bs4 import BeautifulSoup
+except ImportError:
+    BeautifulSoup = None
 
 from app.services.research.providers.base import QueryResult, SearchProvider, SearchResult
+from app.services.research.retrieval import PinningHTTPTransport
 
 logger = logging.getLogger("qwen_collective.research.providers.duckduckgo")
 
@@ -87,39 +92,103 @@ class DuckDuckGoProvider(SearchProvider):
         except Exception as ddg_err:
             logger.warning("DDGS library failed (%s), attempting fallback HTML fetch", ddg_err)
 
-        # Attempt 2: Direct HTTP fallback to DuckDuckGo HTML
+        # Attempt 2: Direct HTTP fallback to DuckDuckGo HTML / Lite
         try:
-            url = f"https://html.duckduckgo.com/html/?q={quote_plus(effective_query)}"
+            import html as html_lib
+            import re
+            from urllib.parse import parse_qs, urlparse
+
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
                 "Accept-Language": "en-US,en;q=0.9",
+                "Referer": "https://html.duckduckgo.com/",
             }
-            with httpx.Client(timeout=self.timeout_seconds, follow_redirects=True) as client:
-                resp = client.get(url, headers=headers)
-                resp.raise_for_status()
+            transport = PinningHTTPTransport(trust_env=False)
+            resp = None
+            with httpx.Client(transport=transport, timeout=self.timeout_seconds, follow_redirects=True) as client:
+                try:
+                    resp = client.post("https://html.duckduckgo.com/html/", data={"q": effective_query}, headers=headers)
+                    if resp.status_code == 202 or len(resp.text) < 500:
+                        raise ValueError("HTML endpoint returned challenge/empty response")
+                    resp.raise_for_status()
+                except Exception as html_err:
+                    logger.debug("DuckDuckGo html post failed (%s), trying lite post", html_err)
+                    lite_headers = {
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                        "Accept-Language": "en-US,en;q=0.9",
+                        "Referer": "https://lite.duckduckgo.com/",
+                    }
+                    resp = client.post("https://lite.duckduckgo.com/lite/", data={"q": effective_query}, headers=lite_headers)
+                    resp.raise_for_status()
 
-            soup = BeautifulSoup(resp.text, "html.parser")
             results = []
-            for rank, tag in enumerate(soup.select(".result"), start=1):
-                if rank > max_results:
-                    break
-                link = tag.select_one(".result__title a")
-                snippet = tag.select_one(".result__snippet")
-                if link and link.get("href"):
-                    target_url = link["href"]
-                    # If duckduckgo redirect url (e.g. //duckduckgo.com/l/?uddg=...), extract real url
+            # Extract result blocks
+            blocks = re.findall(
+                r"<div[^>]*class=[\"'][^\"']*result\s+results_links[\s\S]*?(?=<div[^>]*class=[\"'][^\"']*result\s+results_links|<div[^>]*class=[\"']results_links_more|$)",
+                resp.text,
+            )
+
+            if blocks:
+                for rank, block in enumerate(blocks, start=1):
+                    if rank > max_results:
+                        break
+                    a_match = re.search(r"<a[^>]+class=[\"'][^\"']*result__a[^\"]*[\"'][^>]+href=[\"']([^\"]+)[\"'][^>]*>([\s\S]*?)</a>", block)
+                    if not a_match:
+                        a_match = re.search(r"<a[^>]+class=[\"'][^\"']*result__url[^\"]*[\"'][^>]+href=[\"']([^\"]+)[\"'][^>]*>([\s\S]*?)</a>", block)
+                    if not a_match:
+                        continue
+                    raw_url, raw_title = a_match.groups()
+                    target_url = raw_url
                     if "uddg=" in target_url:
-                        from urllib.parse import parse_qs, urlparse
                         parsed_redirect = parse_qs(urlparse(target_url).query)
                         if "uddg" in parsed_redirect:
                             target_url = parsed_redirect["uddg"][0]
                     if target_url.startswith("//"):
                         target_url = "https:" + target_url
 
+                    title = html_lib.unescape(re.sub(r"<[^>]+>", "", raw_title)).strip()
+                    s_match = re.search(r"<(?:a|td|div)[^>]+class=[\"'][^\"']*result__snippet[^\"]*[\"'][^>]*>([\s\S]*?)</(?:a|td|div)>", block)
+                    snippet = html_lib.unescape(re.sub(r"<[^>]+>", "", s_match.group(1))).strip() if s_match else ""
+
                     results.append(SearchResult(
-                        title=link.get_text(strip=True),
+                        title=title or "Search Result",
                         url=target_url,
-                        snippet=snippet.get_text(strip=True) if snippet else "",
+                        snippet=snippet,
+                        provider=self.name,
+                        rank=rank,
+                    ))
+            else:
+                # Fallback to direct anchor regex
+                items = re.findall(
+                    r"<a[^>]*class=[\"'][^\"']*(?:result-link|result__title|result__a)[^\"']*[\"'][^>]*href=[\"']([^\"']+)[\"'][^>]*>(.*?)</a>",
+                    resp.text,
+                    re.IGNORECASE | re.DOTALL,
+                )
+                snippets = re.findall(
+                    r"class=[\"'][^\"']*(?:result-snippet|result__snippet)[^\"']*[\"'][^>]*>(.*?)<",
+                    resp.text,
+                    re.IGNORECASE | re.DOTALL,
+                )
+                for rank, (raw_url, raw_title) in enumerate(items, start=1):
+                    if rank > max_results:
+                        break
+                    target_url = raw_url
+                    if "uddg=" in target_url:
+                        parsed_redirect = parse_qs(urlparse(target_url).query)
+                        if "uddg" in parsed_redirect:
+                            target_url = parsed_redirect["uddg"][0]
+                    if target_url.startswith("//"):
+                        target_url = "https:" + target_url
+
+                    title = html_lib.unescape(re.sub(r"<[^>]+>", "", raw_title)).strip()
+                    snippet = ""
+                    if rank - 1 < len(snippets):
+                        snippet = html_lib.unescape(snippets[rank - 1]).strip()
+
+                    results.append(SearchResult(
+                        title=title or "Search Result",
+                        url=target_url,
+                        snippet=snippet,
                         provider=self.name,
                         rank=rank,
                     ))

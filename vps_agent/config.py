@@ -42,6 +42,8 @@ class AgentConfig(BaseModel):
     # Execution Bounds
     default_task_timeout: int = Field(default_factory=lambda: int(os.getenv("QC_TASK_TIMEOUT", "600")))
     max_concurrent_jobs: int = Field(default_factory=lambda: int(os.getenv("QC_MAX_CONCURRENT_JOBS", "1")))
+    allow_web_fetch: bool = Field(default_factory=lambda: os.getenv("QC_WORKER_ALLOW_WEB_FETCH", "0").lower() in ('1','true','yes'))
+    allow_script_execution: bool = Field(default_factory=lambda: os.getenv('QC_WORKER_ALLOW_SCRIPT_EXECUTION','0').lower() in ('1','true','yes'))
     
     # Offline Persistence
     data_dir: Path = Field(default_factory=get_default_data_dir)
@@ -319,6 +321,8 @@ def load_config(config_file: Optional[Path] = None, override_env: bool = True) -
         lease_duration=int(file_vars.get("QC_LEASE_DURATION") or os.getenv("QC_LEASE_DURATION", "300")),
         default_task_timeout=int(file_vars.get("QC_TASK_TIMEOUT") or os.getenv("QC_TASK_TIMEOUT", "600")),
         max_concurrent_jobs=int(file_vars.get("QC_MAX_CONCURRENT_JOBS") or os.getenv("QC_MAX_CONCURRENT_JOBS", "1")),
+        allow_web_fetch=(file_vars.get("QC_WORKER_ALLOW_WEB_FETCH") or os.getenv("QC_WORKER_ALLOW_WEB_FETCH", "0")).lower() in ('1','true','yes'),
+        allow_script_execution=(file_vars.get('QC_WORKER_ALLOW_SCRIPT_EXECUTION') or os.getenv('QC_WORKER_ALLOW_SCRIPT_EXECUTION','0')).lower() in ('1','true','yes'),
         data_dir=resolved_data_dir,
     )
 

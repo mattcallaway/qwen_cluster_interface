@@ -1,0 +1,16 @@
+{
+  "schema": "qc.environment_check.v1",
+  "summary_at_utc": "2026-10-28T04:23:03Z",
+  "local_platform": "Windows",
+  "wsl_inventory": "Unavailable: list requests exited 1 and returned install/help text",
+  "docker_cli": "Not discovered on PATH",
+  "podman_cli": "Not discovered on PATH",
+  "ssh_cli": "Available",
+  "readable_configured_ssh_target": "Not discovered",
+  "live_controller_inventory": "Unavailable: read-only SQLite query reported unable to open database file",
+  "remote_hosts_contacted": [],
+  "production_writes_performed": false,
+  "production_readiness": "NO_GO",
+  "linux_kernel_containment_verified": false,
+  "required_input": "Non-production Linux SSH target/address and username through existing trusted access; no passwords/private keys in chat"
+}

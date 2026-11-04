@@ -1,0 +1,69 @@
+{
+  "target_version": "1.0.0-rc.2",
+  "timestamp_utc": "2026-10-21T23:51:57.482086+00:00",
+  "controller_tests": {
+    "exit_code": 0,
+    "passed": 795,
+    "failed": 0,
+    "skipped": 1,
+    "summary": "795 passed, 1 skipped, 11 warnings in 274.72s (0:04:34)"
+  },
+  "worker_tests": {
+    "exit_code": 0,
+    "passed": 23,
+    "failed": 0,
+    "skipped": 0,
+    "summary": "23 passed in 2.65s"
+  },
+  "api_verification": {
+    "health_version": "1.0.0-rc.2",
+    "openapi_version": "1.0.0-rc.2",
+    "status": "healthy"
+  },
+  "browser_steps": {
+    "step1_login": {
+      "status": "PASS",
+      "url": "http://127.0.0.1:64296/"
+    },
+    "step2_project_creation": {
+      "status": "PASS",
+      "project_id": "prj-1c44c19186b4490998896295f9d03357",
+      "url": "http://127.0.0.1:64296/projects/prj-1c44c19186b4490998896295f9d03357/orchestrator"
+    },
+    "step3_planning_and_approval": {
+      "status": "PASS",
+      "state": "READY"
+    },
+    "step4_start_execution": {
+      "status": "PASS"
+    },
+    "step5_execution_progress": {
+      "status": "PASS",
+      "state_pill": "RUNNING"
+    },
+    "step6_research_evidence": {
+      "status": "PASS",
+      "title": "Research Engine \u2014 RC2 Acceptance Verification 1792626720 \u2014 Qwen Collective"
+    },
+    "step7_deliverable_listing": {
+      "status": "PASS",
+      "deliverable_id": "art-fe941191be2341d8"
+    },
+    "step8_preview_and_download": {
+      "status": "PASS",
+      "bytes": 114,
+      "sha256": "d18bacd616e4e092a58d0ab1fc5991c01a7c3d860e38b2058e22c488912f0d1c"
+    },
+    "step9_cross_project_reuse": {
+      "status": "PASS",
+      "target_project_id": "prj-b2061a84b4a54eb48fd9bebc1f5d0769",
+      "url": "http://127.0.0.1:64296/projects/prj-b2061a84b4a54eb48fd9bebc1f5d0769?tab=tasks"
+    },
+    "step10_knowledge_governance": {
+      "status": "PASS",
+      "candidate_record_id": "kn-b7dc89af30834c59",
+      "verified_badge": true
+    }
+  },
+  "overall_status": "PASSED"
+}

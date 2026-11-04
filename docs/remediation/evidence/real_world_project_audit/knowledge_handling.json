@@ -1,0 +1,613 @@
+{
+  "generated_utc": "2026-10-22T01:31:48.913724+00:00",
+  "original_user_project": {
+    "records": [
+      {
+        "id": "kn-642db64d4e2a41b5",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "deterministic",
+        "statement": "To conduct an investigation properly, you define a narrow question, learn the legal limits that apply to the methods you plan to use, collect documents and digi"
+      },
+      {
+        "id": "kn-1e591b8fcaa24ef7",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "deterministic",
+        "statement": "An investigation without a clear objective drifts."
+      },
+      {
+        "id": "kn-23aa3a304b7b4a13",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "deterministic",
+        "statement": "Investigation Report Example: How to Write an Investigation Report (Step-by-Step Guide)."
+      },
+      {
+        "id": "kn-8a3469e7249d43a5",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "deterministic",
+        "statement": "Need to know how to write an investigation report that stands up to scrutiny? This guide walks you through investigation report writing from intake to final rec"
+      },
+      {
+        "id": "kn-6cfe3d1b1e5e4cdf",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "deterministic",
+        "statement": "Investigations are essential in various fields such as law enforcement, journalism, corporate compliance, and even personal matters."
+      },
+      {
+        "id": "kn-4d73812f80b14b38",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "deterministic",
+        "statement": "Before diving into the investigative process, it is crucial to clearly understand why the investigation is being conducted."
+      },
+      {
+        "id": "know-5380570b01a244b6",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "artifact_extraction",
+        "statement": "Research Report: Conduct a comprehensive, evidence-based investigation into the current status of the Potter Valley Project and its implications for Sonoma Coun"
+      },
+      {
+        "id": "know-7e3538093fe8432b",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "artifact_extraction",
+        "statement": "Research Objective:** Conduct a comprehensive, evidence-based investigation into the current status of the Potter Valley Project and its implications for Sonoma"
+      },
+      {
+        "id": "know-1b9ca746364c4ae1",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "artifact_extraction",
+        "statement": "Date:** 2026-10-22"
+      },
+      {
+        "id": "know-48f3a30f3fef4735",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "artifact_extraction",
+        "statement": "Sources Evaluated:** 8 | **Claims Verified:** 10"
+      },
+      {
+        "id": "know-6c3321d70f184292",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "artifact_extraction",
+        "statement": "1. Executive Summary"
+      }
+    ],
+    "promotions": [
+      {
+        "id": "prm-a578899f90ca49bc",
+        "knowledge_id": "kn-642db64d4e2a41b5",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T00:53:15.769512+00:00"
+      },
+      {
+        "id": "prm-59f5aa29308e4025",
+        "knowledge_id": "kn-1e591b8fcaa24ef7",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T00:53:15.816570+00:00"
+      },
+      {
+        "id": "prm-21249e5857c74c46",
+        "knowledge_id": "kn-23aa3a304b7b4a13",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T00:53:15.848293+00:00"
+      },
+      {
+        "id": "prm-37a71cb9c04142e6",
+        "knowledge_id": "kn-8a3469e7249d43a5",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T00:53:15.884887+00:00"
+      },
+      {
+        "id": "prm-3e5d2486209a4d0d",
+        "knowledge_id": "kn-6cfe3d1b1e5e4cdf",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T00:53:15.924718+00:00"
+      },
+      {
+        "id": "prm-9538cc04456946dd",
+        "knowledge_id": "kn-4d73812f80b14b38",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T00:53:15.978671+00:00"
+      },
+      {
+        "id": "prm-8ae3caa8dc84481b",
+        "knowledge_id": "know-5380570b01a244b6",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T00:55:02.094390+00:00"
+      },
+      {
+        "id": "prm-51373e3a349d45bd",
+        "knowledge_id": "know-7e3538093fe8432b",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T00:55:02.116115+00:00"
+      },
+      {
+        "id": "prm-1f583d19f4244690",
+        "knowledge_id": "know-1b9ca746364c4ae1",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T00:55:02.139295+00:00"
+      },
+      {
+        "id": "prm-15af58e073b441ee",
+        "knowledge_id": "know-48f3a30f3fef4735",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T00:55:02.160702+00:00"
+      },
+      {
+        "id": "prm-be223ce5f6414c7e",
+        "knowledge_id": "know-6c3321d70f184292",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T00:55:02.183878+00:00"
+      },
+      {
+        "id": "prm-8b818f4aadda45b3",
+        "knowledge_id": "kn-4d73812f80b14b38",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T00:55:02.206842+00:00"
+      },
+      {
+        "id": "prm-c807f63d28e94067",
+        "knowledge_id": "kn-6cfe3d1b1e5e4cdf",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T00:55:02.228081+00:00"
+      },
+      {
+        "id": "prm-4ec73d124a3b4b88",
+        "knowledge_id": "kn-8a3469e7249d43a5",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T00:55:02.241533+00:00"
+      },
+      {
+        "id": "prm-27e0688e226a4b77",
+        "knowledge_id": "kn-23aa3a304b7b4a13",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T00:55:02.265274+00:00"
+      },
+      {
+        "id": "prm-38829f00ea3d45ee",
+        "knowledge_id": "kn-1e591b8fcaa24ef7",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T00:55:02.281583+00:00"
+      },
+      {
+        "id": "prm-a12e26051ed24de0",
+        "knowledge_id": "kn-642db64d4e2a41b5",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T00:55:02.318597+00:00"
+      }
+    ]
+  },
+  "audit_rerun_project": {
+    "records": [
+      {
+        "id": "kn-15ec0e732010450e",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "deterministic",
+        "statement": "[Page 1]\nUNITED STATES GOVERNMENT \nACCOUNTABILITY OFFICE\nReport to Congressional Committees\nJuly 2023  |  GAO-23-105460\nEVIDENCE-BASED POLICYMAKING\nPractices to"
+      },
+      {
+        "id": "kn-6141e528820a4f44",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "deterministic",
+        "statement": "[Page 2]\nIdentify \nstrategies and \nresources\nAssess the\nenvironment\nDefine\ngoals\nGenerate \nnew evidence\nAssess the\nsufficiency\nof existing\nevidence\nApply\nlearni"
+      },
+      {
+        "id": "kn-91129739cc574d28",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "deterministic",
+        "statement": "To conduct an investigation properly, you define a narrow question, learn the legal limits that apply to the methods you plan to use, collect documents and digi"
+      },
+      {
+        "id": "kn-4e96b4ecd4724b1f",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "deterministic",
+        "statement": "An investigation without a clear objective drifts."
+      },
+      {
+        "id": "kn-4e061fdf296b4648",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "deterministic",
+        "statement": "Investigation Report Example: How to Write an Investigation Report (Step-by-Step Guide)."
+      },
+      {
+        "id": "kn-3f374db9d5fd4991",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "deterministic",
+        "statement": "Need to know how to write an investigation report that stands up to scrutiny? This guide walks you through investigation report writing from intake to final rec"
+      },
+      {
+        "id": "kn-83f679ca188a4353",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "deterministic",
+        "statement": "Investigations are essential in various fields such as law enforcement, journalism, corporate compliance, and even personal matters."
+      },
+      {
+        "id": "kn-1ca5a5225b7a4359",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "deterministic",
+        "statement": "Before diving into the investigative process, it is crucial to clearly understand why the investigation is being conducted."
+      },
+      {
+        "id": "know-8634011ae76844c1",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "artifact_extraction",
+        "statement": "Research Report: Conduct a comprehensive, evidence-based investigation into the current status of the Potter Valley Project and its implications for Sonoma Coun"
+      },
+      {
+        "id": "know-37ec51c023ca436f",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "artifact_extraction",
+        "statement": "Research Objective:** Conduct a comprehensive, evidence-based investigation into the current status of the Potter Valley Project and its implications for Sonoma"
+      },
+      {
+        "id": "know-b1aa007bde164cb0",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "artifact_extraction",
+        "statement": "Date:** 2026-10-22"
+      },
+      {
+        "id": "know-4aaafbe4b227455d",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "artifact_extraction",
+        "statement": "Sources Evaluated:** 8 | **Claims Verified:** 10"
+      },
+      {
+        "id": "know-dd9d99a29e384e93",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "artifact_extraction",
+        "statement": "1. Executive Summary"
+      }
+    ],
+    "promotions": [
+      {
+        "id": "prm-ea50ce0a1d4d443d",
+        "knowledge_id": "kn-15ec0e732010450e",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T01:10:32.571863+00:00"
+      },
+      {
+        "id": "prm-74bf08968e91400a",
+        "knowledge_id": "kn-6141e528820a4f44",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T01:10:32.606835+00:00"
+      },
+      {
+        "id": "prm-ce8982842a28408d",
+        "knowledge_id": "kn-91129739cc574d28",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T01:10:32.640325+00:00"
+      },
+      {
+        "id": "prm-64794411b9644e3e",
+        "knowledge_id": "kn-4e96b4ecd4724b1f",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T01:10:32.694424+00:00"
+      },
+      {
+        "id": "prm-fe1d762e2a7e4da6",
+        "knowledge_id": "kn-4e061fdf296b4648",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T01:10:32.726626+00:00"
+      },
+      {
+        "id": "prm-8ea6d8935e474487",
+        "knowledge_id": "kn-3f374db9d5fd4991",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T01:10:32.779102+00:00"
+      },
+      {
+        "id": "prm-dbec4ca3612647cb",
+        "knowledge_id": "kn-83f679ca188a4353",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T01:10:32.806869+00:00"
+      },
+      {
+        "id": "prm-621fe797e183424d",
+        "knowledge_id": "kn-1ca5a5225b7a4359",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T01:10:32.866272+00:00"
+      },
+      {
+        "id": "prm-aba92958a00c4f21",
+        "knowledge_id": "know-8634011ae76844c1",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T01:12:47.831693+00:00"
+      },
+      {
+        "id": "prm-c54f23faa420459e",
+        "knowledge_id": "know-37ec51c023ca436f",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T01:12:47.852099+00:00"
+      },
+      {
+        "id": "prm-a9791d7e00644910",
+        "knowledge_id": "know-b1aa007bde164cb0",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T01:12:47.879692+00:00"
+      },
+      {
+        "id": "prm-9d9dcab281b24011",
+        "knowledge_id": "know-4aaafbe4b227455d",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T01:12:47.904233+00:00"
+      },
+      {
+        "id": "prm-fe3868eee43b42b1",
+        "knowledge_id": "know-dd9d99a29e384e93",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T01:12:47.931551+00:00"
+      },
+      {
+        "id": "prm-beacf1b8cdb44f0c",
+        "knowledge_id": "kn-1ca5a5225b7a4359",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T01:12:47.949190+00:00"
+      },
+      {
+        "id": "prm-3b2726045758422c",
+        "knowledge_id": "kn-83f679ca188a4353",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T01:12:47.965627+00:00"
+      },
+      {
+        "id": "prm-ae9d2278a9ad4f9c",
+        "knowledge_id": "kn-3f374db9d5fd4991",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T01:12:48.014839+00:00"
+      },
+      {
+        "id": "prm-afed17f02b864ae9",
+        "knowledge_id": "kn-4e061fdf296b4648",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T01:12:48.042696+00:00"
+      },
+      {
+        "id": "prm-4854b2749bc04d43",
+        "knowledge_id": "kn-4e96b4ecd4724b1f",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T01:12:48.064771+00:00"
+      },
+      {
+        "id": "prm-225246f0937245cf",
+        "knowledge_id": "kn-91129739cc574d28",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T01:12:48.085940+00:00"
+      },
+      {
+        "id": "prm-fd9fe9c27cdf4a83",
+        "knowledge_id": "kn-6141e528820a4f44",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T01:12:48.114423+00:00"
+      },
+      {
+        "id": "prm-49b483e3f99e4cea",
+        "knowledge_id": "kn-15ec0e732010450e",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T01:12:48.131736+00:00"
+      }
+    ]
+  },
+  "routing_probe_project": {
+    "records": [
+      {
+        "id": "kn-a72636ff51444d25",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "deterministic",
+        "statement": "Below-average precipitation affects the amount of moisture in soil as well as the amount of water in streams, rivers, lakes, and groundwater."
+      },
+      {
+        "id": "kn-2573a8ce17ec4d23",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "deterministic",
+        "statement": "A drought is a period of time when an area or region experiences below-normal precipitation."
+      },
+      {
+        "id": "kn-89b84f8062b24d6f",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "deterministic",
+        "statement": "When we have a drought, it can affect our communities and our environment in many different ways."
+      },
+      {
+        "id": "kn-030969bfdf084302",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "deterministic",
+        "statement": "Drought affects our lives in many different ways because water is such an important part of so many of our activities."
+      },
+      {
+        "id": "kn-9e32fe7d71824091",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "deterministic",
+        "statement": "\u201cDrought\u201d is a crucial topic on which students may be asked to write a paragraph in their school exams."
+      },
+      {
+        "id": "kn-fddad676d7c64a7a",
+        "scope": "project",
+        "trust_tier": "captured",
+        "verification_status": "supported",
+        "verification_method": "deterministic",
+        "statement": "You may like these: Agricultural Production and Management Can Plants Like Lotus be grown without Soil? Each Drop Matters The Significance of Plants in Our Live"
+      }
+    ],
+    "promotions": [
+      {
+        "id": "prm-908e179f4bc847d3",
+        "knowledge_id": "kn-a72636ff51444d25",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T01:16:56.202345+00:00"
+      },
+      {
+        "id": "prm-2dbfe8dd75e54adf",
+        "knowledge_id": "kn-2573a8ce17ec4d23",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T01:16:56.249650+00:00"
+      },
+      {
+        "id": "prm-d3b1f130d07e473d",
+        "knowledge_id": "kn-89b84f8062b24d6f",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T01:16:56.290852+00:00"
+      },
+      {
+        "id": "prm-4c90d255fff84530",
+        "knowledge_id": "kn-030969bfdf084302",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T01:16:56.318121+00:00"
+      },
+      {
+        "id": "prm-90e576ec0e8f4dd6",
+        "knowledge_id": "kn-9e32fe7d71824091",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T01:16:56.367696+00:00"
+      },
+      {
+        "id": "prm-6d7298ddab3c45c8",
+        "knowledge_id": "kn-fddad676d7c64a7a",
+        "status": "proposed",
+        "target_tier": "reusable",
+        "reviewed_by": null,
+        "created_at": "2026-10-22T01:16:56.412888+00:00"
+      }
+    ]
+  }
+}

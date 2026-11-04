@@ -1,0 +1,34 @@
+{
+  "generated_utc": "2026-10-22T01:26:00Z",
+  "project_objective": "Sonoma County Water Security Research Brief (Potter Valley Project)",
+  "overall": "NOT_ACCEPTED",
+  "deliverables": [
+    {"n": 1, "name": "Executive Research Brief", "produced": false, "closest_artifact": "research_report.md (art-ea7a176ffa6f46c7 audit / art-b9ab64a5bd614164 user)", "relevant": false, "cited": false, "preview_live": "HTTP 500", "download": "200, sha256 match", "verdict": "REJECTED"},
+    {"n": 2, "name": "Comprehensive Source Inventory", "produced": false, "closest_artifact": "retrieved_sources.json", "relevant": false, "verdict": "REJECTED"},
+    {"n": 3, "name": "Evidence and Uncertainty Matrix", "produced": false, "closest_artifact": "evidence_ledger.json (self-confirmed)", "relevant": false, "verdict": "REJECTED"},
+    {"n": 4, "name": "Policy Options Analysis", "produced": false, "verdict": "NOT_PRODUCED"},
+    {"n": 5, "name": "Follow-Up Research Agenda", "produced": false, "verdict": "NOT_PRODUCED"}
+  ],
+  "criteria": {
+    "all_five_produced": "FAIL",
+    "substantive_relevant": "FAIL",
+    "own_live_research": "PARTIAL (live search occurred; queries topic-blind)",
+    "traceable_citations": "FAIL",
+    "sources_support_claims": "FAIL (self-confirming)",
+    "uncertainty_identified": "FAIL",
+    "no_fabrication": "FAIL (citation_audit valid:true on uncited report; COMPLETED + auto-accept)",
+    "approval_boundary": "PASS",
+    "cas_registration_checksums": "PARTIAL (checksums valid, cas_hash NULL)",
+    "visible_in_app": "PARTIAL (/deliverables 500)",
+    "preview": "FAIL (live); PASS on isolated RC2/working-tree code",
+    "download": "PASS",
+    "cross_project_reuse": "FAIL (500, no lineage)",
+    "knowledge_candidates_no_unauthorized_promotion": "PARTIAL (promotion held; junk candidates; unreviewed records reused as sufficient)",
+    "evaluator_truthfulness": "FAIL"
+  },
+  "routing": {
+    "research_runs_model_calls": 0,
+    "research_runs_nodes": ["controller-local"],
+    "scheduler_mediated_inference_probe": "pi-brain qwen2.5:0.5b only (planner); see MODEL_AND_NODE_ROUTING_AUDIT.md"
+  }
+}

@@ -122,6 +122,11 @@ def create_baseline_schema(conn: Optional[sqlite3.Connection] = None):
         last_checked_at TEXT,
         error_details TEXT,
         is_active INTEGER NOT NULL DEFAULT 1,
+        tier TEXT NOT NULL DEFAULT 'tier_1_primary', -- tier_1_primary, tier_2_secondary, tier_3_edge, fallback
+        priority INTEGER NOT NULL DEFAULT 10,
+        max_retries INTEGER NOT NULL DEFAULT 1,
+        timeout_seconds REAL NOT NULL DEFAULT 30.0,
+        description TEXT DEFAULT '',
         created_at TEXT NOT NULL
     );
     """)

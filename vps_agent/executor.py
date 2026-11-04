@@ -19,6 +19,8 @@ import sys
 import tempfile
 import time
 from typing import Any, Dict, List, Optional
+from vps_agent.bounded_process import run_bounded_process
+from vps_agent.windows_job import BoundaryUnavailable
 
 logger = logging.getLogger("qwen_collective.worker_executor")
 
@@ -253,6 +255,7 @@ def _check_container_isolation_available() -> bool:
 def execute_task(
     task: Dict[str, Any],
     timeout_seconds: int = 300,
+    *, allow_web_fetch: bool = False, script_permit=None, cancel_event=None,
 ) -> Dict[str, Any]:
     """
     Execute an approved task specification adhering to execution class controls.
@@ -273,6 +276,9 @@ def execute_task(
     task_id = task.get("task_id", "")
 
     logger.info("Starting execution of task %s (type: %s, timeout: %ss)", task_id, task_type, timeout_seconds)
+    if task_type == 'research_fetch':
+        from vps_agent.research_fetch import execute_retrieval
+        return execute_retrieval(task,timeout_seconds,allow_web_fetch=allow_web_fetch)
 
     # ---------------------------------------------------------------------------
     # Class A: Built-in Safe Operations
@@ -433,6 +439,18 @@ def execute_task(
                 },
             }
 
+        # Task JSON (including a signature string) is never local start authority.
+        from vps_agent.script_authorization import ScriptPermit
+        try:
+            if not isinstance(script_permit,ScriptPermit): raise ValueError('Online controller start permit required')
+            authorized_runtime=script_permit.consume(task)
+            timeout_seconds=min(timeout_seconds,authorized_runtime)
+            if isinstance(timeout_seconds,bool) or timeout_seconds<=0: raise ValueError('Invalid runtime')
+        except (ValueError,TypeError,KeyError):
+            return {'status':'error','exit_code':126,'runtime_seconds':round(time.time()-start_time,4),
+                'stdout_summary':'','stderr_summary':'Missing, stale, reused or mismatched controller start permit.',
+                'error_category':'script_authorization_required','result_payload':{'execution_class':'Class B'}}
+
         # Create isolated workspace directory for this execution.
         # Prefer designated shared workspace directory (/opt/qwen-collective/workspaces)
         # to ensure visibility across PrivateTmp namespaces between worker service and transient units.
@@ -471,15 +489,22 @@ def execute_task(
             network_access=network_access,
         )
 
+        cleanup_allowed=False; outcome=None
+        workspace_parent=Path(work_dir).resolve().parent
         try:
-            proc = subprocess.run(
-                cmd,
-                cwd=work_dir,
-                env=sanitized_env,
-                capture_output=True,
-                text=True,
-                timeout=timeout_seconds,
-            )
+            script_permit.check_start_deadline()
+            proc = run_bounded_process(cmd,cwd=work_dir,env=sanitized_env,
+                timeout_seconds=timeout_seconds,cancel_event=cancel_event)
+            cleanup_allowed=proc.cleanup_confirmed
+            control={'boundary':proc.boundary,'reason':proc.reason,'cleanup_confirmed':proc.cleanup_confirmed,
+                'captured_bytes':proc.captured_bytes,'output_bytes_seen':proc.output_bytes_seen}
+            if proc.reason!='completed':
+                outcome={'status':'timeout' if proc.reason=='timeout' else 'error','exit_code':proc.returncode,
+                    'runtime_seconds':round(time.time()-start_time,4),'stdout_summary':proc.stdout[:MAX_OUTPUT_CHARS],
+                    'stderr_summary':f'Process stopped: {proc.reason}. '+proc.stderr[:MAX_OUTPUT_CHARS],
+                    'error_category':proc.reason,'result_payload':{'execution_class':'Class B',
+                        'isolation_mechanism':isolation_mech,'process_control':control,'artifacts':[]}}
+                return outcome
             runtime = round(time.time() - start_time, 4)
             is_success = proc.returncode == 0
             stdout_text = proc.stdout[:MAX_OUTPUT_CHARS]
@@ -489,10 +514,17 @@ def execute_task(
             # Collect Physical Artifacts Generated During Execution
             # ---------------------------------------------------------------------------
             generated_artifacts = []
+            collected_bytes = 0
             for item in Path(work_dir).iterdir():
-                if item.is_file() and item.name != "task_entrypoint.py":
+                if (item.is_file() and not item.is_symlink() and item.name != "task_entrypoint.py"
+                        and item.resolve().parent == Path(work_dir).resolve()
+                        and item.stat().st_nlink == 1 and item.stat().st_size <= 1_000_000
+                        and len(generated_artifacts) < 64):
                     try:
+                        if collected_bytes + item.stat().st_size > 4_000_000:
+                            continue
                         file_bytes = item.read_bytes()
+                        collected_bytes += len(file_bytes)
                         file_sha = hashlib.sha256(file_bytes).hexdigest()
                         generated_artifacts.append({
                             "filename": item.name,
@@ -523,12 +555,15 @@ def execute_task(
                 "stderr": stderr_text,
                 "returncode": proc.returncode,
                 "artifacts": generated_artifacts,
+                "process_control": control,
             }
-            result_payload.update(parsed_result)
-            if generated_artifacts and "artifacts" not in parsed_result:
-                result_payload["artifacts"] = generated_artifacts
+            # Script stdout is application data, never execution authority.
+            reserved = set(result_payload) | {"status", "exit_code", "verified", "accepted",
+                "decision", "lease_id", "task_id", "worker_id", "idempotency_key", "execution_manifest"}
+            result_payload.update({key:value for key,value in parsed_result.items() if key not in reserved})
+            result_payload["application_output"] = parsed_result
 
-            return {
+            outcome = {
                 "status": "success" if is_success else "error",
                 "exit_code": proc.returncode,
                 "runtime_seconds": runtime,
@@ -537,9 +572,16 @@ def execute_task(
                 "error_category": "runtime_error" if not is_success else None,
                 "result_payload": result_payload,
             }
+            return outcome
+        except BoundaryUnavailable:
+            # No supported kernel boundary means no unrestricted fallback.
+            outcome={'status':'error','exit_code':126,'runtime_seconds':round(time.time()-start_time,4),
+                'stdout_summary':'','stderr_summary':'Verified process-tree control backend unavailable; execution held.',
+                'error_category':'process_control_unavailable','result_payload':{'execution_class':'Class B','artifacts':[]}}
+            return outcome
         except subprocess.TimeoutExpired:
             runtime = round(time.time() - start_time, 4)
-            return {
+            outcome = {
                 "status": "timeout",
                 "exit_code": 124,
                 "runtime_seconds": runtime,
@@ -548,9 +590,10 @@ def execute_task(
                 "error_category": "timeout",
                 "result_payload": {"execution_class": "Class B", "isolation_mechanism": isolation_mech},
             }
+            return outcome
         except Exception as e:
             runtime = round(time.time() - start_time, 4)
-            return {
+            outcome = {
                 "status": "error",
                 "exit_code": 1,
                 "runtime_seconds": runtime,
@@ -559,12 +602,25 @@ def execute_task(
                 "error_category": "system_error",
                 "result_payload": {"execution_class": "Class B", "isolation_mechanism": isolation_mech},
             }
+            return outcome
         finally:
-            # Clean up the isolated workspace directory
+            # Never delete a workspace while process termination is uncertain.
+            workspace=Path(work_dir)
             try:
-                shutil.rmtree(work_dir, ignore_errors=True)
+                safe=(not workspace.is_symlink() and workspace.resolve().parent==workspace_parent
+                    and workspace.name.startswith('qc_worker_exec_')
+                    and not (getattr(workspace.lstat(),'st_file_attributes',0)&0x400))
+                if cleanup_allowed and safe:
+                    shutil.rmtree(workspace)
+                elif cleanup_allowed:
+                    raise OSError('Workspace path changed during execution')
             except Exception:
-                pass
+                if outcome is not None:
+                    outcome.update(status='error',exit_code=126,error_category='workspace_cleanup_failed')
+                    outcome['result_payload']['artifacts']=[]
+                    outcome['result_payload']['workspace_retained']=True
+            if not cleanup_allowed and outcome is not None:
+                outcome['result_payload']['workspace_retained']=True
 
     # ---------------------------------------------------------------------------
     # Class C: Experimental Code / Untrusted AI-Generated Code

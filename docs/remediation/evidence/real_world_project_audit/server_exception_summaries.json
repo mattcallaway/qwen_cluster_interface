@@ -1,0 +1,72 @@
+{
+  "generated_utc": "2026-10-22T01:25:30Z",
+  "source_log": "service/logs/qwen-collective-service.err.log (live WinSW service, PID 19300 started 2026-10-18 20:25 local)",
+  "note": "Most traceback lines in this log carry no timestamps. Counts cover the whole log lifetime unless stated otherwise. No secrets are included.",
+  "exceptions": [
+    {
+      "signature": "TypeError: unhashable type: 'dict'",
+      "count_in_log": 14,
+      "count_before_audit_repro": 4,
+      "location": "app/web/routes/deliverables.py:142 deliverable_detail; :80 deliverables_library (as loaded by the stale process)",
+      "trigger": "GET /deliverables/{id} and GET /deliverables (Preview click lands on detail page)",
+      "cause": "HEAD-era legacy TemplateResponse(name, context) signature under Starlette 1.8.0; working tree/RC2 already fixed but service never restarted",
+      "classification": "CONFIRMED DEFECT (deployment/process)",
+      "related_finding": "F-01"
+    },
+    {
+      "signature": "AttributeError: 'str' object has no attribute 'get'",
+      "count_in_log": 1,
+      "location": "artifact reuse route (stale HEAD code) calls user.get(...) on str returned by get_current_user",
+      "trigger": "POST /api/v1/artifacts/{id}/reuse during audit reuse test",
+      "classification": "CONFIRMED DEFECT (stale process)",
+      "related_finding": "F-01"
+    },
+    {
+      "signature": "Playwright BrowserType.launch: Executable doesn't exist",
+      "count_in_log": 11,
+      "location": "research browser_fetch tool under LocalSystem profile",
+      "trigger": "Research retrieve_content steps",
+      "effect": "Silent fallback to plain HTTP fetch",
+      "classification": "CONFIGURATION ISSUE",
+      "related_finding": "F-10"
+    },
+    {
+      "signature": "sqlite3.OperationalError: database is locked",
+      "count_in_log": 141,
+      "timestamps": "undated in log; not observed during the audit runs",
+      "classification": "UNVERIFIED (historical)"
+    },
+    {
+      "signature": "sqlite3.OperationalError: no such column: search_provider",
+      "count_in_log": 6,
+      "classification": "UNVERIFIED (historical, pre-migration)"
+    },
+    {
+      "signature": "AttributeError: module 'app.services.projects' has no attribute 'get_project_by_id'",
+      "count_in_log": 2,
+      "classification": "UNVERIFIED (historical)"
+    },
+    {
+      "signature": "[Errno 10048] bind 127.0.0.1:8000",
+      "count_in_log": 7,
+      "meaning": "Additional controller launches attempted while service held port 8000",
+      "classification": "CONFIGURATION ISSUE (historical)"
+    }
+  ],
+  "orchestration_failures_observed_during_audit": [
+    {
+      "event": "planning_failed",
+      "reason": "Planning state has no in-flight request (controller restarted?).",
+      "runs": ["run-08de085e97e84130 (user)", "run-ee1166ebb5eb4558 (audit)", "run-3ed0a2b98ea94cba (routing probe)"],
+      "classification": "CONFIRMED DEFECT (planning race)",
+      "related_finding": "F-06"
+    },
+    {
+      "event": "model_timeout",
+      "inference_request": "inf-1a8683398fed493f (pi-brain qwen2.5:0.5b)",
+      "detail": "Queued behind orphaned request inf-89ec965ff229480f (269 s); timed out at 290 s without executing; then routed to plan_repair",
+      "classification": "CONFIRMED DEFECT (inference lifecycle)",
+      "related_finding": "F-06"
+    }
+  ]
+}

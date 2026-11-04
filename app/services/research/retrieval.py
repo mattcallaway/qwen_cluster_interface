@@ -18,12 +18,117 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urljoin, urlparse
 
+import socket
+import typing
+import httpcore
+from httpcore._backends.sync import SyncBackend, SyncStream
+from httpcore._exceptions import ConnectError, ConnectTimeout, ExceptionMapping, map_exceptions
 import httpx
+from httpx._config import DEFAULT_LIMITS, create_ssl_context
 
 from app.services.research.cache import compute_content_hash, normalize_canonical_url
 from app.services.research.policy import ResearchSecurityPolicy, get_security_policy
 
 logger = logging.getLogger("qwen_collective.research.retrieval")
+
+
+class DestinationBlockedError(ConnectError):
+    """Raised when destination IP or host is blocked by SSRF policy."""
+    pass
+
+
+class PinningSyncBackend(SyncBackend):
+    """
+    HTTPCore network backend that enforces socket-level destination IP verification (F-14).
+    Prevents TOCTOU DNS rebinding by pinning the raw TCP socket to the verified IP address,
+    while allowing TLS handshake to use the original hostname for SNI and certificate validation.
+    """
+    def __init__(self, policy: ResearchSecurityPolicy):
+        super().__init__()
+        self.policy = policy
+
+    def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options: typing.Iterable[httpcore.SOCKET_OPTION] | None = None,
+    ) -> httpcore.NetworkStream:
+        is_dest_valid, dest_reason, resolved_ips = self.policy.resolve_and_verify_destination(host)
+        if not is_dest_valid or not resolved_ips:
+            logger.warning("PinningSyncBackend blocked destination %s:%d - %s", host, port, dest_reason)
+            raise DestinationBlockedError(f"Destination blocked by SSRF policy: {dest_reason}")
+
+        pinned_ip = resolved_ips[0]
+
+        if socket_options is None:
+            socket_options = []
+        address = (pinned_ip, port)
+        source_address = None if local_address is None else (local_address, 0)
+        exc_map: ExceptionMapping = {
+            socket.timeout: ConnectTimeout,
+            OSError: ConnectError,
+        }
+
+        with map_exceptions(exc_map):
+            sock = socket.create_connection(
+                address,
+                timeout,
+                source_address=source_address,
+            )
+            for option in socket_options:
+                sock.setsockopt(*option)
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        return SyncStream(sock)
+
+
+class PinningHTTPTransport(httpx.HTTPTransport):
+    """
+    HTTPX transport with socket-level IP pinning to prevent SSRF and DNS rebinding (F-14 / ADR-06).
+    - Ignores proxy environment variables by default (trust_env=False) to prevent proxy bypass.
+    - Disables keepalive connection reuse (keepalive_expiry=0.0) so every connection revalidates destination.
+    - Preserves TLS certificate verification and SNI with original hostname.
+    - Enforces destination IP policy at socket creation time.
+    """
+    def __init__(
+        self,
+        policy: Optional[ResearchSecurityPolicy] = None,
+        verify: Any = True,
+        cert: Any = None,
+        trust_env: bool = False,
+        http1: bool = True,
+        http2: bool = False,
+        limits: Any = None,
+        retries: int = 0,
+        socket_options: Any = None,
+    ):
+        self.policy = policy or get_security_policy()
+        if limits is None:
+            # Zero keepalive to prevent DNS rebinding connection reuse across queries
+            limits = httpx.Limits(max_connections=50, max_keepalive_connections=0, keepalive_expiry=0.0)
+        super().__init__(
+            verify=verify,
+            cert=cert,
+            trust_env=trust_env,
+            http1=http1,
+            http2=http2,
+            limits=limits,
+            retries=retries,
+            socket_options=socket_options,
+        )
+        ssl_context = create_ssl_context(verify=verify, cert=cert, trust_env=trust_env)
+        self._pool = httpcore.ConnectionPool(
+            ssl_context=ssl_context,
+            max_connections=limits.max_connections,
+            max_keepalive_connections=limits.max_keepalive_connections,
+            keepalive_expiry=limits.keepalive_expiry,
+            http1=http1,
+            http2=http2,
+            retries=retries,
+            socket_options=socket_options,
+            network_backend=PinningSyncBackend(policy=self.policy),
+        )
 
 # Indicators that page is a JavaScript Single Page App needing browser automation
 SPA_INDICATORS = [
@@ -172,7 +277,8 @@ class SecureFetcher:
 
             # 4. Perform streaming GET request without auto-following redirects
             try:
-                with httpx.Client(timeout=timeout, follow_redirects=False) as client:
+                transport = PinningHTTPTransport(policy=self.policy)
+                with httpx.Client(transport=transport, timeout=timeout, follow_redirects=False) as client:
                     with client.stream("GET", current_url, headers=req_headers) as resp:
                         # Check redirect status codes (301, 302, 303, 307, 308)
                         if resp.status_code in (301, 302, 303, 307, 308):
@@ -191,10 +297,20 @@ class SecureFetcher:
                                     is_success=False,
                                     error_message="Redirect missing Location header.",
                                     redirect_chain=redirect_chain,
-                                )
+                                 )
 
                             next_url = urljoin(current_url, loc)
                             redirect_chain.append(next_url)
+
+                            # Credential isolation: Strip sensitive auth headers on cross-origin redirects
+                            orig_parsed = urlparse(url)
+                            next_parsed = urlparse(next_url)
+                            if (next_parsed.scheme, next_parsed.hostname, next_parsed.port) != (orig_parsed.scheme, orig_parsed.hostname, orig_parsed.port):
+                                req_headers = {
+                                    k: v for k, v in req_headers.items()
+                                    if k.lower() not in ("authorization", "cookie", "proxy-authorization", "x-api-key")
+                                }
+
                             current_url = next_url
                             redirects_followed += 1
                             continue
@@ -264,6 +380,29 @@ class SecureFetcher:
                             needs_browser_fallback=needs_browser,
                         )
 
+            except (DestinationBlockedError, httpx.ConnectError) as conn_err:
+                err_str = str(conn_err)
+                is_ssrf = (
+                    isinstance(conn_err, DestinationBlockedError)
+                    or "SSRF" in err_str
+                    or "blocked" in err_str.lower()
+                    or "prohibited" in err_str.lower()
+                )
+                duration_ms = round((time.time() - start_time) * 1000.0, 1)
+                logger.warning("SSRF / connection block for %s: %s", current_url, conn_err)
+                return FetchResult(
+                    url=current_url,
+                    canonical_url=canonical,
+                    status_code=403 if is_ssrf else 502,
+                    content_bytes=b"",
+                    content_type="",
+                    headers={},
+                    duration_ms=duration_ms,
+                    content_hash="",
+                    is_success=False,
+                    error_message=f"SSRF destination blocked: {conn_err}" if is_ssrf else f"Connection error: {conn_err}",
+                    redirect_chain=redirect_chain,
+                )
             except Exception as req_err:
                 duration_ms = round((time.time() - start_time) * 1000.0, 1)
                 logger.warning("HTTP fetch failure for %s: %s", current_url, req_err)

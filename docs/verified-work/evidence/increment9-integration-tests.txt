@@ -1,0 +1,20 @@
+........................................................................ [ 35%]
+........................................................................ [ 70%]
+...........................................................              [100%]
+============================== warnings summary ===============================
+tests\test_native_retrieval.py:9
+  C:\Users\Matt C\Documents\Codex\2026-10-26\referenced-chatgpt-conversation-this-is-an\work\qwen-candidate\tests\test_native_retrieval.py:9: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient
+
+tests/test_worker_reliability.py::test_offline_buffer_flush_reconciled_conflict_clears_queue
+tests/test_worker_reliability.py::test_offline_buffer_quarantines_invalid_payload_without_blocking_queue
+tests/test_worker_reliability.py::test_offline_buffer_auth_rejection_suspends_retries
+  C:\Users\Matt C\.gemini\antigravity-ide\scratch\qwen-collective\.venv\Lib\site-packages\httpx\_client.py:1144: StarletteDeprecationWarning: You should not use the 'timeout' argument with the TestClient. See https://github.com/Kludex/starlette/issues/1108 for more information.
+    return self.request(
+
+tests/test_version_consistency.py::test_openapi_schema_version
+  C:\Users\Matt C\.gemini\antigravity-ide\scratch\qwen-collective\.venv\Lib\site-packages\fastapi\openapi\utils.py:303: UserWarning: Duplicate Operation ID api_research_export_api_v1_projects__project_id__research_export_post for function api_research_export at C:\Users\Matt C\Documents\Codex\2026-10-26\referenced-chatgpt-conversation-this-is-an\work\qwen-candidate\app\routes\research.py
+    warnings.warn(message, stacklevel=1)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+203 passed, 5 warnings in 80.41s (0:01:20)

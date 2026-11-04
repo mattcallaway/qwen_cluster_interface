@@ -453,11 +453,15 @@ async def chat_send(
     
     assistant_content = response.get("content") or f"Error from model backend: {response.get('error')}"
     resp_now = datetime.now(timezone.utc).isoformat()
+    actual_backend = response.get("backend") or (active_backend["name"] if active_backend else "Unknown Backend")
+    actual_model = response.get("model") or (active_backend.get("model_name") if active_backend else "Unknown Model")
+    if response.get("fallback_occurred"):
+        actual_backend = f"{actual_backend} (Fallback Tier)"
 
     conn = get_db_connection()
     conn.execute(
         "INSERT INTO chat_messages (session_id, role, content, backend_used, model_used, created_at) VALUES (?, 'assistant', ?, ?, ?, ?)",
-        (active_session_id, assistant_content, active_backend["name"], response.get("model"), resp_now)
+        (active_session_id, assistant_content, actual_backend, actual_model, resp_now)
     )
     conn.execute("UPDATE chat_conversations SET updated_at = ? WHERE id = ?", (resp_now, active_session_id))
     conn.commit()

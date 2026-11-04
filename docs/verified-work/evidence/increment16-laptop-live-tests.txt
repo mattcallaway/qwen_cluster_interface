@@ -1,0 +1,8 @@
+......                                                                   [100%]
+============================== warnings summary ===============================
+..\..\..\..\..\..\.gemini\antigravity-ide\scratch\qwen-collective\.venv\Lib\site-packages\_pytest\cacheprovider.py:469
+  C:\Users\Matt C\.gemini\antigravity-ide\scratch\qwen-collective\.venv\Lib\site-packages\_pytest\cacheprovider.py:469: PytestCacheWarning: could not create cache path C:\Users\Matt C\Documents\Codex\2026-10-26\referenced-chatgpt-conversation-this-is-an\work\qwen-candidate\.pytest_cache\v\cache\nodeids: [WinError 5] Access is denied: 'C:\\Users\\Matt C\\Documents\\Codex\\2026-10-26\\referenced-chatgpt-conversation-this-is-an\\work\\qwen-candidate\\.pytest_cache\\v\\cache'
+    config.cache.set("cache/nodeids", sorted(self.cached_nodeids))
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+6 passed, 1 warning in 33.24s

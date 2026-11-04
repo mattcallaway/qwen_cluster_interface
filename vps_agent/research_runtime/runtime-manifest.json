@@ -1,0 +1,22 @@
+[
+  {
+    "module": "cache",
+    "source_sha256": "9d00fa182481a1a741b22a489392268a73c678a97fee7a1f983c277157221d38",
+    "packaged_sha256": "9d00fa182481a1a741b22a489392268a73c678a97fee7a1f983c277157221d38"
+  },
+  {
+    "module": "policy",
+    "source_sha256": "5d4aa84fdfaf24e4253f5f1f56c692e8522ed53fd85e8a69cc8fb000a2ab66f6",
+    "packaged_sha256": "5d4aa84fdfaf24e4253f5f1f56c692e8522ed53fd85e8a69cc8fb000a2ab66f6"
+  },
+  {
+    "module": "retrieval",
+    "source_sha256": "b0fbb99691b78f76337f2302c6cb27926c8b58a7ea7315a91afa836931e251f2",
+    "packaged_sha256": "5f51424a8b50dca383b8373f413266c959c6612191546f397b62e2623505135a"
+  },
+  {
+    "module": "extraction",
+    "source_sha256": "0bfbd3a656cf8554800b88e57d961f5b0cefef57e4164bbfa2331164be79bc93",
+    "packaged_sha256": "1798bc660d45a3dbc49687cfc192bb392f1d627776aed4f7902a5fa0ab412541"
+  }
+]

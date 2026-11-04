@@ -1,0 +1,231 @@
+{
+  "schema": "qc.protected_verifier_live_test.v1",
+  "services_before": {
+    "qwen-worker.service": "MainPID=554427\nActiveState=active\nSubState=running",
+    "ollama.service": "MainPID=1432\nActiveState=active\nSubState=running",
+    "qc-ollama-ts.service": "MainPID=519545\nActiveState=active\nSubState=running"
+  },
+  "batch_id": "e91c007d373e4808aaf2dd26eff3ab0b",
+  "started_at": "2026-10-28T09:40:40.050380+00:00",
+  "native_binding": {
+    "proposal": {
+      "artifact_id": "art-c681211517db446f",
+      "version": 1,
+      "sha256": "e59a2a0989f44ff99d69ab781f727e297341784ee588a5cb912cf0f012a41968",
+      "cas_hash": "e59a2a0989f44ff99d69ab781f727e297341784ee588a5cb912cf0f012a41968",
+      "task_id": "task-b0832f22",
+      "worker_id": "canary-worker-269cb93f",
+      "attempt": 1
+    },
+    "approved_tests": {
+      "artifact_id": "art-91548ae1d5734195",
+      "version": 1,
+      "sha256": "e7c7fe1efb43ba84e9f0c8a0f41b6edf7065afdf4c5833f5442d5d6cbe6cf46b",
+      "cas_hash": "e7c7fe1efb43ba84e9f0c8a0f41b6edf7065afdf4c5833f5442d5d6cbe6cf46b",
+      "task_id": null,
+      "worker_id": null,
+      "attempt": 1
+    },
+    "plan_revision_id": "rev-canary-1-f87eab",
+    "plan_sha256": "2b4e5dcdb9298b7a2f353dc6048664c8590367dc2495dab28c07fb6d0d4058cb",
+    "contract_sha256": "f6901a2afb89e7b6eb4adfa6e563cc662f6e35cc2b0c2de3588a101caad77343",
+    "requirement_ids": [
+      "text_analyzer"
+    ],
+    "review_id": "df1c9442dcad9920e1cce0305140c33d0344c14d6652a94f8d9b4cc4172212df",
+    "project_id": "prj-15b68ada15c4420f9c7b55bedced6241",
+    "run_id": "run-canary-json-e04bfdf8",
+    "image_sha256": "43b057aa6a7133de2bbed57a8caaeecd07aea9228fa7cb6bec1608286b967b61",
+    "native_execution_id": "exec_a8e638a04270",
+    "native_lease_id": "lease_13d52e2e0aa1",
+    "native_idempotency_key": "idem_24354417ee0f415a"
+  },
+  "nonce": "8c4be712051140cfafbfd472b74146cc",
+  "units": [
+    {
+      "unit": "qc-sandbox-1ed740c4368543439e39e43af0ee48a2.service",
+      "empty": true,
+      "main_pid": "0",
+      "owned": false,
+      "safe": true
+    },
+    {
+      "unit": "qc-sandbox-e2ed5fb351ed4ccb86fa03282e4839a2.service",
+      "empty": true,
+      "main_pid": "0",
+      "owned": false,
+      "safe": true
+    },
+    {
+      "unit": "qc-sandbox-d29660a1367c4fceabdb279932f7af74.service",
+      "empty": true,
+      "main_pid": "0",
+      "owned": false,
+      "safe": true
+    },
+    {
+      "unit": "qc-sandbox-f65078689c2446b99ed7590b79d5b03d.service",
+      "empty": true,
+      "main_pid": "0",
+      "owned": true,
+      "safe": true
+    },
+    {
+      "unit": "qc-sandbox-649b0bebe0004071b9d8fe281a29c82a.service",
+      "empty": true,
+      "main_pid": "0",
+      "owned": true,
+      "safe": true
+    },
+    {
+      "unit": "qc-sandbox-7e65e1eb7fd742a6b02f60d178d61184.service",
+      "empty": true,
+      "main_pid": "0",
+      "owned": false,
+      "safe": true
+    }
+  ],
+  "evidence_class": "reviewed synthetic source, native database fixture, actual protected Linux execution",
+  "backend_sha256": "933a950c6fe7774ad28a09a071f05bf851c037b9af1e9984ed44407e50f24c68",
+  "verifier_sha256": "07340860829ad17262351f69b7cdf2739cbc8e6244ed24656928015224cc8268",
+  "production_approved": false,
+  "accepted": false,
+  "certification_eligible": false,
+  "cases": [
+    {
+      "case_id": "case_nominal",
+      "requirement_id": "text_analyzer",
+      "passed": true
+    },
+    {
+      "case_id": "case_empty",
+      "requirement_id": "text_analyzer",
+      "passed": true
+    },
+    {
+      "case_id": "case_unicode",
+      "requirement_id": "text_analyzer",
+      "passed": true
+    },
+    {
+      "case_id": "case_malformed_type",
+      "requirement_id": "text_analyzer",
+      "passed": false
+    },
+    {
+      "case_id": "case_malformed_missing",
+      "requirement_id": "text_analyzer",
+      "passed": false
+    },
+    {
+      "case_id": "case_boundary_spaces",
+      "requirement_id": "text_analyzer",
+      "passed": true
+    }
+  ],
+  "root_nonce_replay_denied": true,
+  "policy_absent": true,
+  "services_after": {
+    "qwen-worker.service": "MainPID=554427\nActiveState=active\nSubState=running",
+    "ollama.service": "MainPID=1432\nActiveState=active\nSubState=running",
+    "qc-ollama-ts.service": "MainPID=519545\nActiveState=active\nSubState=running"
+  },
+  "existing_services_unchanged": true,
+  "receipt": {
+    "body": {
+      "schema": "qc.protected_verifier_receipt.v1",
+      "grant_sha256": "7819c64210457f0a1f487a9f404e17f9d68c6d34f773f21a982d3748ec742844",
+      "nonce": "8c4be712051140cfafbfd472b74146cc",
+      "binding": {
+        "proposal": {
+          "artifact_id": "art-c681211517db446f",
+          "version": 1,
+          "sha256": "e59a2a0989f44ff99d69ab781f727e297341784ee588a5cb912cf0f012a41968",
+          "cas_hash": "e59a2a0989f44ff99d69ab781f727e297341784ee588a5cb912cf0f012a41968",
+          "task_id": "task-b0832f22",
+          "worker_id": "canary-worker-269cb93f",
+          "attempt": 1
+        },
+        "approved_tests": {
+          "artifact_id": "art-91548ae1d5734195",
+          "version": 1,
+          "sha256": "e7c7fe1efb43ba84e9f0c8a0f41b6edf7065afdf4c5833f5442d5d6cbe6cf46b",
+          "cas_hash": "e7c7fe1efb43ba84e9f0c8a0f41b6edf7065afdf4c5833f5442d5d6cbe6cf46b",
+          "task_id": null,
+          "worker_id": null,
+          "attempt": 1
+        },
+        "plan_revision_id": "rev-canary-1-f87eab",
+        "plan_sha256": "2b4e5dcdb9298b7a2f353dc6048664c8590367dc2495dab28c07fb6d0d4058cb",
+        "contract_sha256": "f6901a2afb89e7b6eb4adfa6e563cc662f6e35cc2b0c2de3588a101caad77343",
+        "requirement_ids": [
+          "text_analyzer"
+        ],
+        "review_id": "df1c9442dcad9920e1cce0305140c33d0344c14d6652a94f8d9b4cc4172212df",
+        "project_id": "prj-15b68ada15c4420f9c7b55bedced6241",
+        "run_id": "run-canary-json-e04bfdf8",
+        "image_sha256": "43b057aa6a7133de2bbed57a8caaeecd07aea9228fa7cb6bec1608286b967b61",
+        "native_execution_id": "exec_a8e638a04270",
+        "native_lease_id": "lease_13d52e2e0aa1",
+        "native_idempotency_key": "idem_24354417ee0f415a"
+      },
+      "observations": [
+        {
+          "case_id": "case_nominal",
+          "executed": true,
+          "reason": "completed",
+          "exit_code": 0,
+          "cleanup_confirmed": true,
+          "stdout": "{\n  \"valid\": true,\n  \"words\": 4,\n  \"length\": 21,\n  \"preview\": \"hello worl\"\n}\n",
+          "unit": "qc-sandbox-1ed740c4368543439e39e43af0ee48a2.service"
+        },
+        {
+          "case_id": "case_empty",
+          "executed": true,
+          "reason": "completed",
+          "exit_code": 0,
+          "cleanup_confirmed": true,
+          "stdout": "{\n  \"valid\": true,\n  \"words\": 0,\n  \"length\": 0,\n  \"preview\": \"\"\n}\n",
+          "unit": "qc-sandbox-e2ed5fb351ed4ccb86fa03282e4839a2.service"
+        },
+        {
+          "case_id": "case_unicode",
+          "executed": true,
+          "reason": "completed",
+          "exit_code": 0,
+          "cleanup_confirmed": true,
+          "stdout": "{\n  \"valid\": true,\n  \"words\": 4,\n  \"length\": 22,\n  \"preview\": \"qwen \\u2728 202\"\n}\n",
+          "unit": "qc-sandbox-d29660a1367c4fceabdb279932f7af74.service"
+        },
+        {
+          "case_id": "case_malformed_type",
+          "executed": true,
+          "reason": "service_failure",
+          "exit_code": 1,
+          "cleanup_confirmed": true,
+          "stdout": "",
+          "unit": "qc-sandbox-f65078689c2446b99ed7590b79d5b03d.service"
+        },
+        {
+          "case_id": "case_malformed_missing",
+          "executed": true,
+          "reason": "service_failure",
+          "exit_code": 1,
+          "cleanup_confirmed": true,
+          "stdout": "",
+          "unit": "qc-sandbox-649b0bebe0004071b9d8fe281a29c82a.service"
+        },
+        {
+          "case_id": "case_boundary_spaces",
+          "executed": true,
+          "reason": "completed",
+          "exit_code": 0,
+          "cleanup_confirmed": true,
+          "stdout": "{\n  \"valid\": true,\n  \"words\": 4,\n  \"length\": 33,\n  \"preview\": \"   leading\"\n}\n",
+          "unit": "qc-sandbox-7e65e1eb7fd742a6b02f60d178d61184.service"
+        }
+      ]
+    },
+    "signature": "93d87a87a0076c85d02625b19881df0e5f26b0e033a060b923b5d7c81518be29"
+  }
+}

@@ -101,6 +101,16 @@ def project_detail(request: Request, project_id: str, tab: str = "overview",
         t["dependents"] = ts.get_task_dependents(t["id"])
         t["execution_events"] = ts.list_task_execution_events(t["id"])
     knowledge = km.list_project_knowledge(project_id)
+    from app.services.knowledge_store import list_knowledge_records, list_affected_impacts, list_promotions
+    from app.services.orchestration.research_checkpoint import list_project_checkpoints
+    from app.services.artifacts import artifact_service
+
+    structured_knowledge = list_knowledge_records(project_id=project_id, include_collective=True)
+    checkpoints = list_project_checkpoints(project_id)
+    affected_impacts = list_affected_impacts(project_id)
+    project_promotions = [p for p in list_promotions() if p.get("source_project_id") == project_id]
+    project_artifacts = artifact_service.list_artifacts(project_id=project_id)
+
     parent = ps.get_project(project["parent_id"]) if project["parent_id"] else None
     path_names = {p["id"]: p["name"] for p in paths}
     stage_names = {s["id"]: s["name"] for ss in stages_by_path.values() for s in ss}
@@ -125,6 +135,7 @@ def project_detail(request: Request, project_id: str, tab: str = "overview",
         "candidate_parents": [p for p in ps.list_projects() if p["id"] != project_id],
         "paths": paths, "stages_by_path": stages_by_path, "path_names": path_names, "stage_names": stage_names,
         "deliverables": deliverables, "deliverable_names": deliverable_names,
+        "project_artifacts": project_artifacts,
         "deliverable_types": ds.DELIVERABLE_TYPES, "deliverable_statuses": ds.DELIVERABLE_STATUSES,
         "deliverable_revisions": deliverable_revisions, "stage_gates": stage_gates,
         "path_revisions": path_revisions,
@@ -134,6 +145,8 @@ def project_detail(request: Request, project_id: str, tab: str = "overview",
         "project_transitions": sorted(ps.PROJECT_TRANSITIONS[project["status"]]),
         "stage_m1_statuses": sorted(ps.STAGE_M1_STATUSES), "priorities": ps.PRIORITIES,
         "tasks": tasks, "knowledge": knowledge, "decisions": ps.list_decisions(project_id, 20),
+        "structured_knowledge": structured_knowledge, "checkpoints": checkpoints,
+        "affected_impacts": affected_impacts, "project_promotions": project_promotions,
         "knowledge_types": km.KNOWLEDGE_TYPES, "origins": km.ORIGINS, "trust_transitions": km.TRUST_TRANSITIONS,
         "relation_types": km.RELATION_TYPES, "untrusted_origins": km.UNTRUSTED_ORIGINS,
         "collective_knowledge": km.list_collective_knowledge() if tab == "knowledge" else [],

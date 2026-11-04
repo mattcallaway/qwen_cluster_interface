@@ -20,7 +20,18 @@ def now():
     return datetime.now(timezone.utc).isoformat()
 
 
-def register_node(node_id, role="vps_worker", models=None, runtimes=None, token=True, health="online", ram=2000, enabled=1):
+def _assert_test_isolation():
+    from app.config import settings
+    from pathlib import Path
+    resolved_data_dir = str(Path(settings.data_dir).resolve()).lower()
+    if ".qwen-collective" in resolved_data_dir:
+        raise RuntimeError(
+            f"CRITICAL TEST ISOLATION FAILURE: test helper cannot be invoked against persistent production storage: {settings.data_dir}"
+        )
+
+
+def register_node(node_id, role="vps_worker", models=None, runtimes=None, token=True, health="online", ram=2000, enabled=1, verified=True):
+    _assert_test_isolation()
     runtimes = runtimes if runtimes is not None else (["python-3.12", "ollama"] if models else ["python-3.12"])
     with db_transaction() as c:
         c.execute("DELETE FROM worker_auth_tokens WHERE node_id=?", (node_id,))
@@ -35,6 +46,30 @@ def register_node(node_id, role="vps_worker", models=None, runtimes=None, token=
         if token:
             c.execute("INSERT INTO worker_auth_tokens (id, node_id, token_hash, token_prefix, created_at, revoked) VALUES (?,?,?,?,?,0)",
                       (uuid.uuid4().hex, node_id, uuid.uuid4().hex, "tst", now()))
+        cap_id = f"cap-{node_id}-inference"
+        if verified and models:
+            c.execute("""INSERT INTO infrastructure_capabilities (
+                id, node_id, name, category, required_software, discovery_status,
+                discovery_method, verification_status, verification_method, last_verified_at,
+                verification_error, created_at, updated_at
+            ) VALUES (?, ?, 'model_inference', 'ai_inference', 'ollama', 'discovered', 'agent_probe',
+                      'verified', 'health_check', ?, '', ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                verification_status = excluded.verification_status,
+                last_verified_at = excluded.last_verified_at,
+                updated_at = excluded.updated_at""",
+                (cap_id, node_id, now(), now(), now())
+            )
+            c.execute("DELETE FROM infrastructure_verifications WHERE node_id=? AND verification_test='model_inference_probe'", (node_id,))
+            c.execute(
+                """INSERT INTO infrastructure_verifications (
+                    id, capability_id, node_id, verification_test, result_status, details, verified_at, verified_by
+                ) VALUES (?, ?, ?, 'model_inference_probe', 'passed', ?, ?, 'test_harness')""",
+                (f"verif-{uuid.uuid4().hex[:8]}", cap_id, node_id, json.dumps({"models": models}), now())
+            )
+        elif not verified:
+            c.execute("DELETE FROM infrastructure_verifications WHERE node_id=? AND verification_test='model_inference_probe'", (node_id,))
+            c.execute("UPDATE infrastructure_capabilities SET verification_status='unverified' WHERE node_id=?", (node_id,))
 
 
 def set_health(node_id, health="online", age_seconds=0):
@@ -48,6 +83,7 @@ _disabled_by_us = set()
 
 
 def disable_other_nodes(keep):
+    _assert_test_isolation()
     with db_transaction() as c:
         for r in c.execute(f"SELECT id FROM infrastructure_nodes WHERE is_enabled=1 AND id NOT IN ({','.join('?' * len(keep))})", list(keep)).fetchall():
             _disabled_by_us.add(r["id"])
@@ -57,10 +93,13 @@ def disable_other_nodes(keep):
 
 
 def restore_nodes():
+    _assert_test_isolation()
     with db_transaction() as c:
         c.execute("UPDATE infrastructure_nodes SET is_enabled=0 WHERE id LIKE 't-%'")
         for nid in list(_disabled_by_us):
             c.execute("UPDATE infrastructure_nodes SET is_enabled=1 WHERE id=?", (nid,))
+        c.execute("UPDATE worker_task_leases SET status='completed' WHERE status IN ('leased', 'active') AND worker_id LIKE 't-%'")
+        c.execute("UPDATE tasks SET status='cancelled' WHERE status IN ('queued', 'in_progress', 'running', 'awaiting_approval') AND (assigned_worker LIKE 't-%' OR assigned_worker IS NULL)")
     _disabled_by_us.clear()
 
 
@@ -73,6 +112,7 @@ def _art(name, data: bytes):
 def worker_step(node_id, models=None, mode="ok", response="Node A has 600 MiB free memory and low load. Node B is similar.",
                 health=None):
     """Lease one task as ``node_id`` and submit a result. Returns the lease dict or None."""
+    _assert_test_isolation()
     lease = W.lease_task_for_worker(node_id, supported_categories=["python_execution", "inference", "general"],
                                     available_models=models or [], available_ram_mb=2000)
     if not lease:

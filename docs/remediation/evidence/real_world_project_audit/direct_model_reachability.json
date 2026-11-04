@@ -1,0 +1,80 @@
+{
+  "captured_utc": "2026-10-22T01:16:37.722817+00:00",
+  "results": [
+    {
+      "node": "desktop-44h6qvp (local)",
+      "host": "127.0.0.1",
+      "model": "qwen2.5:1.5b",
+      "ok": true,
+      "wall_s": 12.25,
+      "response": "READY",
+      "eval_count": 2,
+      "prompt_eval_count": 36,
+      "load_ms": 11963,
+      "eval_ms": 30,
+      "tok_per_s": 66.7,
+      "measured": true,
+      "path": "DIRECT_OLLAMA (not via Qwen Collective scheduler)"
+    },
+    {
+      "node": "qwen-laptop",
+      "host": "100.101.187.115",
+      "model": "qwen2.5:1.5b",
+      "ok": true,
+      "wall_s": 49.69,
+      "response": "READY",
+      "eval_count": 2,
+      "prompt_eval_count": 36,
+      "load_ms": 44952,
+      "eval_ms": 113,
+      "tok_per_s": 17.8,
+      "measured": true,
+      "path": "DIRECT_OLLAMA (not via Qwen Collective scheduler)"
+    },
+    {
+      "node": "qwen-laptop",
+      "host": "100.101.187.115",
+      "model": "llama3.2:1b",
+      "ok": true,
+      "wall_s": 41.3,
+      "response": "Yes",
+      "eval_count": 2,
+      "prompt_eval_count": 32,
+      "load_ms": 39977,
+      "eval_ms": 92,
+      "tok_per_s": 21.8,
+      "measured": true,
+      "path": "DIRECT_OLLAMA (not via Qwen Collective scheduler)"
+    },
+    {
+      "node": "pi-brain",
+      "host": "100.111.178.12",
+      "model": "qwen2.5:0.5b",
+      "ok": true,
+      "wall_s": 11.51,
+      "response": "READY",
+      "eval_count": 2,
+      "prompt_eval_count": 36,
+      "load_ms": 7377,
+      "eval_ms": 178,
+      "tok_per_s": 11.3,
+      "measured": true,
+      "path": "DIRECT_OLLAMA (not via Qwen Collective scheduler)"
+    },
+    {
+      "node": "desktop-44h6qvp (local)",
+      "host": "127.0.0.1",
+      "model": "qwen2.5:3b",
+      "ok": true,
+      "wall_s": 12.46,
+      "response": "READY",
+      "eval_count": 2,
+      "prompt_eval_count": 36,
+      "load_ms": 12141,
+      "eval_ms": 25,
+      "tok_per_s": 81.3,
+      "measured": true,
+      "path": "DIRECT_OLLAMA (not via Qwen Collective scheduler)"
+    }
+  ]
+}

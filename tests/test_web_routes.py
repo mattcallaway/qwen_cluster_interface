@@ -33,7 +33,7 @@ def test_machines_page(auth_client):
 def test_knowledge_page(auth_client):
     response = auth_client.get("/knowledge")
     assert response.status_code == 200
-    assert "Persistent Knowledge Repository" in response.text
+    assert "Collective Knowledge & Evidence Repository" in response.text
 
 def test_tasks_page(auth_client):
     response = auth_client.get("/tasks")

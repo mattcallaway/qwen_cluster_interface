@@ -23,10 +23,17 @@ def clean_node(db_conn):
         """
         INSERT INTO infrastructure_nodes (
             id, name, role, os_name, cpu_info, installed_ram_mb, available_ram_mb,
-            storage_total_gb, storage_free_gb, health_status, created_at, updated_at
-        ) VALUES (?, 'VPS Test Node', 'vps_worker', 'Linux', '2 CPU cores', 2048, 1024, 40.0, 25.0, 'online', ?, ?)
+            storage_total_gb, storage_free_gb, health_status, last_contact_at, is_enabled, created_at, updated_at
+        ) VALUES (?, 'VPS Test Node', 'vps_worker', 'Linux', '2 CPU cores', 2048, 1024, 40.0, 25.0, 'online', ?, 1, ?, ?)
         """,
-        (node_id, now, now),
+        (node_id, now, now, now),
+    )
+    db_conn.execute(
+        """
+        INSERT INTO worker_auth_tokens (id, node_id, token_hash, token_prefix, created_at, revoked)
+        VALUES (?, ?, 'fakehash', 'qcw_test...', ?, 0)
+        """,
+        (f"tok_{uuid4().hex[:12]}", node_id, now),
     )
     db_conn.commit()
     return node_id
@@ -104,8 +111,12 @@ def test_durable_task_leasing_and_concurrency(db_conn, clean_node):
     # 2. Concurrency check: A second worker cannot lease the same task
     worker2 = "vps-other-node"
     db_conn.execute(
-        "INSERT OR REPLACE INTO infrastructure_nodes (id, name, role, created_at, updated_at) VALUES (?, 'Other', 'vps_worker', ?, ?)",
-        (worker2, now, now),
+        "INSERT OR REPLACE INTO infrastructure_nodes (id, name, role, health_status, last_contact_at, is_enabled, created_at, updated_at) VALUES (?, 'Other', 'vps_worker', 'online', ?, 1, ?, ?)",
+        (worker2, now, now, now),
+    )
+    db_conn.execute(
+        "INSERT INTO worker_auth_tokens (id, node_id, token_hash, token_prefix, created_at, revoked) VALUES (?, ?, 'hash2', 'qcw_oth...', ?, 0)",
+        (f"tok_{uuid4().hex[:12]}", worker2, now),
     )
     db_conn.commit()
     second_lease = worker_svc.lease_task_for_worker(worker2)

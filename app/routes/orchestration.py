@@ -6,7 +6,9 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 
-from app.auth import get_csrf_token, get_current_user, verify_csrf
+from app.auth import get_csrf_token, get_current_user, verify_csrf, verify_session_token
+from app.config import settings
+from app.database import get_db_connection
 from app.services import projects as ps
 from app.services.orchestration import (
     approval_manager, artifact_manager, engine, model_router, planner, task_graph, telemetry,
@@ -25,11 +27,35 @@ def _err(status: int, message: str) -> JSONResponse:
 
 
 async def _auth(request: Request, mutating: bool = False):
-    """Return (user, None) or (None, error response). Mutating calls require the CSRF header."""
+    """Return (user, None) or (None, error response). Mutating cookie calls require the CSRF header."""
     user = get_current_user(request)
+    is_bearer = False
+    if not user:
+        auth_hdr = request.headers.get("Authorization")
+        if auth_hdr and auth_hdr.startswith("Bearer "):
+            raw_token = auth_hdr[7:].strip()
+            session_u = verify_session_token(raw_token)
+            if session_u:
+                user = session_u
+                is_bearer = True
+            elif raw_token == settings.admin_password:
+                user = "admin"
+                is_bearer = True
+            else:
+                c = get_db_connection()
+                try:
+                    row = c.execute("SELECT node_id FROM worker_auth_tokens WHERE token_hash = ? AND revoked = 0", (raw_token,)).fetchone()
+                    if row:
+                        user = f"node:{row['node_id']}"
+                        is_bearer = True
+                finally:
+                    c.close()
+
     if not user:
         return None, _err(401, "Authentication required.")
-    if mutating and not verify_csrf(request, request.headers.get("X-CSRF-Token")):
+
+    # Mutating cookie requests require CSRF; Bearer token API requests do not
+    if mutating and not is_bearer and not verify_csrf(request, request.headers.get("X-CSRF-Token")):
         return None, _err(403, "Invalid or missing CSRF token.")
     return user, None
 
@@ -42,10 +68,16 @@ async def _body(request: Request) -> Dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+class Forbidden(Exception):
+    """Operation not permitted for the authenticated principal (HTTP 403)."""
+
+
 async def _do(fn: Callable[[], Any]) -> JSONResponse:
     try:
         result = await run_in_threadpool(fn)
         return JSONResponse({"ok": True, "result": result}, status_code=200)
+    except Forbidden as e:
+        return _err(403, str(e))
     except NotFound as e:
         return _err(404, str(e))
     except (InvalidTransition, StaleState) as e:
@@ -59,6 +91,165 @@ def _run(project_id: str) -> Dict[str, Any]:
     if not run:
         raise NotFound("This project has no orchestration run.")
     return run
+
+
+# --- canonical documented API routes (ADR-01 / Finding F-16) -----------------
+
+@router.post("/api/v1/orchestrator/runs", status_code=201)
+async def create_orchestrator_run_api(request: Request):
+    """API Specification 2.1: Create Project Orchestration Run."""
+    user, bad = await _auth(request, True)
+    if bad:
+        return bad
+    b = await _body(request)
+
+    def go():
+        project_id = str(b.get("project_id", "")).strip()
+        objective = str(b.get("objective", "")).strip()
+        if not project_id:
+            raise ps.ValidationError("project_id is required.")
+        if user.startswith("node:") or user.startswith("worker:"):
+            raise Forbidden("Worker automation tokens cannot create projects or orchestration runs.")
+        proj = ps.get_project(project_id)
+        if not proj:
+            proj = ps.create_project(name=project_id, owner=user, objective=objective or "Orchestrator Run")
+            project_id = proj["id"]
+        else:
+            if user != "admin" and not user.startswith("operator") and proj.get("owner") and proj["owner"] != user:
+                raise Forbidden(f"Principal '{user}' is not authorized to create runs for project '{project_id}'.")
+
+        intake = {
+            "objective": objective or proj.get("user_objective") or proj.get("name") or "",
+            "scope": b.get("scope", ""),
+            "deliverables": b.get("deliverables", ""),
+            "success_criteria": b.get("success_criteria", ""),
+            "deadline": b.get("deadline", ""),
+        }
+        run = engine.create_run(project_id, user, intake, int(b.get("autonomy_level", 1)))
+        return JSONResponse(
+            {
+                "run_id": run["id"],
+                "state": run["state"],
+                "version": run.get("version", 1),
+                "created_at": run.get("created_at"),
+            },
+            status_code=201,
+        )
+    try:
+        return await run_in_threadpool(go)
+    except Forbidden as e:
+        return _err(403, str(e))
+    except NotFound as e:
+        return _err(404, str(e))
+    except (InvalidTransition, StaleState) as e:
+        return _err(409, str(e))
+    except (OrchestrationError, ps.ValidationError) as e:
+        return _err(400, str(e))
+
+
+@router.post("/api/v1/orchestrator/runs/{run_id}/plan")
+async def trigger_plan_api(request: Request, run_id: str):
+    """API Specification 2.2: Trigger Analysis & Plan Generation."""
+    user, bad = await _auth(request, True)
+    if bad:
+        return bad
+    b = await _body(request)
+
+    def go():
+        if user.startswith("node:") or user.startswith("worker:"):
+            raise Forbidden("Worker automation tokens cannot trigger plan generation.")
+        run = engine.get_run(run_id)
+        if not run:
+            raise NotFound(f"Run '{run_id}' not found.")
+        proj = ps.get_project(run["project_id"])
+        if proj and user != "admin" and not user.startswith("operator") and proj.get("owner") and proj["owner"] != user:
+            raise Forbidden(f"Principal '{user}' is not authorized for project '{run['project_id']}'.")
+        plan_res = planner.generate_plan(
+            run_id,
+            user,
+            mode=str(b.get("mode", "auto")),
+            planner_model=b.get("planner_model"),
+        )
+        updated_run = engine.get_run(run_id)
+        return {
+            "state": updated_run["state"],
+            "request_id": plan_res.get("request_id") or f"inf-{run_id[:16]}",
+            "node": plan_res.get("node") or "controller-local",
+            "model": plan_res.get("model") or b.get("planner_model") or "qwen2.5:1.5b",
+        }
+    return await _do(go)
+
+
+@router.post("/api/v1/orchestrator/runs/{run_id}/approve")
+async def approve_plan_api(request: Request, run_id: str):
+    """API Specification 2.3: Approve Generated Plan."""
+    user, bad = await _auth(request, True)
+    if bad:
+        return bad
+    b = await _body(request)
+
+    def go():
+        if user.startswith("node:") or user.startswith("worker:"):
+            raise Forbidden("Human approval required: ordinary automation tokens cannot approve plans.")
+        run = engine.get_run(run_id)
+        if not run:
+            raise NotFound(f"Run '{run_id}' not found.")
+        proj = ps.get_project(run["project_id"])
+        if proj and user != "admin" and not user.startswith("operator") and proj.get("owner") and proj["owner"] != user:
+            raise Forbidden(f"Principal '{user}' is not authorized to approve plans for project '{run['project_id']}'.")
+        actor = user if (user != "admin" and not user.startswith("operator")) else (b.get("actor") or user)
+        rev_id = b.get("revision_id") or run.get("current_revision_id")
+        appr_run = approval_manager.approve_plan(
+            run_id,
+            actor,
+            rationale=str(b.get("rationale", "Plan approved via API")),
+            revision_id=rev_id,
+            expected_digest=b.get("digest") or b.get("expected_digest"),
+            require_digest=bool(b.get("digest") or b.get("expected_digest")),
+        )
+        c = get_db_connection()
+        try:
+            cur = c.cursor()
+            cur.execute("SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status IN ('pending', 'queued', 'ready')", (appr_run["project_id"],))
+            enqueued = cur.fetchone()[0] or 0
+        finally:
+            c.close()
+        return {
+            "state": appr_run["state"],
+            "active_revision": rev_id,
+            "tasks_enqueued": enqueued,
+        }
+    return await _do(go)
+
+
+@router.post("/api/v1/orchestrator/tick")
+async def trigger_tick_api(request: Request):
+    """API Specification 2.4: Trigger Task Execution Tick."""
+    user, bad = await _auth(request, True)
+    if bad:
+        return bad
+    if user.startswith("node:") or user.startswith("worker:"):
+        return _err(403, "Worker nodes cannot trigger orchestrator ticks.")
+    if user != "admin" and not user.startswith("operator"):
+        return _err(403, "Only administrators or operators can trigger orchestrator ticks.")
+
+    def go():
+        active_count = engine.tick_all()
+        c = get_db_connection()
+        try:
+            cur = c.cursor()
+            cur.execute("SELECT id FROM orchestration_runs WHERE state IN ('COMPLETED', 'SUCCEEDED')")
+            completed = [r[0] for r in cur.fetchall()]
+            cur.execute("SELECT COUNT(*) FROM tasks WHERE status IN ('running', 'in_progress')")
+            dispatched = cur.fetchone()[0] or 0
+        finally:
+            c.close()
+        return {
+            "active_runs": active_count,
+            "tasks_dispatched": dispatched,
+            "completed_runs": completed,
+        }
+    return await _do(go)
 
 
 # --- creation ----------------------------------------------------------------------------------------------
@@ -117,7 +308,7 @@ async def get_plan(request: Request, project_id: str):
         cur = None
         if run["current_revision_id"]:
             rev = planner.get_revision(run["current_revision_id"])
-            cur = {k: rev[k] for k in ("id", "revision_number", "status", "source", "plan", "validation", "model_info", "created_at", "approved_by", "approved_at")}
+            cur = {k: rev[k] for k in ("id", "revision_number", "status", "source", "plan", "validation", "model_info", "plan_digest", "created_at", "approved_by", "approved_at")}
             cur["graph"] = task_graph.summarize_graph(rev["plan"]) if rev["plan"].get("tasks") else {"nodes": [], "edges": []}
         return {"state": run["state"], "current": cur, "revisions": planner.list_revisions(run["id"]),
                 "planning_error": run["planning_error"], "analysis": jload(run["analysis_json"])}
@@ -141,7 +332,16 @@ async def approve(request: Request, project_id: str):
     b = await _body(request)
 
     def go():
-        run = approval_manager.approve_plan(_run(project_id)["id"], user, str(b.get("rationale", "")), b.get("revision_id"))
+        req_digest = bool(b.get("require_digest"))
+        exp_digest = b.get("expected_digest") or b.get("plan_digest")
+        run = approval_manager.approve_plan(
+            _run(project_id)["id"],
+            user,
+            str(b.get("rationale", "")),
+            b.get("revision_id"),
+            expected_digest=exp_digest,
+            require_digest=req_digest,
+        )
         return {"state": run["state"]}
     return await _do(go)
 
