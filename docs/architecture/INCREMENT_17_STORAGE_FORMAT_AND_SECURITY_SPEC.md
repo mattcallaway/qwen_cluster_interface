@@ -96,7 +96,7 @@ Deterministic JSON serialization (RFC 8785 principles: sorted keys, no whitespac
 ```
 
 ### Identity Scopes
-- `verified_runtime`: Created via `ExecutionNamespace.from_manifest(manifest)`. Authorizes genuine cross-request KV reuse (`is_verified_for_reuse = True`).
+- `verified_runtime`: Created via `ExecutionNamespace.from_manifest(manifest)`. Required for genuine cross-request KV reuse when paired with an active `IssuedReuseAuthority` validated by `PagedKVManager.trusted_issuer` (`ExecutionNamespace.is_verified_for_reuse` itself returns `False` so namespaces cannot self-certify).
 - `prototype_simulation`: Created via `create_prototype_simulation` or unverified `create_canonical`. Bounded to simulated testing (`is_verified_for_reuse = False`). Produces distinct namespace digests from verified runtime namespaces.
 
 ---
@@ -194,7 +194,11 @@ To eliminate caller-selected or label-based authorization bypasses, identity cla
    - If no trusted issuer is configured, manager strictly denies all genuine reuse.
    - During sequence restoration from disk to RAM (`restore_sequence_to_ram`), the sequence's recorded authority is re-validated against the trusted issuer; if revoked or invalidated, restoration fails closed.
    - Sequence cleanup (`release_sequence`) deterministically frees recorded authorities.
-   - **Enforcement Entry Point:** `PagedKVManager.ingest_prompt(..., authority=...)` mandates verified authority from `trusted_issuer`. Calls without valid authority or under prototype simulation are marked `verified_reuse_authorized: False` and matched tokens return 0.
+   - **Enforcement Entry Point:** `PagedKVManager.ingest_prompt(..., authority=..., model_instance_id=...)` mandates verified authority from `trusted_issuer`. Calls without valid authority or under prototype simulation are marked `verified_reuse_authorized: False` and matched tokens return 0.
+5. **Trusted Local Model Loader & Live Model-Instance Binding (`app/services/paged_kv/model_loader.py`):**
+   - `TrustedLocalModelLoader.load_verified_model(...)` requires an explicit 40-character hexadecimal snapshot commit revision (rejecting unpinned branch names such as `main`).
+   - Streams SHA-256 verification (`stream_file_sha256`, 4 MB chunks) of the actual local files (`model.safetensors`, `tokenizer.json`, `tokenizer_config.json`, `config.json`) against an approved `ModelIdentityManifest` before loading offline (`local_files_only=True`), and re-verifies all artifacts post-load to detect mid-load TOCTOU replacement.
+   - Computes a live cryptographic parameter/config fingerprint (`compute_live_model_fingerprint`) across all transformer layers, stamps `_qc_model_instance_id` onto the loaded model instance, and issues `IssuedReuseAuthority` with `require_instance_binding=True`. `PyTorchPagedKVAdapter` verifies the bound model via `verify_live_model_instance` on both extraction and prefill preparation.
 
 ---
 

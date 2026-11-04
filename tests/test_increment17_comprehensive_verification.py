@@ -39,6 +39,7 @@ from app.services.paged_kv.identity import (
     IssuedReuseAuthority,
 )
 from app.services.paged_kv.manager import PagedKVManager
+from app.services.paged_kv.model_loader import TrustedLocalModelLoader
 from app.services.paged_kv.pytorch_adapter import PyTorchPagedKVAdapter
 from app.services.paged_kv.store import HEADER_SIZE, MAGIC_BYTES, PagedKVStore, V1_MAGIC_BYTES
 from app.services.pipeline_parallel.activation_protocol import ActivationProtocol
@@ -49,34 +50,81 @@ from app.services.pipeline_parallel.stage1_server import Stage1SocketServer
 from app.services.pipeline_parallel.topology import PipelineStageConfig
 
 MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
-LOCAL_MODEL_DIR = Path(__file__).resolve().parent.parent / "scratch" / "models" / "qwen2.5-0.5b-instruct"
+PINNED_SNAPSHOT_REVISION = "7ae557604adf67be50417f59c2c2f167def9a775"
+
+
+def _resolve_local_model_dir() -> Path:
+    env_dir = os.environ.get("QWEN_LOCAL_MODEL_DIR")
+    if env_dir and Path(env_dir).exists():
+        return Path(env_dir).resolve()
+    local_candidate = Path(__file__).resolve().parent.parent / "scratch" / "models" / "qwen2.5-0.5b-instruct"
+    if local_candidate.exists():
+        return local_candidate
+    sibling_candidate = (
+        Path(__file__).resolve().parent.parent.parent
+        / "qwen-collective-integration"
+        / "scratch"
+        / "models"
+        / "qwen2.5-0.5b-instruct"
+    )
+    if sibling_candidate.exists():
+        return sibling_candidate
+    return local_candidate
+
+
+LOCAL_MODEL_DIR = _resolve_local_model_dir()
+PINNED_QWEN_MANIFEST = ModelIdentityManifest(
+    model_name=MODEL_ID,
+    weight_digest="fdf756fa7fcbe7404d5c60e26bff1a0c8b8aa1f72ced49e7dd0210fe288fb7fe",
+    tokenizer_digest="c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539",
+    chat_template_digest="5b5d4f65d0acd3b2d56a35b56d374a36cbc1c8fa5cf3b3febbbfabf22f359583",
+    kv_layout="bshd_fp16",
+    rope_config_digest="18e18afcaccafade98daf13a54092927904649e1dd4eba8299ab717d5d94ff45",
+    runtime_compatibility="pytorch_cu121_v1",
+    tenant_id="tenant_alpha",
+)
 WIRE_KEY = b"qc_comprehensive_wire_key_32byte"
 STORE_KEY = b"qc_comprehensive_store_key_32byt"
 
 
 @pytest.fixture(scope="module")
 def qwen_env():
-    """Loads Qwen/Qwen2.5-0.5B-Instruct on cuda:0 (or cpu if CUDA unavailable) for real equivalence tests."""
+    """
+    Loads Qwen/Qwen2.5-0.5B-Instruct at pinned revision 7ae557604adf67be50417f59c2c2f167def9a775
+    via TrustedLocalModelLoader (verifying real local artifact SHA-256 digests and binding
+    the loaded model instance to an IssuedReuseAuthority).
+    """
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    cache_dir = str(LOCAL_MODEL_DIR) if LOCAL_MODEL_DIR.exists() else None
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, cache_dir=cache_dir)
-    model_fp16 = AutoModelForCausalLM.from_pretrained(
-        MODEL_ID,
+    registry = ApprovedManifestRegistry()
+    registry.register_approved_manifest(PINNED_QWEN_MANIFEST)
+    issuer = IdentityIssuanceAuthority(registry=registry)
+    bundle = TrustedLocalModelLoader.load_verified_model(
+        cache_or_snapshot_dir=LOCAL_MODEL_DIR,
+        model_name=MODEL_ID,
+        snapshot_revision=PINNED_SNAPSHOT_REVISION,
+        manifest=PINNED_QWEN_MANIFEST,
+        issuer=issuer,
+        device=device,
         torch_dtype=torch.float16,
-        cache_dir=cache_dir,
-    ).to(device)
-    model_fp16.eval()
+    )
     return {
         "device": device,
-        "tokenizer": tokenizer,
-        "model_fp16": model_fp16,
-        "cache_dir": cache_dir,
+        "tokenizer": bundle.tokenizer,
+        "model_fp16": bundle.model,
+        "cache_dir": str(LOCAL_MODEL_DIR),
+        "verified_bundle": bundle,
+        "issuer": issuer,
+        "registry": registry,
     }
 
 
 @pytest.fixture
 def verified_authority_bundle(tmp_path):
-    """Creates a verified ModelIdentityManifest, artifact files, registry, and issuer."""
+    """
+    SYNTHETIC UNIT-TEST FIXTURE ONLY:
+    Creates a synthetic ModelIdentityManifest, synthetic marker files, registry, and issuer
+    for isolated namespace/tampering unit tests in Section 6. Not valid for real model instances.
+    """
     art_dir = tmp_path / "artifacts"
     art_dir.mkdir(parents=True, exist_ok=True)
     w_bytes = b"QWEN25_05B_WEIGHTS_CANONICAL_DIGEST_SOURCE"
@@ -247,17 +295,22 @@ def test_sec3_real_kv_cache_cold_warm_partial_full_evict_restore_and_concurrent(
     tmp_path, qwen_env, verified_authority_bundle
 ):
     """
-    Exercises genuine PyTorchPagedKVAdapter reuse with real Qwen/Qwen2.5-0.5B-Instruct KV tensors:
+    Exercises genuine PyTorchPagedKVAdapter reuse with real Qwen/Qwen2.5-0.5B-Instruct KV tensors
+    authorized via TrustedLocalModelLoader (real artifact SHA-256 verification + live model instance binding):
     - Cold prefill caching -> Warm partial-prefix hit -> Changed suffix
     - 100% block-aligned prefix hit (32 tokens) preserving final token for CausalLM forward
     - RAM eviction -> Tier 2 disk QCKVP2 authenticated restoration -> Numerical parity
-    - Concurrent sequences sharing prefix blocks and disjoint prefixes
+    - Rejects synthetic-fixture authority (`verified_authority_bundle`) for the real loaded model
     """
-    model = qwen_env["model_fp16"]
+    bundle = qwen_env["verified_bundle"]
+    model = bundle.model
     device = qwen_env["device"]
-    issuer = verified_authority_bundle["issuer"]
-    authority = verified_authority_bundle["authority"]
-    ns = verified_authority_bundle["namespace"]
+    issuer = qwen_env["issuer"]
+    authority = bundle.authority
+    ns = bundle.namespace
+
+    assert authority.require_instance_binding is True
+    assert authority.model_instance_id == bundle.model_instance_id
 
     manager = PagedKVManager(
         storage_dir=tmp_path / "kv_real_parity",
@@ -265,7 +318,22 @@ def test_sec3_real_kv_cache_cold_warm_partial_full_evict_restore_and_concurrent(
         auth_key=STORE_KEY,
         trusted_issuer=issuer,
     )
-    adapter = PyTorchPagedKVAdapter(manager=manager, device=device)
+    adapter = PyTorchPagedKVAdapter(manager=manager, device=device, model=model)
+
+    # Verify synthetic-fixture authority cannot authorize the real loaded model
+    synth_auth = verified_authority_bundle["authority"]
+    synth_ns = verified_authority_bundle["namespace"]
+    with pytest.raises(ValueError, match="KV cache extraction denied"):
+        adapter.extract_and_cache_sequence_kv(
+            "seq-synth-rejected",
+            list(range(16)),
+            tuple(
+                (torch.randn(1, 2, 16, 64, dtype=torch.float16, device=device), torch.randn(1, 2, 16, 64, dtype=torch.float16, device=device))
+                for _ in range(2)
+            ),
+            namespace=synth_ns,
+            authority=synth_auth,
+        )
 
     # 32-token shared prefix (2 full 16-token blocks) + 8-token suffix A / suffix B
     shared_prefix = [151644, 8948, 198, 2610, 525, 264, 10950, 17847, 13, 151645, 198, 151644, 872, 198, 3838, 374] * 2

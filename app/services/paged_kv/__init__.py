@@ -12,8 +12,15 @@ from .identity import (
     IssuedReuseAuthority,
     get_default_issuance_authority,
     get_default_manifest_registry,
+    stream_file_sha256,
 )
 from .manager import PagedKVManager
+from .model_loader import (
+    TrustedLocalModelLoader,
+    VerifiedLoadedModelBundle,
+    compute_live_model_fingerprint,
+    verify_live_model_instance,
+)
 from .page_table import BlockMapping, PhysicalBlockPool, VirtualBlockTable
 from .store import PagedKVStore
 
@@ -34,4 +41,9 @@ __all__ = [
     "IssuedReuseAuthority",
     "get_default_issuance_authority",
     "get_default_manifest_registry",
+    "stream_file_sha256",
+    "TrustedLocalModelLoader",
+    "VerifiedLoadedModelBundle",
+    "compute_live_model_fingerprint",
+    "verify_live_model_instance",
 ]

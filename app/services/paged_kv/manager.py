@@ -48,6 +48,7 @@ class PagedKVManager:
         self.pool.eviction_callback = self._evict_lru_page_to_disk
         self.sequence_namespaces: Dict[str, ExecutionNamespace] = {}
         self.sequence_authorities: Dict[str, IssuedReuseAuthority] = {}
+        self.sequence_model_instances: Dict[str, Optional[str]] = {}
 
         # Statistics
         self.total_queries = 0
@@ -63,6 +64,7 @@ class PagedKVManager:
         namespace: Optional[Union[ExecutionNamespace, str]] = None,
         authority: Optional[Any] = None,
         dummy_tensor_generator: Optional[Callable[[TokenBlock], bytes]] = None,
+        model_instance_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Ingests a prompt sequence bound to an immutable execution namespace,
@@ -92,12 +94,15 @@ class PagedKVManager:
                 is_authorized = self.trusted_issuer.validate_authority_for_reuse(
                     authority=authority,
                     namespace=namespace,
+                    model_instance_id=model_instance_id,
                 )
 
             if is_authorized and isinstance(authority, IssuedReuseAuthority):
                 self.sequence_authorities[sequence_id] = authority
+                self.sequence_model_instances[sequence_id] = model_instance_id
             else:
                 self.sequence_authorities.pop(sequence_id, None)
+                self.sequence_model_instances.pop(sequence_id, None)
 
             matched_blocks: List[TokenBlock] = []
             matched_token_count = 0
@@ -215,7 +220,11 @@ class PagedKVManager:
                 evicted += 1
             return evicted
 
-    def restore_sequence_to_ram(self, sequence_id: str) -> int:
+    def restore_sequence_to_ram(
+        self,
+        sequence_id: str,
+        model_instance_id: Optional[str] = None,
+    ) -> int:
         """
         Ensures all physical blocks of a sequence are loaded in Tier 1 RAM,
         remapping unmapped pages from disk, validating identities, and re-enforcing RAM quotas.
@@ -224,8 +233,12 @@ class PagedKVManager:
             hashes = self.table.get_block_hashes(sequence_id)
             auth = self.sequence_authorities.get(sequence_id)
             ns = self.sequence_namespaces.get(sequence_id)
+            recorded_instance = self.sequence_model_instances.get(sequence_id)
+            effective_instance = model_instance_id if model_instance_id is not None else recorded_instance
             if auth is not None:
-                if self.trusted_issuer is None or not self.trusted_issuer.validate_authority_for_reuse(auth, ns):
+                if self.trusted_issuer is None or not self.trusted_issuer.validate_authority_for_reuse(
+                    auth, ns, model_instance_id=effective_instance
+                ):
                     raise ValueError(
                         f"Cannot restore sequence '{sequence_id}' to RAM: reuse authority has been revoked or invalidated."
                     )
@@ -254,6 +267,7 @@ class PagedKVManager:
         with self._lock:
             self.sequence_namespaces.pop(sequence_id, None)
             self.sequence_authorities.pop(sequence_id, None)
+            self.sequence_model_instances.pop(sequence_id, None)
             freed_bids = self.table.release_sequence(sequence_id)
             return len(freed_bids)
 

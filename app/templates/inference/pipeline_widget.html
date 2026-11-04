@@ -149,8 +149,8 @@
               <strong style="color: #60a5fa; font-family: var(--font-mono);">{{ topo.live_metrics.wan_rtt_p50_ms }} ms</strong>
             </div>
             <div>
-              <span style="color: #64748b;">Inter-Node Throughput:</span>
-              <strong style="color: #38bdf8; font-family: var(--font-mono);">{{ topo.live_metrics.tokens_per_sec }} tok/s</strong>
+              <span style="color: #64748b;">Synthetic Frame Rate:</span>
+              <strong style="color: #38bdf8; font-family: var(--font-mono);">{{ topo.live_metrics.synthetic_steps_per_sec or topo.live_metrics.tokens_per_sec }} steps/s (synthetic)</strong>
             </div>
           </div>
         </div>

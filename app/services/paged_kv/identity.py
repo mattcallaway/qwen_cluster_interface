@@ -5,9 +5,40 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional, Sequence, Union
+from typing import Any, Dict, Optional, Sequence, Tuple, Union
 
 from .hasher import ExecutionNamespace, ModelIdentityManifest
+
+STREAM_CHUNK_BYTES = 4 * 1024 * 1024
+FAST_FULL_HASH_LIMIT_BYTES = 32 * 1024 * 1024
+
+
+def stream_file_sha256(
+    path: Union[str, Path],
+    chunk_size: int = STREAM_CHUNK_BYTES,
+) -> Tuple[str, int, float]:
+    """
+    Computes SHA-256 digest of a file using bounded streaming chunks
+    so large model weight files are never loaded into memory at once.
+    Returns (hex_digest, total_bytes, st_mtime).
+    """
+    p = Path(path).resolve()
+    if not p.is_file():
+        raise FileNotFoundError(f"Artifact file not found: {p}")
+    stat_before = p.stat()
+    h = hashlib.sha256()
+    total_read = 0
+    with open(p, "rb") as f:
+        while True:
+            chunk = f.read(chunk_size)
+            if not chunk:
+                break
+            h.update(chunk)
+            total_read += len(chunk)
+    stat_after = p.stat()
+    if stat_after.st_size != total_read or abs(stat_after.st_mtime - stat_before.st_mtime) > 1e-6:
+        raise ValueError(f"Concurrent modification detected while streaming artifact {p}")
+    return h.hexdigest(), total_read, stat_after.st_mtime
 
 
 @dataclass(frozen=True)
@@ -38,6 +69,7 @@ class IssuedReuseAuthority:
         issued_at: float,
         issuer_token: str,
         model_instance_id: Optional[str] = None,
+        require_instance_binding: bool = False,
     ):
         if not authority_id or not isinstance(authority_id, str):
             raise ValueError("authority_id must be a non-empty string")
@@ -60,6 +92,7 @@ class IssuedReuseAuthority:
         self._issued_at = issued_at
         self._issuer_token = issuer_token
         self._model_instance_id = model_instance_id or manifest.model_name
+        self._require_instance_binding = bool(require_instance_binding)
         self._is_active = True
 
     @property
@@ -102,14 +135,18 @@ class IssuedReuseAuthority:
     def model_instance_id(self) -> str:
         return self._model_instance_id
 
+    @property
+    def require_instance_binding(self) -> bool:
+        return self._require_instance_binding
+
     def invalidate(self) -> None:
         """Revokes this authority token."""
         self._is_active = False
 
-    def verify_live_artifacts(self) -> bool:
+    def verify_live_artifacts(self, full_stream: bool = False) -> bool:
         """
         Guards against TOCTOU path substitution by re-checking that bound files
-        have not been modified, truncated, or replaced on disk.
+        have not been modified, truncated, or replaced on disk using streaming reads.
         """
         if not self._is_active:
             return False
@@ -129,10 +166,15 @@ class IssuedReuseAuthority:
             if stat.st_size != info.file_size or abs(stat.st_mtime - info.mtime) > 1e-4:
                 self._is_active = False
                 return False
-            actual_sha = hashlib.sha256(p.read_bytes()).hexdigest()
-            if actual_sha.lower() != info.sha256.lower():
-                self._is_active = False
-                return False
+            if full_stream or stat.st_size <= FAST_FULL_HASH_LIMIT_BYTES:
+                try:
+                    actual_sha, _, _ = stream_file_sha256(p)
+                except Exception:
+                    self._is_active = False
+                    return False
+                if actual_sha.lower() != info.sha256.lower():
+                    self._is_active = False
+                    return False
         return True
 
     def is_valid_for(self, namespace: ExecutionNamespace) -> bool:
@@ -220,9 +262,11 @@ class IdentityIssuanceAuthority:
         manifest: ModelIdentityManifest,
         artifact_paths: Dict[str, Union[str, Path]],
         tenant_id: Optional[str] = None,
+        model_instance_id: Optional[str] = None,
+        require_instance_binding: bool = False,
     ) -> IssuedReuseAuthority:
         """
-        Verifies actual artifact bytes on disk against an approved manifest.
+        Verifies actual artifact bytes on disk against an approved manifest using streaming SHA-256.
         Rejects unapproved manifests, missing files, empty files, or checksum mismatches.
         Issues an IssuedReuseAuthority token only on successful verification.
         """
@@ -259,11 +303,10 @@ class IdentityIssuanceAuthority:
             if not path.is_file():
                 raise FileNotFoundError(f"Artifact for role '{role}' not found at {path}")
 
-            file_bytes = path.read_bytes()
-            if len(file_bytes) == 0:
+            actual_sha, file_size, file_mtime = stream_file_sha256(path)
+            if file_size == 0:
                 raise ValueError(f"Artifact for role '{role}' at {path} is empty")
 
-            actual_sha = hashlib.sha256(file_bytes).hexdigest()
             expected_sha = expected_digests[role]
 
             if actual_sha.lower() != expected_sha.lower():
@@ -272,13 +315,12 @@ class IdentityIssuanceAuthority:
                     f"expected {expected_sha}, observed {actual_sha}"
                 )
 
-            stat = path.stat()
             bound_artifacts[role] = BoundArtifactInfo(
                 role=role,
                 file_path=str(path),
-                file_size=stat.st_size,
+                file_size=file_size,
                 sha256=actual_sha,
-                mtime=stat.st_mtime,
+                mtime=file_mtime,
             )
 
         # 3. Create issued authority
@@ -302,7 +344,8 @@ class IdentityIssuanceAuthority:
             bound_artifacts=bound_artifacts,
             issued_at=time.time(),
             issuer_token=self._issuer_secret,
-            model_instance_id=manifest.model_name,
+            model_instance_id=model_instance_id or manifest.model_name,
+            require_instance_binding=require_instance_binding,
         )
 
         with self._lock:
@@ -375,7 +418,9 @@ class IdentityIssuanceAuthority:
             ):
                 return False
 
-            # 8. Check model instance binding if specified
+            # 8. Check model instance binding
+            if authority.require_instance_binding and not model_instance_id:
+                return False
             if model_instance_id and authority.model_instance_id != model_instance_id:
                 return False
 

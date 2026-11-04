@@ -29,6 +29,7 @@ except ImportError:
 from app.services.paged_kv.hasher import ExecutionNamespace
 from app.services.paged_kv.identity import IssuedReuseAuthority
 from app.services.paged_kv.manager import PagedKVManager
+from app.services.paged_kv.model_loader import verify_live_model_instance
 
 
 class PyTorchPagedKVAdapter:
@@ -37,11 +38,17 @@ class PyTorchPagedKVAdapter:
     Stores and reconstructs multi-layer Key and Value tensors for 16-token page blocks.
     """
 
-    def __init__(self, manager: PagedKVManager, device: str = "cuda:0"):
+    def __init__(
+        self,
+        manager: PagedKVManager,
+        device: str = "cuda:0",
+        model: Optional[Any] = None,
+    ):
         if not HAS_TORCH:
             raise RuntimeError("PyTorch and transformers are required to use PyTorchPagedKVAdapter.")
         self.manager = manager
         self.device = device
+        self.model = model
         # In-RAM tensor block lookup: block_hash -> (key_tensor_dict, value_tensor_dict)
         # Each dict maps layer_idx -> tensor of shape (batch, heads, 16, head_dim)
         self._ram_tensor_cache: Dict[str, Tuple[List[Any], List[Any]]] = {}
@@ -53,6 +60,16 @@ class PyTorchPagedKVAdapter:
                 prev_callback(block_hash)
 
         self.manager.store.on_page_evicted = _on_evict
+
+    def _resolve_model_instance_id(
+        self,
+        namespace: ExecutionNamespace,
+        model: Optional[Any] = None,
+    ) -> Optional[str]:
+        target_model = model if model is not None else self.model
+        if target_model is None:
+            return None
+        return verify_live_model_instance(target_model, expected_namespace=namespace)
 
     def serialize_page_tensors(
         self,
@@ -84,6 +101,7 @@ class PyTorchPagedKVAdapter:
         past_key_values: Any,
         namespace: ExecutionNamespace,
         authority: Optional[IssuedReuseAuthority] = None,
+        model: Optional[Any] = None,
     ) -> int:
         """
         Extracts 16-token KV tensor slices from past_key_values and saves them
@@ -94,6 +112,19 @@ class PyTorchPagedKVAdapter:
         if num_full_blocks == 0:
             return 0
 
+        target_model = model if model is not None else self.model
+        model_instance_id = self._resolve_model_instance_id(namespace, model=target_model)
+
+        if self.manager.trusted_issuer is not None and (authority is not None or target_model is not None):
+            if not self.manager.trusted_issuer.validate_authority_for_reuse(
+                authority=authority,
+                namespace=namespace,
+                model_instance_id=model_instance_id,
+            ):
+                raise ValueError(
+                    "KV cache extraction denied: authority and live model instance binding failed verification."
+                )
+
         expected_blocks = self.manager.hasher.chunk_tokens(token_ids, namespace=namespace)
         expected_hashes = [b.block_hash for b in expected_blocks]
         existing_hashes = (
@@ -102,13 +133,18 @@ class PyTorchPagedKVAdapter:
             else None
         )
 
-        # Only ingest if sequence is not already mapped with identical block hashes from prepare_prefill_context
-        if existing_hashes != expected_hashes:
+        # Only skip re-ingest if sequence is already mapped with identical block hashes AND authority/instance state
+        if (
+            existing_hashes != expected_hashes
+            or self.manager.sequence_authorities.get(sequence_id) is not authority
+            or self.manager.sequence_model_instances.get(sequence_id) != model_instance_id
+        ):
             self.manager.ingest_prompt(
                 sequence_id=sequence_id,
                 tokens=token_ids,
                 namespace=namespace,
                 authority=authority,
+                model_instance_id=model_instance_id,
             )
 
         block_hashes = self.manager.table.get_block_hashes(sequence_id)
@@ -158,6 +194,7 @@ class PyTorchPagedKVAdapter:
         token_ids: List[int],
         namespace: ExecutionNamespace,
         authority: Optional[IssuedReuseAuthority] = None,
+        model: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """
         Inspects PagedKVManager for existing prefix hits. If authorized reuse exists,
@@ -165,11 +202,13 @@ class PyTorchPagedKVAdapter:
         the remaining suffix tokens for accelerated prefill.
         """
         t0 = time.perf_counter()
+        model_instance_id = self._resolve_model_instance_id(namespace, model=model)
         ingest_res = self.manager.ingest_prompt(
             sequence_id=sequence_id,
             tokens=token_ids,
             namespace=namespace,
             authority=authority,
+            model_instance_id=model_instance_id,
         )
 
         matched_tokens = ingest_res.get("matched_tokens", 0)
