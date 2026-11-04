@@ -575,3 +575,79 @@ async def list_tool_catalogue(request: Request):
         return bad
     from app.services.orchestration import tool_catalogue
     return await _do(lambda: {"tools": tool_catalogue.GLOBAL_TOOL_CATALOGUE.list_tools()})
+
+
+@router.get(API + "/working-memory")
+async def get_project_working_memory_api(request: Request, project_id: str):
+    user, bad = await _auth(request)
+    if bad:
+        return bad
+    from app.services.orchestration import working_memory as wm
+    return await _do(
+        lambda: {
+            "authoritative_state": wm.derive_authoritative_project_state(project_id),
+            "memory_accounting": wm.get_memory_accounting_report(project_id),
+        }
+    )
+
+
+@router.post(API + "/working-memory/query")
+async def query_project_working_memory_api(request: Request, project_id: str):
+    user, bad = await _auth(request, True)
+    if bad:
+        return bad
+    b = await _body(request)
+    from app.services.orchestration import working_memory as wm
+    return await _do(
+        lambda: wm.WorkingMemoryRetriever.query(
+            project_id,
+            str(b.get("query_type", "remaining_for_completion")),
+            task_key=b.get("task_key"),
+            req_id=b.get("req_id"),
+            conclusion_id=b.get("conclusion_id"),
+            search_text=b.get("search_text"),
+            since_checkpoint_seq=b.get("since_checkpoint_seq"),
+            limit=int(b.get("limit", 10)),
+            offset=int(b.get("offset", 0)),
+        )
+    )
+
+
+@router.get(API + "/task-contracts")
+async def get_project_task_contracts_api(request: Request, project_id: str):
+    user, bad = await _auth(request)
+    if bad:
+        return bad
+    from app.services.orchestration import working_memory as wm
+    return await _do(
+        lambda: {
+            "contracts": wm.list_task_contracts(project_id),
+            "integration_check": wm.verify_project_task_integration(project_id),
+        }
+    )
+
+
+@router.post(API + "/park")
+async def park_project_api(request: Request, project_id: str):
+    user, bad = await _auth(request, True)
+    if bad:
+        return bad
+    b = await _body(request)
+    from app.services.orchestration import working_memory as wm
+    return await _do(
+        lambda: wm.park_project(
+            project_id,
+            actor=user,
+            reason=str(b.get("reason", "User requested park via API")),
+            active_process_cleanup_confirmed=bool(b.get("active_process_cleanup_confirmed", True)),
+        )
+    )
+
+
+@router.post(API + "/resume-working-memory")
+async def resume_project_working_memory_api(request: Request, project_id: str):
+    user, bad = await _auth(request, True)
+    if bad:
+        return bad
+    from app.services.orchestration import working_memory as wm
+    return await _do(lambda: wm.resume_project(project_id, actor=user))

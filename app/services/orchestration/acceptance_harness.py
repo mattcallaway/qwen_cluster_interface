@@ -206,6 +206,34 @@ def execute_supplier_selection_pilot(
     # Persist initial requirement ledger
     ledger = intake_mod.parse_intake_requirements(initial_intake)
     intake_mod.persist_requirement_ledger(project_id, ledger, run_id=run_id, actor="operator")
+    from app.services.orchestration import working_memory as wm
+    wm.register_task_contract(
+        project_id,
+        run_id=run_id,
+        task_key="t1_reconcile_quotes",
+        purpose="Resolve latest valid supplier quote revisions and superseded/withdrawn quotes.",
+        expected_output="quote_reconciliation_ledger.json",
+        bound_requirement_ids=["req-obj-1", "req-del-7", "req-crit-10"],
+        depends_on_task_keys=[],
+    )
+    wm.register_task_contract(
+        project_id,
+        run_id=run_id,
+        task_key="t2_evaluate_constraints",
+        purpose="Calculate exact Decimal costs and compare options against hard/soft constraints.",
+        expected_output="supplier_recommendation.json",
+        bound_requirement_ids=["req-con-2", "req-con-3", "req-con-4", "req-con-5", "req-con-6", "req-del-8", "req-crit-11"],
+        depends_on_task_keys=["t1_reconcile_quotes"],
+    )
+    wm.register_task_contract(
+        project_id,
+        run_id=run_id,
+        task_key="t3_synthesize_recommendation",
+        purpose="Synthesize evidence-backed supplier recommendation report.",
+        expected_output="supplier_recommendation.md",
+        bound_requirement_ids=["req-del-9", "req-crit-12"],
+        depends_on_task_keys=["t2_evaluate_constraints"],
+    )
 
     # Step 1: Resolve quote revisions & write upstream artifact (preserved across later budget ceiling change)
     quote_res = tool_catalogue.resolve_quote_revisions(SYNTHETIC_SUPPLIER_QUOTES, as_of_date="2026-11-04")
@@ -214,6 +242,20 @@ def execute_supplier_selection_pilot(
         run, None, "quote_reconciliation_ledger.json", quote_bytes, provenance="controller_generated", producer_attempt=1
     )
     artifact_manager.set_validation(quote_art_id, "valid", "Verified quote revision lineage and superseded quotes.")
+    wm.execute_checkpointed_work_boundary(
+        project_id,
+        "t1_reconcile_quotes",
+        lambda _pkt: {
+            "epistemic_category": "source_observation",
+            "verification_status": "verified_for_scope",
+            "verified": True,
+            "statement": "Resolved latest supplier quotes: SUP-APEX Rev 2 ($14,200.00), SUP-BEACON Rev 2 ($12,150.00; Rev 1 withdrawn), SUP-CREST Rev 1 ($10,900.00).",
+            "artifact_refs": [quote_art_id],
+            "output_summary": {"active_suppliers": 3, "quote_artifact_id": quote_art_id},
+            "next_action": "execute_t2_evaluate_constraints",
+        },
+        idempotency_key=f"pilot:t1:{project_id}",
+    )
 
     # Step 2: Phase 1 Option Comparison ($15,000 ceiling, fastest_delivery preference)
     phase1_constraints = {
@@ -232,6 +274,21 @@ def execute_supplier_selection_pilot(
         provenance="controller_generated", producer_attempt=1,
     )
     artifact_manager.set_validation(rec1_json_id, "valid", "Phase 1 comparison verified ($15,000 ceiling -> SUP-APEX).")
+    wm.execute_checkpointed_work_boundary(
+        project_id,
+        "t2_evaluate_constraints",
+        lambda _pkt: {
+            "epistemic_category": "derived_result",
+            "verification_status": "verified_for_scope",
+            "verified": True,
+            "statement": "Phase 1 evaluation ($15,000.00 ceiling): SUP-APEX recommended at $14,200.00 (12 days).",
+            "artifact_refs": [rec1_json_id],
+            "output_summary": {"recommended_supplier": "SUP-APEX", "total_cost": "14200.00"},
+            "next_action": "execute_t3_synthesize_recommendation",
+        },
+        idempotency_key=f"pilot:t2:phase1:{project_id}",
+    )
+    park_res = wm.park_project(project_id, actor="operator", reason="Park before mid-flight budget review")
 
     # Record Phase 1 memory state
     context_manager.save_project_memory_state(
@@ -275,6 +332,12 @@ def execute_supplier_selection_pilot(
     # Step 4: Simulate Controller Restart & Resume from Persisted SQLite State
     resumed_ledger = intake_mod.load_durable_requirement_ledger(project_id)
     resumed_memory = context_manager.get_project_memory_state(project_id)
+    closure_inv = wm.invalidate_dependency_closure(
+        project_id,
+        changed_requirement_ids=["req-con-2"],
+        reason="Budget ceiling lowered to $13,000.00",
+    )
+    resume_wm_res = wm.resume_project(project_id, actor="operator")
 
     # Step 5: Re-evaluate under revised $13,000.00 ceiling
     phase2_constraints = dict(phase1_constraints, max_budget="13000.00")
@@ -352,6 +415,66 @@ def execute_supplier_selection_pilot(
         provenance="controller_generated", producer_attempt=2,
     )
     artifact_manager.set_validation(rec2_md_id, "valid", "Markdown recommendation verified against Decimal comparison.")
+    wm.register_task_contract(
+        project_id,
+        run_id=run_id,
+        task_key="t1_reconcile_quotes",
+        purpose="Resolve latest valid supplier quote revisions and superseded/withdrawn quotes.",
+        expected_output="quote_reconciliation_ledger.json",
+        bound_requirement_revision=resumed_ledger.revision_number,
+        bound_requirement_ids=["req-obj-1", "req-del-7", "req-crit-10"],
+        depends_on_task_keys=[],
+        status="verified",
+    )
+    wm.register_task_contract(
+        project_id,
+        run_id=run_id,
+        task_key="t2_evaluate_constraints",
+        purpose="Calculate exact Decimal costs and compare options against hard/soft constraints.",
+        expected_output="supplier_recommendation.json",
+        bound_requirement_revision=resumed_ledger.revision_number,
+        bound_requirement_ids=["req-con-2", "req-con-3", "req-con-4", "req-con-5", "req-con-6", "req-del-8", "req-crit-11"],
+        depends_on_task_keys=["t1_reconcile_quotes"],
+    )
+    wm.execute_checkpointed_work_boundary(
+        project_id,
+        "t2_evaluate_constraints",
+        lambda _pkt: {
+            "epistemic_category": "derived_result",
+            "verification_status": "verified_for_scope",
+            "verified": True,
+            "statement": "Phase 2 evaluation ($13,000.00 ceiling): SUP-BEACON recommended at $12,150.00 (18 days).",
+            "artifact_refs": [rec2_json_id],
+            "output_summary": {"recommended_supplier": "SUP-BEACON", "total_cost": "12150.00"},
+            "next_action": "execute_t3_synthesize_recommendation",
+        },
+        idempotency_key=f"pilot:t2:phase2:{project_id}",
+    )
+    wm.register_task_contract(
+        project_id,
+        run_id=run_id,
+        task_key="t3_synthesize_recommendation",
+        purpose="Synthesize evidence-backed supplier recommendation report.",
+        expected_output="supplier_recommendation.md",
+        bound_requirement_revision=resumed_ledger.revision_number,
+        bound_requirement_ids=["req-del-9", "req-crit-12"],
+        depends_on_task_keys=["t2_evaluate_constraints"],
+    )
+    wm.execute_checkpointed_work_boundary(
+        project_id,
+        "t3_synthesize_recommendation",
+        lambda _pkt: {
+            "epistemic_category": "verified_artifact",
+            "verification_status": "verified_for_scope",
+            "verified": True,
+            "statement": "Published verified supplier_recommendation.md under revision 2 ($13,000.00 ceiling -> SUP-BEACON).",
+            "artifact_refs": [rec2_md_id],
+            "output_summary": {"recommended_supplier": "SUP-BEACON", "report_artifact_id": rec2_md_id},
+            "next_action": "deliver",
+        },
+        idempotency_key=f"pilot:t3:phase2:{project_id}",
+    )
+    integ_check = wm.verify_project_task_integration(project_id)
 
     # Step 6: Evaluate Infeasible Variant ($10,000.00 budget ceiling) -> must return honest BLOCKED state
     infeasible_constraints = dict(phase2_constraints, max_budget="10000.00")
@@ -390,6 +513,12 @@ def execute_supplier_selection_pilot(
         "phase1_total_cost": phase1_cmp["recommended_option"]["total_cost"],
         "steering_result": steering_res,
         "resumed_checkpoint_version": resumed_memory["checkpoint_version"],
+        "working_memory_summary": {
+            "park_checkpoint_seq": park_res["checkpoint"]["checkpoint_seq"],
+            "closure_invalidation": closure_inv,
+            "resume_result": resume_wm_res,
+            "integration_check": integ_check,
+        },
         "phase2_recommended": phase2_cmp["recommended_option"]["option_id"],
         "phase2_total_cost": phase2_cmp["recommended_option"]["total_cost"],
         "preserved_quote_artifact_id": quote_art_id,

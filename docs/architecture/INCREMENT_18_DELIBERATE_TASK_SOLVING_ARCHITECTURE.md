@@ -105,6 +105,57 @@ When a step produces `failed` or `partial`, the deliberate loop executes a **5-s
 ## 6. Migration Path
 
 1. **Schema Migration 20 (`app/migrations.py`)**: Adds `project_requirement_items`, `project_requirement_revisions`, `project_memory_state`, and `procedure_outcome_registry` without altering existing Increment 1–19 tables.
-2. **Backward Compatibility**: All existing routes (`/projects`, `/tasks`, `/orchestration`, `/research`, `/artifacts`) and all 279 Increment 17 regression tests remain 100% compatible.
-3. **Incremental Rollout**: The deliberate task-solving loop is accessible through `app/services/orchestration/deliberate_loop.py`, integrated with `/chat` (`app/routes/chat.py`) and `/projects/{id}/orchestration` (`app/routes/orchestration.py`), and evaluated against the 20 acceptance tasks in `COLLECTIVE_ACCEPTANCE_TASKS.json`.
+2. **Schema Migration 21 (`app/migrations.py`)**: Adds live database-backed working-memory tables: `project_task_contracts`, `project_epistemic_items`, `project_epistemic_fts` (FTS5 virtual table), `project_working_checkpoints` (protected by append-only SQLite triggers `project_working_checkpoints_no_update` and `project_working_checkpoints_no_delete`), and `project_artifact_publication_journal`.
+3. **Backward Compatibility**: All existing routes (`/projects`, `/tasks`, `/orchestration`, `/research`, `/artifacts`) and Increment 17 regression suites remain 100% compatible.
+4. **Incremental Rollout**: The deliberate task-solving loop and working-memory subsystem are implemented in `app/services/orchestration/deliberate_loop.py` and `app/services/orchestration/working_memory.py`, integrated with `/chat` (`app/routes/chat.py`) and `/api/v1/projects/{id}/orchestration` (`app/routes/orchestration.py`), and verified against the 20 acceptance tasks in `COLLECTIVE_ACCEPTANCE_TASKS.json` plus 17 working-memory adversarial & API tests in `tests/test_working_memory_adversarial.py`.
+
+---
+
+## 7. Live Database-Backed Working Memory (`app/services/orchestration/working_memory.py`)
+
+To enable Qwen Collective to break substantial projects into manageable tasks without losing the whole project's requirements, constraints, evidence, or progress, Increment 18 implements **live database-backed working memory** across three coordinated levels:
+
+### 7.1 Three Coordinated Memory Levels
+- **Level A — Resident Working Context (`WorkingSetCache` & `assemble_scoped_work_packet`)**:
+  - Bounded in-RAM working-set cache (`max_cached_records=128`, `max_cache_bytes=524,288`) and scoped task packet (`max_total_chars=5,200`, `pinned_budget_chars=1,800`, `reserved_output_chars=1,200`).
+  - Essential project intent (current requirement revision, objective, hard constraints, exclusions, acceptance criteria, and active task contract) is **pinned** and never silently truncated. If pinned intent exceeds the configured budget, `assemble_scoped_work_packet` raises `ContextBudgetExceededError` recommending task division rather than truncating constraints.
+  - Note: This is logical paging of structured project knowledge into task context; it does not replace model attention/KV memory or claim distributed inference capability.
+- **Level B — Database-Backed Working State (SQLite WAL, Migrations 20 & 21)**:
+  - `project_requirement_items` & `project_requirement_revisions`: Versioned requirement ledger with revision lineage and supersession tracking.
+  - `project_task_contracts`: Explicit per-task contracts binding `task_key` to `bound_objective`, `bound_requirement_revision`, `bound_requirement_ids_json`, `depends_on_task_keys_json`, `owned_fields_json`, `resource_budget_json`, `acceptance_checks_json`, and `output_summary_json`.
+  - `project_epistemic_items` & `project_epistemic_fts`: Fine-grained operational working-memory items strictly separated across 8 epistemic categories (`user_instruction_or_decision`, `source_observation`, `supported_claim`, `derived_result`, `hypothesis_or_estimate`, `model_proposal`, `verified_artifact`, `verification_failure`), indexed in SQLite FTS5 for project-scoped retrieval.
+  - `project_working_checkpoints`: Append-only, immutable checkpoints recorded at `task_boundary`, `park`, `resume`, `steer`, `cancel`, and `manual` boundaries.
+  - `project_artifact_publication_journal`: Two-phase crash recovery journal (`intent_logged -> artifact_written -> state_committed | rolled_back | reconciled_after_crash`) coordinating filesystem/CAS artifact writes with SQLite state commits.
+- **Level C — Detailed Artifacts in Content-Addressable Storage (`artifact_manager.py` / `artifacts/storage.py`)**:
+  - Full reports, raw source snapshots, datasets, code bundles, and test logs remain in CAS/filesystem storage and are referenced by exact `artifact_id`, `version`, and `sha256` digest rather than stuffed into model prompts.
+
+### 7.2 Authoritative Project State (`derive_authoritative_project_state`)
+Derived directly from SQLite tables (never from an unverified model summary), answering all 8 operational questions:
+1. **What did the user ask for?** (`what_user_asked_for`: objective, deliverables, acceptance criteria, hard constraints, soft preferences, exclusions)
+2. **Which requirement revision is current?** (`current_requirement_revision`: revision number, change type, reason, timestamp)
+3. **What is complete and independently checked?** (`completed_and_independently_checked`: verified tasks, verified CAS artifacts, verified epistemic results)
+4. **What is proposed or unverified?** (`proposed_or_unverified`: model proposals, hypotheses/estimates, `unknown`-status items, unverified artifacts, stale tasks)
+5. **What is blocked, contradictory, or missing?** (`blocked_contradictory_or_missing`: blocked tasks, verification failures, requirement/evidence contradictions, material missing info)
+6. **Which task is active?** (`active_task`)
+7. **What should happen next?** (`next_action`)
+8. **What changed since the last checkpoint?** (`last_checkpoint` & `delta_since_last_checkpoint`)
+
+### 7.3 Transactional Work Boundary, Revision Fencing, Dependency-Closure Invalidation & Retrieval
+- **7-Step Checkpointed Work Boundary (`execute_checkpointed_work_boundary`)**:
+  1. Reads current requirement and state revisions without holding a database transaction open across inference or tool execution.
+  2. Assembles a bounded, version-checked scoped work packet (`assemble_scoped_work_packet`).
+  3. Executes one native model/tool action into a bounded intermediate buffer (`MAX_INTERMEDIATE_BUFFER_BYTES = 256 KiB`).
+  4. Verifies optimistic concurrency fencing (`StaleWorkerResultError` if `requirement_revision` changed mid-flight).
+  5. Coordinates two-phase artifact publication via `project_artifact_publication_journal` (`reconcile_crash_publication_journal` recovers or rolls back interrupted writes on restart).
+  6. Records qualifier-preserving epistemic items (`record_epistemic_item`, keeping missing status as `'unknown'` and stripping prompt injections from untrusted documents) and updates `project_task_contracts`.
+  7. Commits an immutable row in `project_working_checkpoints`.
+- **Dependency-Closure Invalidation (`invalidate_dependency_closure`)**:
+  - Computes the transitive closure over `bound_requirement_ids`, `input_artifact_versions`, and `depends_on_task_keys`, marking only affected downstream tasks/artifacts/claims `'stale'` while preserving unaffected completed work.
+- **Active Working-Memory Retrieval (`WorkingMemoryRetriever`)**:
+  - Executes SQL-filtered (`WHERE project_id = ?`), paginated (`LIMIT ? OFFSET ?`) queries supporting all 7 operational query types (`needed_for_task`, `why_approach_selected`, `depends_on_requirement`, `evidence_for_conclusion`, `changed_since_pass`, `proceed_while_blocked`, `remaining_for_completion`) plus project-isolated FTS5 search (`fts_search`) and index rebuild (`rebuild_epistemic_fts_index`).
+- **Park, Resume, Cancellation & Parallel Merge Rules**:
+  - `park_project` and `cancel_task_or_project` fail closed with `ParkOrCancelCleanupError` when `active_process_cleanup_confirmed=False` (`cancel_pending_cleanup_unknown`).
+  - `resume_project` reconciles crash journals, checks for requirement revisions since park, preserves verified upstream tasks, and resumes at the next pending/stale task without replaying the conversation.
+  - `commit_parallel_task_update` enforces per-task `owned_fields` and raises `ParallelConflictError` on unowned or conflicting writes.
+
 

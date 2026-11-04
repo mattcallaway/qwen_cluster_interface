@@ -24,8 +24,8 @@
   },
   "acceptance_suite": {
     "schema": "qc.capability_acceptance_results.v1",
-    "executed_at": "2026-11-04T11:04:36.215112+00:00",
-    "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+    "executed_at": "2026-11-04T11:51:26.562893+00:00",
+    "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
     "fixture_version": "qc.accept_fixtures.v1",
     "oracle_version": "qc.accept_oracles.v1",
     "task_count": 20,
@@ -40,21 +40,21 @@
       "meets_provisional_target_16_of_20": true
     },
     "supplier_pilot_summary": {
-      "project_id": "prj-f51beb2956a849ddb7116eb4299471ee",
-      "run_id": "run-7f642cc9dbc94c8d",
+      "project_id": "prj-0cf19cb5fd594f5eb9d9611e5114a436",
+      "run_id": "run-43864b8af5dd4ef8",
       "phase1_recommended": "SUP-APEX",
       "phase1_total_cost": "14200.00",
       "steering_result": {
-        "project_id": "prj-f51beb2956a849ddb7116eb4299471ee",
-        "run_id": "run-7f642cc9dbc94c8d",
+        "project_id": "prj-0cf19cb5fd594f5eb9d9611e5114a436",
+        "run_id": "run-43864b8af5dd4ef8",
         "action": "steer",
         "revision_number": 2,
         "invalidated_tasks": [],
         "invalidated_artifacts": [
-          "art-82464c29cc704d7b"
+          "art-b735e0fc0e704608"
         ],
         "preserved_artifacts": [
-          "art-8f1b0e07941446b4"
+          "art-80fec4b25da44610"
         ],
         "conflict_check": {
           "has_conflicts": false,
@@ -65,15 +65,91 @@
         },
         "active_requirements_count": 12
       },
-      "resumed_checkpoint_version": 2,
+      "resumed_checkpoint_version": 5,
+      "working_memory_summary": {
+        "park_checkpoint_seq": 3,
+        "closure_invalidation": {
+          "project_id": "prj-0cf19cb5fd594f5eb9d9611e5114a436",
+          "reason": "Budget ceiling lowered to $13,000.00",
+          "invalidated_tasks": [
+            "t2_evaluate_constraints",
+            "t3_synthesize_recommendation"
+          ],
+          "preserved_tasks": [
+            "t1_reconcile_quotes"
+          ],
+          "invalidated_epistemic_ids": [
+            "epi-dc249aafb5e34b94"
+          ],
+          "invalidated_artifact_ids": [
+            "art-b735e0fc0e704608"
+          ]
+        },
+        "resume_result": {
+          "ok": true,
+          "status": "resumed",
+          "project_id": "prj-0cf19cb5fd594f5eb9d9611e5114a436",
+          "requirement_revision": 2,
+          "resumed_from_checkpoint_seq": 3,
+          "crash_recovery": {
+            "project_id": "prj-0cf19cb5fd594f5eb9d9611e5114a436",
+            "reconciled_count": 0,
+            "rolled_back_count": 0,
+            "reconciled_journal_ids": [],
+            "rolled_back_journal_ids": []
+          },
+          "preserved_verified_tasks": [
+            "t1_reconcile_quotes"
+          ],
+          "stale_tasks_requiring_revalidation": [
+            "t2_evaluate_constraints",
+            "t3_synthesize_recommendation"
+          ],
+          "next_task_key": "t2_evaluate_constraints",
+          "replayed_full_conversation": false,
+          "restarted_from_scratch": false,
+          "resume_checkpoint": {
+            "checkpoint_id": "wckpt-21912207167b48b7",
+            "project_id": "prj-0cf19cb5fd594f5eb9d9611e5114a436",
+            "checkpoint_seq": 4,
+            "boundary_type": "resume",
+            "requirement_revision": 2,
+            "state_revision": 6,
+            "completed_task_keys": [
+              "t1_reconcile_quotes"
+            ],
+            "verified_artifact_versions": [
+              {
+                "artifact_id": "art-80fec4b25da44610",
+                "filename": "quote_reconciliation_ledger.json",
+                "sha256": "61f17c90301a06697b8d77f24087c40503167b4a1de5e9638aaf09426265aead",
+                "version": 1
+              }
+            ],
+            "created_at": "2026-11-04T11:51:02.945022+00:00"
+          }
+        },
+        "integration_check": {
+          "schema": "qc.project_task_integration_check.v1",
+          "project_id": "prj-0cf19cb5fd594f5eb9d9611e5114a436",
+          "requirement_revision": 2,
+          "integration_verified": true,
+          "status": "verified_for_scope",
+          "active_requirements_count": 11,
+          "covered_requirements_count": 11,
+          "uncovered_requirements": [],
+          "stale_tasks": [],
+          "contradictions": []
+        }
+      },
       "phase2_recommended": "SUP-BEACON",
       "phase2_total_cost": "12150.00",
-      "preserved_quote_artifact_id": "art-8f1b0e07941446b4",
-      "invalidated_phase1_artifact_id": "art-82464c29cc704d7b",
+      "preserved_quote_artifact_id": "art-80fec4b25da44610",
+      "invalidated_phase1_artifact_id": "art-b735e0fc0e704608",
       "final_artifacts": [
-        "art-8f1b0e07941446b4",
-        "art-5980beaf3af54f57",
-        "art-661a6420599f4372"
+        "art-80fec4b25da44610",
+        "art-14ac552775e34d0b",
+        "art-16ff5ac2dafe4932"
       ],
       "infeasible_variant": {
         "status": "blocked",
@@ -82,12 +158,12 @@
         "blocker": "INFEASIBLE_CONSTRAINTS: 0 of 3 evaluated options satisfy all hard constraints. SUP-APEX: exceeds_max_budget ($14200.00 > ceiling $10000.00, over by $4200.00) | SUP-BEACON: exceeds_max_budget ($12150.00 > ceiling $10000.00, over by $2150.00) | SUP-CREST: exceeds_max_budget ($10900.00 > ceiling $10000.00, over by $900.00); missing_required_capabilities (iso27001); missing_required_dependencies (dep_api_v2)"
       },
       "native_lease_ids": [
-        "lease-cf4b5046172a4922"
+        "lease-6ee6c03eb06d4fe0"
       ],
       "model_used": "qwen2.5:3b",
       "model_calls": 1,
       "token_usage": 1504,
-      "elapsed_seconds": 26.129
+      "elapsed_seconds": 17.089
     },
     "tasks": [
       {
@@ -97,7 +173,7 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
         "model_identity": "qwen2.5:3b",
         "fixture_version": "qc.accept_fixtures.v1",
         "native_run_task_lease_ids": [
@@ -134,23 +210,23 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
         "model_identity": "qwen2.5:3b",
         "fixture_version": "qc.accept_fixtures.v1",
         "native_run_task_lease_ids": [
-          "lease-cf4b5046172a4922"
+          "lease-6ee6c03eb06d4fe0"
         ],
         "artifact_versions": [
           {
-            "artifact_id": "art-8f1b0e07941446b4",
+            "artifact_id": "art-80fec4b25da44610",
             "version": 2
           },
           {
-            "artifact_id": "art-5980beaf3af54f57",
+            "artifact_id": "art-14ac552775e34d0b",
             "version": 2
           },
           {
-            "artifact_id": "art-661a6420599f4372",
+            "artifact_id": "art-16ff5ac2dafe4932",
             "version": 2
           }
         ],
@@ -168,7 +244,7 @@
             "passed": true
           }
         ],
-        "elapsed_seconds": 26.129,
+        "elapsed_seconds": 17.089,
         "model_calls": 1,
         "token_usage": 1504,
         "user_interventions": 1,
@@ -183,11 +259,11 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
         "model_identity": "qwen2.5:1.5b",
         "fixture_version": "qc.accept_fixtures.v1",
         "native_run_task_lease_ids": [
-          "lease-2fd71d4e5c23496d"
+          "lease-5401428a27574804"
         ],
         "artifact_versions": [],
         "independent_check_results": [
@@ -200,7 +276,7 @@
             "passed": true
           }
         ],
-        "elapsed_seconds": 10.031,
+        "elapsed_seconds": 5.96,
         "model_calls": 1,
         "token_usage": 251,
         "user_interventions": 0,
@@ -215,11 +291,11 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
         "model_identity": "qwen2.5:3b",
         "fixture_version": "qc.accept_fixtures.v1",
         "native_run_task_lease_ids": [
-          "run:run-5799c0ce583e425e"
+          "run:run-aa1091219d384407"
         ],
         "artifact_versions": [
           {
@@ -240,7 +316,7 @@
             "passed": true
           }
         ],
-        "elapsed_seconds": 0.103,
+        "elapsed_seconds": 0.113,
         "model_calls": 0,
         "token_usage": 0,
         "user_interventions": 2,
@@ -255,7 +331,7 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
         "model_identity": "qwen2.5:3b",
         "fixture_version": "qc.accept_fixtures.v1",
         "native_run_task_lease_ids": [
@@ -263,7 +339,7 @@
         ],
         "artifact_versions": [
           {
-            "artifact_id": "art-8f1b0e07941446b4",
+            "artifact_id": "art-80fec4b25da44610",
             "version": 1
           }
         ],
@@ -296,7 +372,7 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
         "model_identity": "qwen2.5:3b",
         "fixture_version": "qc.accept_fixtures.v1",
         "native_run_task_lease_ids": [
@@ -313,7 +389,7 @@
             "passed": true
           }
         ],
-        "elapsed_seconds": 0.0,
+        "elapsed_seconds": 0.001,
         "model_calls": 0,
         "token_usage": 0,
         "user_interventions": 0,
@@ -328,7 +404,7 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
         "model_identity": "qwen2.5:3b",
         "fixture_version": "qc.accept_fixtures.v1",
         "native_run_task_lease_ids": [
@@ -369,7 +445,7 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
         "model_identity": "qwen2.5:3b",
         "fixture_version": "qc.accept_fixtures.v1",
         "native_run_task_lease_ids": [
@@ -377,7 +453,7 @@
         ],
         "artifact_versions": [
           {
-            "artifact_id": "art-a5d50844286343bc",
+            "artifact_id": "art-1dbe467d944d4824",
             "version": 1
           }
         ],
@@ -391,7 +467,7 @@
             "passed": true
           }
         ],
-        "elapsed_seconds": 0.063,
+        "elapsed_seconds": 0.057,
         "model_calls": 0,
         "token_usage": 0,
         "user_interventions": 0,
@@ -406,7 +482,7 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
         "model_identity": "qwen2.5:3b",
         "fixture_version": "qc.accept_fixtures.v1",
         "native_run_task_lease_ids": [
@@ -438,23 +514,23 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
         "model_identity": "qwen2.5:3b",
         "fixture_version": "qc.accept_fixtures.v1",
         "native_run_task_lease_ids": [
-          "lease-cf4b5046172a4922"
+          "lease-6ee6c03eb06d4fe0"
         ],
         "artifact_versions": [
           {
-            "artifact_id": "art-8f1b0e07941446b4",
+            "artifact_id": "art-80fec4b25da44610",
             "version": 2
           },
           {
-            "artifact_id": "art-5980beaf3af54f57",
+            "artifact_id": "art-14ac552775e34d0b",
             "version": 2
           },
           {
-            "artifact_id": "art-661a6420599f4372",
+            "artifact_id": "art-16ff5ac2dafe4932",
             "version": 2
           }
         ],
@@ -483,7 +559,7 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
         "model_identity": "qwen2.5:3b",
         "fixture_version": "qc.accept_fixtures.v1",
         "native_run_task_lease_ids": [
@@ -519,7 +595,7 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
         "model_identity": "qwen2.5:3b",
         "fixture_version": "qc.accept_fixtures.v1",
         "native_run_task_lease_ids": [
@@ -540,7 +616,7 @@
             "passed": true
           }
         ],
-        "elapsed_seconds": 0.0,
+        "elapsed_seconds": 0.001,
         "model_calls": 0,
         "token_usage": 0,
         "user_interventions": 0,
@@ -555,7 +631,7 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
         "model_identity": "qwen2.5:3b",
         "fixture_version": "qc.accept_fixtures.v1",
         "native_run_task_lease_ids": [
@@ -573,7 +649,7 @@
             "passed": true
           }
         ],
-        "elapsed_seconds": 0.221,
+        "elapsed_seconds": 0.224,
         "model_calls": 0,
         "token_usage": 0,
         "user_interventions": 0,
@@ -588,7 +664,7 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
         "model_identity": "qwen2.5:3b",
         "fixture_version": "qc.accept_fixtures.v1",
         "native_run_task_lease_ids": [
@@ -610,7 +686,7 @@
             "passed": true
           }
         ],
-        "elapsed_seconds": 0.396,
+        "elapsed_seconds": 0.406,
         "model_calls": 0,
         "token_usage": 0,
         "user_interventions": 0,
@@ -625,7 +701,7 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
         "model_identity": "qwen2.5:3b",
         "fixture_version": "qc.accept_fixtures.v1",
         "native_run_task_lease_ids": [
@@ -633,7 +709,7 @@
         ],
         "artifact_versions": [
           {
-            "artifact_id": "art-d7406e9d8e2c437d",
+            "artifact_id": "art-fa32a455ac74458f",
             "version": 1
           }
         ],
@@ -643,7 +719,7 @@
             "passed": true
           }
         ],
-        "elapsed_seconds": 0.054,
+        "elapsed_seconds": 0.057,
         "model_calls": 0,
         "token_usage": 0,
         "user_interventions": 0,
@@ -658,20 +734,20 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
         "model_identity": "qwen2.5:3b",
         "fixture_version": "qc.accept_fixtures.v1",
         "native_run_task_lease_ids": [
-          "lease-cf4b5046172a4922"
+          "lease-6ee6c03eb06d4fe0"
         ],
         "artifact_versions": [
           {
-            "artifact_id": "art-5980beaf3af54f57",
+            "artifact_id": "art-14ac552775e34d0b",
             "filename": "att2_supplier_recommendation.json",
             "attempt": 2
           },
           {
-            "artifact_id": "art-661a6420599f4372",
+            "artifact_id": "art-16ff5ac2dafe4932",
             "filename": "att2_supplier_recommendation.md",
             "attempt": 2
           }
@@ -682,7 +758,7 @@
             "passed": true
           }
         ],
-        "elapsed_seconds": 0.0,
+        "elapsed_seconds": 0.007,
         "model_calls": 0,
         "token_usage": 0,
         "user_interventions": 1,
@@ -697,23 +773,23 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
         "model_identity": "qwen2.5:3b",
         "fixture_version": "qc.accept_fixtures.v1",
         "native_run_task_lease_ids": [
-          "lease-cf4b5046172a4922"
+          "lease-6ee6c03eb06d4fe0"
         ],
         "artifact_versions": [
           {
-            "artifact_id": "art-8f1b0e07941446b4",
+            "artifact_id": "art-80fec4b25da44610",
             "version": 2
           },
           {
-            "artifact_id": "art-5980beaf3af54f57",
+            "artifact_id": "art-14ac552775e34d0b",
             "version": 2
           },
           {
-            "artifact_id": "art-661a6420599f4372",
+            "artifact_id": "art-16ff5ac2dafe4932",
             "version": 2
           }
         ],
@@ -731,7 +807,7 @@
             "passed": true
           }
         ],
-        "elapsed_seconds": 26.129,
+        "elapsed_seconds": 17.089,
         "model_calls": 1,
         "token_usage": 1504,
         "user_interventions": 1,
@@ -746,15 +822,15 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
         "model_identity": "qwen2.5:3b",
         "fixture_version": "qc.accept_fixtures.v1",
         "native_run_task_lease_ids": [
-          "lease-cf4b5046172a4922"
+          "lease-6ee6c03eb06d4fe0"
         ],
         "artifact_versions": [
           {
-            "checkpoint_version": 3
+            "checkpoint_version": 9
           }
         ],
         "independent_check_results": [
@@ -767,7 +843,7 @@
             "passed": true
           }
         ],
-        "elapsed_seconds": 0.016,
+        "elapsed_seconds": 0.012,
         "model_calls": 0,
         "token_usage": 0,
         "user_interventions": 0,
@@ -782,7 +858,7 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
         "model_identity": "qwen2.5:3b",
         "fixture_version": "qc.accept_fixtures.v1",
         "native_run_task_lease_ids": [
@@ -815,7 +891,7 @@
             "passed": true
           }
         ],
-        "elapsed_seconds": 0.4,
+        "elapsed_seconds": 0.405,
         "model_calls": 0,
         "token_usage": 0,
         "user_interventions": 0,
@@ -830,15 +906,15 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
+        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
         "model_identity": "qwen2.5:3b",
         "fixture_version": "qc.accept_fixtures.v1",
         "native_run_task_lease_ids": [
-          "run:run-01fd63e061b44b71"
+          "run:run-eafa6074679047c7"
         ],
         "artifact_versions": [
           {
-            "artifact_id": "art-ed4ae20d94954562",
+            "artifact_id": "art-1dafc1743e0441c4",
             "version": 1,
             "status": "verified_for_scope"
           }
@@ -857,7 +933,7 @@
             "passed": true
           }
         ],
-        "elapsed_seconds": 0.316,
+        "elapsed_seconds": 0.209,
         "model_calls": 0,
         "token_usage": 0,
         "user_interventions": 0,
@@ -869,11 +945,11 @@
   },
   "milestone_c_scaling": {
     "schema": "qc.milestone_c_scaling.v1",
-    "source_commit": "070680432dd12fd9bb43c9669d4d86e499623176",
-    "evaluated_at": "2026-11-04T11:04:50.755085+00:00",
+    "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
+    "evaluated_at": "2026-11-04T11:51:41.152586+00:00",
     "models_compared": {
       "qwen2.5:1.5b": {
-        "latency_seconds": 2.6821,
+        "latency_seconds": 2.5301,
         "gen_tokens": 114,
         "prompt_tokens": 941,
         "truncated": false,
@@ -886,7 +962,7 @@
         "criteria_passed": 4
       },
       "qwen2.5:3b": {
-        "latency_seconds": 11.6475,
+        "latency_seconds": 11.8539,
         "gen_tokens": 211,
         "prompt_tokens": 941,
         "truncated": false,
@@ -905,5 +981,14 @@
       "char_reduction_ratio": 0.315
     },
     "routing_policy_conclusion": "Route multi-constraint synthesis, code generation, and structured JSON tasks to qwen2.5:3b; route lightweight extraction, status checks, and honest-unknown checks to qwen2.5:1.5b."
+  },
+  "source_commit_at_working_memory_slice": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
+  "working_memory_adversarial_suite": {
+    "test_file": "tests/test_working_memory_adversarial.py",
+    "test_count": 17,
+    "adversarial_scenarios_covered": 15,
+    "passed": 17,
+    "failed": 0,
+    "combined_regression_suite_16_files_passed": 238
   }
 }

@@ -92,6 +92,32 @@ class RequirementItem:
         elif not self.category and self.kind:
             self.category = self.kind
 
+    @property
+    def statement(self) -> str:
+        return self.text
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "req_id": self.req_id,
+            "kind": self.kind.value,
+            "category": self.kind.value,
+            "text": self.text,
+            "statement": self.text,
+            "hardness": self.hardness.value,
+            "source_field": self.source_field,
+            "included_in_plan": self.included_in_plan,
+            "covered_by_task": self.covered_by_task,
+            "verification_criteria": self.verification_criteria,
+            "verification_method": self.verification_method,
+            "verification_status": self.verification_status,
+            "verification_detail": self.verification_detail,
+            "status": self.status,
+            "version_number": self.version_number,
+            "depends_on": self.depends_on,
+            "affected_artifacts": self.affected_artifacts,
+            "superseded_by_id": self.superseded_by_id,
+        }
+
 
 @dataclass
 class RequirementLedger:
@@ -99,6 +125,29 @@ class RequirementLedger:
     revision_number: int = 1
     project_id: Optional[str] = None
     run_id: Optional[str] = None
+
+    @property
+    def objective(self) -> str:
+        objs = self.get_items_by_category(RequirementKind.OBJECTIVE)
+        return objs[0].text if objs else ""
+
+    def hard_constraints(self) -> List[RequirementItem]:
+        return [
+            r for r in self.get_items_by_category(RequirementKind.CONSTRAINT)
+            if r.hardness in (RequirementHardness.MUST, RequirementHardness.STRICT)
+        ]
+
+    def soft_preferences(self) -> List[RequirementItem]:
+        return [
+            r for r in self.get_items_by_category(RequirementKind.CONSTRAINT)
+            if r.hardness not in (RequirementHardness.MUST, RequirementHardness.STRICT)
+        ]
+
+    def deliverables(self) -> List[RequirementItem]:
+        return self.get_items_by_category(RequirementKind.DELIVERABLE)
+
+    def acceptance_criteria(self) -> List[RequirementItem]:
+        return self.get_items_by_category(RequirementKind.SUCCESS_CRITERION)
 
     def get_items_by_category(self, cat: RequirementKind, active_only: bool = True) -> List[RequirementItem]:
         out: List[RequirementItem] = []

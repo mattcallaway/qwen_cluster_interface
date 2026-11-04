@@ -50,34 +50,40 @@ def _smart_truncate_preserving_qualifiers(text: str, limit: int) -> str:
         re.I,
     )
     lines = text.splitlines()
+    sep = "\n"
+    if len(lines) <= 1:
+        lines = [s for s in re.split(r"(?<=[.!?])\s+", text) if s]
+        sep = " "
     if len(lines) <= 1:
         return text[: limit - 15] + "...[truncated]"
 
-    kept: List[str] = []
-    used = 0
-    # First pass: keep header lines and qualifier-bearing lines in original order
-    selected_indices = set()
+    priority_indices: List[int] = []
+    other_indices: List[int] = []
     for idx, line in enumerate(lines):
-        if idx < 3 or qualifier_re.search(line):
-            selected_indices.add(idx)
-    for idx in range(len(lines)):
-        if idx not in selected_indices:
-            selected_indices.add(idx)
+        if qualifier_re.search(line) or idx == 0:
+            priority_indices.append(idx)
+        else:
+            other_indices.append(idx)
+
+    # Prioritize qualifier-bearing sentences first (before even the first sentence if space is tight)
+    qualifier_only = [i for i in priority_indices if qualifier_re.search(lines[i])]
+    header_only = [i for i in priority_indices if i not in qualifier_only]
+    candidate_order = qualifier_only + header_only + other_indices
 
     ordered_kept: List[Tuple[int, str]] = []
-    for idx in sorted(selected_indices):
+    used = 0
+    for idx in candidate_order:
         line = lines[idx]
         if used + len(line) + 1 <= limit - 20:
             ordered_kept.append((idx, line))
             used += len(line) + 1
-        elif qualifier_re.search(line) and used < limit - 80:
+        elif qualifier_re.search(line) and used < limit - 60:
             snippet = line[: (limit - 20 - used)]
             ordered_kept.append((idx, snippet))
             used += len(snippet) + 1
-            break
 
     ordered_kept.sort(key=lambda x: x[0])
-    result = "\n".join(l for _, l in ordered_kept)
+    result = sep.join(l for _, l in ordered_kept)
     if len(result) < len(text):
         result = result[: limit - 15] + "...[truncated]"
     return result

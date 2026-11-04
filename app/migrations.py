@@ -2347,6 +2347,145 @@ _M20: List[str] = [
     "CREATE INDEX IF NOT EXISTS idx_proc_outcome_cat ON procedure_outcome_registry(task_category, outcome_status, revoked);",
 ]
 
+_M21: List[str] = [
+    """
+    CREATE TABLE IF NOT EXISTS project_task_contracts (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        run_id TEXT REFERENCES orchestration_runs(id) ON DELETE SET NULL,
+        task_key TEXT NOT NULL,
+        orch_task_id TEXT,
+        worker_task_id TEXT,
+        bound_objective TEXT NOT NULL DEFAULT '',
+        bound_requirement_revision INTEGER NOT NULL DEFAULT 1,
+        bound_requirement_ids_json TEXT NOT NULL DEFAULT '[]',
+        purpose TEXT NOT NULL DEFAULT '',
+        expected_output TEXT NOT NULL DEFAULT '',
+        input_artifact_versions_json TEXT NOT NULL DEFAULT '[]',
+        input_evidence_ids_json TEXT NOT NULL DEFAULT '[]',
+        constraints_json TEXT NOT NULL DEFAULT '[]',
+        exclusions_json TEXT NOT NULL DEFAULT '[]',
+        depends_on_task_keys_json TEXT NOT NULL DEFAULT '[]',
+        interfaces_json TEXT NOT NULL DEFAULT '{}',
+        acceptance_checks_json TEXT NOT NULL DEFAULT '[]',
+        resource_budget_json TEXT NOT NULL DEFAULT '{}',
+        max_retries INTEGER NOT NULL DEFAULT 2,
+        attempts_used INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+            'pending', 'ready', 'running', 'completed', 'verified', 'partial',
+            'blocked', 'stale', 'cancelled', 'cancel_pending_cleanup_unknown', 'failed'
+        )),
+        next_action TEXT NOT NULL DEFAULT '',
+        partial_result_definition TEXT NOT NULL DEFAULT '',
+        blocker_conditions_json TEXT NOT NULL DEFAULT '[]',
+        output_summary_json TEXT NOT NULL DEFAULT '{}',
+        output_artifact_ids_json TEXT NOT NULL DEFAULT '[]',
+        owned_fields_json TEXT NOT NULL DEFAULT '[]',
+        stale_reason TEXT NOT NULL DEFAULT '',
+        contract_revision INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (project_id, task_key)
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_proj_task_contracts_proj ON project_task_contracts(project_id, status);",
+    """
+    CREATE TABLE IF NOT EXISTS project_epistemic_items (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        run_id TEXT REFERENCES orchestration_runs(id) ON DELETE SET NULL,
+        task_key TEXT,
+        epistemic_category TEXT NOT NULL CHECK (epistemic_category IN (
+            'user_instruction_or_decision',
+            'source_observation',
+            'supported_claim',
+            'derived_result',
+            'hypothesis_or_estimate',
+            'model_proposal',
+            'verified_artifact',
+            'verification_failure'
+        )),
+        statement TEXT NOT NULL,
+        verification_status TEXT NOT NULL DEFAULT 'unknown' CHECK (verification_status IN (
+            'unknown', 'proposed', 'observed', 'supported', 'verified_for_scope',
+            'partial', 'blocked', 'failed', 'stale', 'superseded'
+        )),
+        requirement_ids_json TEXT NOT NULL DEFAULT '[]',
+        source_refs_json TEXT NOT NULL DEFAULT '[]',
+        artifact_refs_json TEXT NOT NULL DEFAULT '[]',
+        depends_on_item_ids_json TEXT NOT NULL DEFAULT '[]',
+        qualifiers_json TEXT NOT NULL DEFAULT '{}',
+        revision_number INTEGER NOT NULL DEFAULT 1,
+        superseded_by_id TEXT,
+        stale_reason TEXT NOT NULL DEFAULT '',
+        idempotency_key TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_proj_epistemic_proj_cat ON project_epistemic_items(project_id, epistemic_category, verification_status);",
+    "CREATE INDEX IF NOT EXISTS idx_proj_epistemic_task ON project_epistemic_items(project_id, task_key);",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_proj_epistemic_idem ON project_epistemic_items(project_id, idempotency_key) WHERE idempotency_key IS NOT NULL;",
+    """
+    CREATE VIRTUAL TABLE IF NOT EXISTS project_epistemic_fts USING fts5(
+        item_id UNINDEXED,
+        project_id UNINDEXED,
+        epistemic_category UNINDEXED,
+        statement,
+        qualifiers_text
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS project_working_checkpoints (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        run_id TEXT REFERENCES orchestration_runs(id) ON DELETE SET NULL,
+        checkpoint_seq INTEGER NOT NULL,
+        boundary_type TEXT NOT NULL CHECK (boundary_type IN (
+            'task_boundary', 'park', 'resume', 'requirement_change', 'cancel', 'delivery', 'manual'
+        )),
+        requirement_revision INTEGER NOT NULL DEFAULT 1,
+        state_revision INTEGER NOT NULL DEFAULT 1,
+        active_task_key TEXT,
+        completed_task_keys_json TEXT NOT NULL DEFAULT '[]',
+        verified_artifact_versions_json TEXT NOT NULL DEFAULT '[]',
+        decisions_snapshot_json TEXT NOT NULL DEFAULT '[]',
+        open_questions_json TEXT NOT NULL DEFAULT '[]',
+        blockers_json TEXT NOT NULL DEFAULT '[]',
+        next_action_json TEXT NOT NULL DEFAULT '{}',
+        remaining_budget_json TEXT NOT NULL DEFAULT '{}',
+        delta_summary_json TEXT NOT NULL DEFAULT '{}',
+        created_by TEXT NOT NULL DEFAULT 'orchestrator',
+        created_at TEXT NOT NULL,
+        UNIQUE (project_id, checkpoint_seq)
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_proj_working_ckpt_proj ON project_working_checkpoints(project_id, checkpoint_seq DESC);",
+    """
+    CREATE TABLE IF NOT EXISTS project_artifact_publication_journal (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        run_id TEXT REFERENCES orchestration_runs(id) ON DELETE SET NULL,
+        task_key TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL UNIQUE,
+        intended_filename TEXT NOT NULL,
+        expected_sha256 TEXT NOT NULL,
+        artifact_id TEXT,
+        artifact_version INTEGER,
+        journal_state TEXT NOT NULL CHECK (journal_state IN (
+            'intent_logged', 'artifact_written', 'state_committed', 'reconciled_after_crash', 'rolled_back'
+        )),
+        state_revision_before INTEGER NOT NULL DEFAULT 1,
+        state_revision_after INTEGER,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_proj_art_pub_journal_proj ON project_artifact_publication_journal(project_id, journal_state);",
+    ]
+_unused_m21_marker: List[str] = [  #op
+]
+
 MIGRATIONS: List[Migration] = [
     (1, "project intelligence foundation", _M1),
     (2, "execution and evidence", _M2),
@@ -2368,6 +2507,7 @@ MIGRATIONS: List[Migration] = [
     (18, "knowledge vault trust tiers, review governance, and conflict ledger", _M18),
     (19, "paged kv cache storage and pipeline cluster topology", _M19),
     (20, "deliberate task-solving loop, durable requirement ledger, and project memory", _M20),
+    (21, "live operational working memory, task contracts, epistemic items, checkpoints, and publication journal", _M21),
 ]
 
 
