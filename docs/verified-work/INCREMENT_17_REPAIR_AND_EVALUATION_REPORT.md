@@ -220,9 +220,10 @@ All entries in `docs/verified-work/ACCEPTANCE_MATRIX.md` have been updated throu
 
 > **Historical Note:** Prior integration rehearsals tested earlier commits `4a5ce4e9eb298aee51b8670f1cc28fcdc5c611a8` (rehearsal `4f75c2c26abdc648aaf7fdd3f76387b19748e52f`) and `5a4a873c11a5b3840ca13dca2d0a1a3866575b3d` (rehearsal `531dc171be0f85727c07559e9044cf5f56564d70`), and the prior reviewed HEAD was `0c6c840057705aa787ec2015936cdf5f4a0ca1a5`. Those are preserved as historical milestones. The final release-validation rehearsal below tests the current tree including `F-26` (`TrustedLocalModelLoader`) and reconciled documentation.
 
-### Final November 3, 2026 Rehearsal Commits & SHAs
+### Final November 3–4, 2026 Rehearsal Commits, Published PR & Tree Correspondence
+- **Published GitHub Draft Pull Request:** [PR #1 (`https://github.com/mattcallaway/qwen_cluster_interface/pull/1`)](https://github.com/mattcallaway/qwen_cluster_interface/pull/1) (`state=open`, `draft=true`, base `main` @ `4be7f547f4919380a22abdd2122961d559d2f46f`, head `feature/increment17-pipeline-parallelism-paged-kv`)
 - **Remote `origin/main` Base SHA:** `4be7f547f4919380a22abdd2122961d559d2f46f`
-- **Tested Implementation Feature Commit SHA (`feature/increment17-pipeline-parallelism-paged-kv`):** `53576c16ef96f64797478825b38b00d625748b25` (with subsequent metadata-only documentation freeze commit at `HEAD` containing zero code changes across `app/` and `tests/`)
+- **Tested Implementation Feature Commit SHA (`feature/increment17-pipeline-parallelism-paged-kv`):** `53576c16ef96f64797478825b38b00d625748b25` (with subsequent metadata-only documentation/link commits at `HEAD` preserving exact tree/blob hashes: `app/` tree `b36d6357a34412532a3c8c66cdff92db00e7879e`, `tests/` tree `cd1a438eccb5e2c08f688b3f1857077b0b3f8d17`, `vps_agent/` tree `d89119665562be778bdacc09a76f264b74d97316`, `scripts/` tree `fa16ac38c99274c8b3df351045410f0328851300`, `app/migrations.py` blob `2d27112a50e97244add83221774e2a464c775030`, `app/config.py` blob `6ccf6725b070344da5dd01d607878d4c33d84fb1`, `requirements.txt` blob `4738cdcebc3fedbf089359080e2dadcf7cd1484a`)
 - **Tested Disposable Integration Rehearsal Merge SHA:** `1b4bf42d43097546371544e9ae7233ebcf98cbe2`
 - **Tracked Evidence Artifact:** [`docs/verified-work/evidence/increment17-integration-rehearsal-20261103.json`](evidence/increment17-integration-rehearsal-20261103.json)
 
@@ -273,12 +274,13 @@ Clean-environment testing was conducted without fixtures that automatically inje
 ## 10. Merge-Readiness Verdict
 
 ### Final Status:
-**Ready for independent approval to merge the exact tested result into main as a disabled development feature.**
+**Ready for independent approval to merge the exact PR head into main as a disabled development feature.**
 
 ### Boundary Summary & Operating Constraints:
-1. **Remote `origin/main` Base SHA:** `4be7f547f4919380a22abdd2122961d559d2f46f`
-2. **Tested Implementation Feature SHA:** `53576c16ef96f64797478825b38b00d625748b25` (and its metadata-only documentation freeze child commit at `HEAD`)
-3. **Tested Integration Rehearsal Merge SHA:** `1b4bf42d43097546371544e9ae7233ebcf98cbe2`
+1. **Published GitHub Draft PR:** [PR #1 (`https://github.com/mattcallaway/qwen_cluster_interface/pull/1`)](https://github.com/mattcallaway/qwen_cluster_interface/pull/1)
+2. **Remote `origin/main` Base SHA:** `4be7f547f4919380a22abdd2122961d559d2f46f`
+3. **Tested Implementation Feature SHA:** `53576c16ef96f64797478825b38b00d625748b25` (and its metadata-only documentation freeze descendants at `HEAD` with identical `app/`, `tests/`, `vps_agent/`, `scripts/`, `app/migrations.py`, `app/config.py`, and `requirements.txt` Git object hashes)
+4. **Tested Integration Rehearsal Merge SHA:** `1b4bf42d43097546371544e9ae7233ebcf98cbe2`
 4. **Caching Default:** Strictly disabled by default (`QC_PAGED_KV_ENABLED=false`).
 5. **Real-Model Execution Boundary:** Local single-host split execution (`LocalSplitPipelineEngine`) and local real-model KV-cache tensor reuse with real-artifact authority binding (`TrustedLocalModelLoader` + `PyTorchPagedKVAdapter`) are verified on the Desktop GPU (`Qwen/Qwen2.5-0.5B-Instruct`). Remote multi-node split execution with real transformer weights (`qwen-laptop`) and production Ollama tensor-level KV integration remain **NOT IMPLEMENTED / HELD**.
 6. **Production Safety Holds:** Main merge approval does NOT authorize production deployment, cache activation, database migrations, live service restarts, remote runtime provisioning, or safety-hold removal; those remain separate administrative decisions.

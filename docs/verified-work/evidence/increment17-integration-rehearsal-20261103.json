@@ -1,5 +1,15 @@
 {
   "rehearsal_date": "2026-11-03",
+  "publication_date": "2026-11-04",
+  "github_pr": {
+    "number": 1,
+    "url": "https://github.com/mattcallaway/qwen_cluster_interface/pull/1",
+    "state": "open",
+    "draft": true,
+    "base_ref": "main",
+    "base_sha": "4be7f547f4919380a22abdd2122961d559d2f46f",
+    "head_ref": "feature/increment17-pipeline-parallelism-paged-kv"
+  },
   "base_branch": "origin/main",
   "base_main_sha": "4be7f547f4919380a22abdd2122961d559d2f46f",
   "feature_branch": "feature/increment17-pipeline-parallelism-paged-kv",
@@ -7,7 +17,9 @@
     "9a37323c57de76fb89ae4a784fe05e91e21a39d8",
     "4a5ce4e9eb298aee51b8670f1cc28fcdc5c611a8",
     "5a4a873c11a5b3840ca13dca2d0a1a3866575b3d",
-    "0c6c840057705aa787ec2015936cdf5f4a0ca1a5"
+    "0c6c840057705aa787ec2015936cdf5f4a0ca1a5",
+    "d62ec212eb8019d2fdcff129e5d2b28276ae7ef3",
+    "ef70066bbf266c865aa3b3623801c811dc621a1e"
   ],
   "historical_rehearsal_shas": [
     "4f75c2c26abdc648aaf7fdd3f76387b19748e52f",
@@ -15,6 +27,16 @@
   ],
   "tested_implementation_feature_sha": "53576c16ef96f64797478825b38b00d625748b25",
   "tested_implementation_rehearsal_merge_sha": "1b4bf42d43097546371544e9ae7233ebcf98cbe2",
+  "tree_and_blob_correspondence": {
+    "app_tree_sha": "b36d6357a34412532a3c8c66cdff92db00e7879e",
+    "tests_tree_sha": "cd1a438eccb5e2c08f688b3f1857077b0b3f8d17",
+    "vps_agent_tree_sha": "d89119665562be778bdacc09a76f264b74d97316",
+    "scripts_tree_sha": "fa16ac38c99274c8b3df351045410f0328851300",
+    "migrations_py_blob_sha": "2d27112a50e97244add83221774e2a464c775030",
+    "config_py_blob_sha": "6ccf6725b070344da5dd01d607878d4c33d84fb1",
+    "requirements_txt_blob_sha": "4738cdcebc3fedbf089359080e2dadcf7cd1484a",
+    "matches_across_tested_rehearsed_and_published": true
+  },
   "merge_strategy": "ort",
   "merge_conflicts": 0,
   "disposable_worktree_path": "C:/Users/Matt C/.gemini/antigravity-ide/scratch/qwen-collective-inc17-rehearsal",
@@ -96,6 +118,5 @@
       "errors": 0
     }
   },
-  "verdict": "Ready for independent approval to merge the exact tested result into main as a disabled development feature"
+  "verdict": "Ready for independent approval to merge the exact PR head into main as a disabled development feature"
 }
-
