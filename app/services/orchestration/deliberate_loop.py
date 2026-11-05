@@ -18,6 +18,7 @@ Key capabilities:
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import logging
@@ -1340,6 +1341,8 @@ def ensure_deliberate_task_contracts(
         registered_keys: List[str] = []
         for spec in explicit_contracts:
             tkey = str(spec["task_key"])
+            val_args = dict(spec.get("validated_arguments") or {})
+            val_args.setdefault("action_origin", str(spec.get("action_origin") or "caller_supplied_contract"))
             wm.register_task_contract(
                 project_id,
                 run_id=eff_run_id,
@@ -1350,7 +1353,7 @@ def ensure_deliberate_task_contracts(
                 depends_on_task_keys=spec.get("depends_on_task_keys") or [],
                 acceptance_checks=spec.get("acceptance_checks") or ["verified"],
                 selected_tool=str(spec.get("selected_tool") or "inspect_document_or_repo"),
-                validated_arguments=spec.get("validated_arguments") or {},
+                validated_arguments=val_args,
                 expected_observation=str(spec.get("expected_observation") or "structured_observation"),
                 verification_method=str(spec.get("verification_method") or "deterministic_tool_check"),
                 verifier_id=str(spec.get("verifier_id") or "verifier:quote_reconciliation_v1"),
@@ -1381,6 +1384,7 @@ def ensure_deliberate_task_contracts(
             depends_on_task_keys=[],
             acceptance_checks=["workspace_files_inspected", "directive_injection_scan_completed", "initial_defect_reproduced_in_bounded_runner"],
             selected_tool="inspect_repository_workspace",
+            validated_arguments={"action_origin": "template"},
             expected_observation="qc.repo_inspection_and_reproduction.v1",
             verification_method="deterministic_tool_check",
             verifier_id="verifier:repo_inspection_and_reproduction_v1",
@@ -1397,6 +1401,7 @@ def ensure_deliberate_task_contracts(
             depends_on_task_keys=["t1_inspect_and_reproduce"],
             acceptance_checks=["python_syntax_valid", "public_test_suite_passed", "protected_holdout_suite_passed", "unrelated_files_preserved"],
             selected_tool="apply_and_verify_repository_patch",
+            validated_arguments={"action_origin": "template"},
             expected_observation="qc.repo_patch_verification.v1",
             verification_method="protected_test_suite_verifier",
             verifier_id="verifier:protected_repo_bugfix_v1",
@@ -1413,6 +1418,7 @@ def ensure_deliberate_task_contracts(
             depends_on_task_keys=["t2_propose_and_verify_patch"],
             acceptance_checks=["cites_target_file", "cites_public_and_holdout_pass", "cites_unrelated_files_preserved"],
             selected_tool="worker_model_inference",
+            validated_arguments={"action_origin": "template"},
             expected_observation="qc.repo_change_summary.v1",
             verification_method="independent_acceptance_verifier",
             verifier_id="verifier:repo_change_summary_v1",
@@ -1446,6 +1452,7 @@ def ensure_deliberate_task_contracts(
         depends_on_task_keys=[],
         acceptance_checks=["valid_json", "latest_revisions_selected", "withdrawn_excluded"],
         selected_tool="resolve_quote_revisions",
+        validated_arguments={"action_origin": "template"},
         expected_observation="qc.quote_resolution.v1",
         verification_method="deterministic_tool_check",
         verifier_id="verifier:quote_reconciliation_v1",
@@ -1462,6 +1469,7 @@ def ensure_deliberate_task_contracts(
         depends_on_task_keys=["t1_reconcile_quotes"],
         acceptance_checks=["decimal_exactness", "hard_constraints_satisfied"],
         selected_tool="compare_options_against_constraints",
+        validated_arguments={"action_origin": "template"},
         expected_observation="qc.option_comparison.v1",
         verification_method="deterministic_tool_check",
         verifier_id="verifier:option_constraint_comparison_v1",
@@ -1478,6 +1486,7 @@ def ensure_deliberate_task_contracts(
         depends_on_task_keys=["t2_evaluate_constraints"],
         acceptance_checks=["cites_recommended_supplier", "cites_exact_cost", "no_disqualified_recommended"],
         selected_tool="worker_model_inference",
+        validated_arguments={"action_origin": "template"},
         expected_observation="qc.grounded_recommendation_memo.v1",
         verification_method="independent_acceptance_verifier",
         verifier_id="verifier:grounded_recommendation_memo_v1",
@@ -1569,6 +1578,302 @@ def _load_project_domain_inputs(
     }
 
 
+def build_repository_repair_prompt(
+    *,
+    target_file: str,
+    attempt: int,
+    obj_texts: List[str],
+    constraint_texts: List[str],
+    target_source: str,
+    pub_test_source: str,
+    pub_failure_excerpt: str,
+    last_repair: Dict[str, Any],
+) -> str:
+    """Build a domain-neutral repair prompt for repository bug-fix tasks.
+
+    Contains ONLY:
+    - Active user requirements (`obj_texts`, `constraint_texts`).
+    - Relevant source (`target_source`) and public development tests (`pub_test_source`).
+    - Publicly observable failure diagnostics (`pub_failure_excerpt`).
+    - Independently observed contract violations (`failed_check_names`, `sanitized_diagnostics`).
+    - A concise description of what the previous attempt failed to establish (`repair_instruction`).
+
+    NEVER contains hidden expected answers, holdout source, or developer-authored replacement logic.
+    """
+    return context_manager.build_inference_prompt(
+        instruction=(
+            f"REPAIR ATTEMPT {attempt} for `{target_file}` (Objective: {'; '.join(obj_texts)}).\n"
+            f"What the previous attempt failed to establish: {last_repair.get('repair_instruction', '')}\n"
+            f"Independently observed contract violations: {', '.join(last_repair.get('failed_check_names', []))}\n"
+            f"Publicly observable failure diagnostics: {'; '.join(last_repair.get('sanitized_diagnostics', []))}\n\n"
+            "Inspect the `<evidence_data>` (the current target file source, public unit tests, and public test failure output) "
+            "and `<user_constraints>`.\n"
+            "Requirements:\n"
+            "- Preserve all public function signatures and return dict keys.\n"
+            "- Address every failing public test assertion and active user constraint.\n"
+            "- Output ONLY the complete, valid Python module for the target file inside a single ```python ... ``` block."
+        ),
+        inputs={
+            "target_file_source": target_source,
+            "public_tests_and_failure": f"{pub_test_source}\n\nFAILURE OUTPUT:\n{pub_failure_excerpt[:600]}",
+        },
+        budget_chars=context_manager.MAX_EXPANDED_CONTEXT_CHARS,
+        user_constraints=constraint_texts,
+    )
+
+
+def evaluate_next_action_appropriateness(
+    state_context: Dict[str, Any],
+    proposed_action: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Independently evaluate a proposed action across 4 separate dimensions:
+    1. `proposal_validity`: registered tool or policy action, valid arguments, permitted authority/effects.
+    2. `action_appropriateness`: whether the action advances the active requirement or resolves a relevant uncertainty.
+    3. `execution_outcome`: whether the tool/policy execution succeeded (`"succeeded" | "failed" | "held" | "not_executed"`).
+    4. `task_outcome`: whether independent acceptance criteria passed (`"verified" | "failed" | "blocked" | "pending"`).
+    """
+    policy_actions = {
+        "request_clarification",
+        "wait_for_active_lease",
+        "stop_unproductive_retry",
+        "report_blocker",
+    }
+    action_id = str(proposed_action.get("selected_tool") or proposed_action.get("policy_action") or "")
+    args = proposed_action.get("arguments")
+    action_origin = str(proposed_action.get("action_origin") or "model_proposal")
+
+    # 1. Check syntactic & authority validity
+    has_forbidden_keys = any(k in proposed_action for k in FORBIDDEN_PROPOSAL_AUTHORITY_KEYS)
+    if has_forbidden_keys or not action_id or not isinstance(args, dict):
+        proposal_validity = False
+        invalid_reason = "Forbidden authority key or malformed arguments"
+    elif action_id in policy_actions:
+        proposal_validity = True
+        invalid_reason = None
+    else:
+        spec = tool_catalogue.GLOBAL_TOOL_CATALOGUE.get_tool(action_id)
+        if spec is None:
+            proposal_validity = False
+            invalid_reason = f"Unregistered tool '{action_id}'"
+        else:
+            missing_req = [
+                k for k, t in spec.input_schema.items()
+                if "None" not in str(t) and k not in args
+            ]
+            proposal_validity = len(missing_req) == 0
+            invalid_reason = None if proposal_validity else f"Missing required arguments: {missing_req}"
+
+    # 2. Determine the independently required appropriate action(s) from `state_context`
+    expected_actions: List[str] = []
+    if state_context.get("has_material_gaps") or state_context.get("has_conflicts"):
+        expected_actions = ["request_clarification"]
+    elif state_context.get("has_active_draining_lease"):
+        expected_actions = ["wait_for_active_lease"]
+    elif int(state_context.get("unproductive_attempt_count") or 0) >= 2:
+        expected_actions = ["stop_unproductive_retry"]
+    elif state_context.get("all_options_infeasible") or state_context.get("protected_backend_held"):
+        expected_actions = ["report_blocker"]
+    elif state_context.get("missing_external_source"):
+        expected_actions = ["search_and_retrieve_sources"]
+    elif state_context.get("domain") == "repository_bugfix":
+        if not state_context.get("workspace_inspected"):
+            expected_actions = ["inspect_repository_workspace"]
+        elif not state_context.get("defect_reproduced"):
+            expected_actions = ["run_repository_test_suite"]
+        elif not state_context.get("patch_verified"):
+            expected_actions = ["apply_and_verify_repository_patch", "worker_model_inference"]
+        else:
+            expected_actions = ["worker_model_inference", "create_or_revise_artifact"]
+    elif state_context.get("domain") == "supplier_option_evaluation":
+        if not state_context.get("quotes_reconciled"):
+            expected_actions = ["resolve_quote_revisions"]
+        elif not state_context.get("constraints_evaluated"):
+            expected_actions = ["compare_options_against_constraints"]
+        else:
+            expected_actions = ["worker_model_inference"]
+
+    if not expected_actions:
+        appropriateness: Any = "unmeasured"
+    else:
+        appropriateness = bool(proposal_validity and action_id in expected_actions)
+
+    exec_outcome = str(proposed_action.get("execution_outcome") or ("succeeded" if proposal_validity else "not_executed"))
+    task_outcome = str(
+        proposed_action.get("task_outcome")
+        or ("verified" if (proposal_validity and appropriateness is True and exec_outcome == "succeeded") else "blocked")
+    )
+
+    return {
+        "action_id": action_id,
+        "action_origin": action_origin,
+        "proposal_validity": proposal_validity,
+        "invalid_reason": invalid_reason,
+        "expected_appropriate_actions": expected_actions,
+        "action_appropriateness": appropriateness,
+        "execution_outcome": exec_outcome,
+        "task_outcome": task_outcome,
+    }
+
+
+def run_action_selection_benchmark() -> Dict[str, Any]:
+    """Run independently judged next-action selection benchmark cases covering:
+    - Inspection (`inspect_repository_workspace`)
+    - Testing (`run_repository_test_suite`)
+    - Retrieval (`search_and_retrieve_sources`)
+    - Clarification (`request_clarification`)
+    - Waiting (`wait_for_active_lease`)
+    - Stopping (`stop_unproductive_retry`)
+    - Reporting a blocker (`report_blocker`)
+    - Plus syntactically valid but inappropriate tool proposals.
+    """
+    cases = [
+        {
+            "case_id": "appropriate_01_inspect_repo",
+            "state_context": {"domain": "repository_bugfix", "workspace_inspected": False},
+            "proposal": {
+                "selected_tool": "inspect_repository_workspace",
+                "arguments": {"workspace_path": "/tmp/repo", "max_file_chars": 8000},
+                "action_origin": "model_proposal",
+            },
+            "expect_valid": True,
+            "expect_appropriate": True,
+        },
+        {
+            "case_id": "appropriate_02_run_public_tests",
+            "state_context": {"domain": "repository_bugfix", "workspace_inspected": True, "defect_reproduced": False},
+            "proposal": {
+                "selected_tool": "run_repository_test_suite",
+                "arguments": {"workspace_path": "/tmp/repo", "test_rel_path": "tests/test_public.py", "timeout_seconds": 10.0},
+                "action_origin": "model_proposal",
+            },
+            "expect_valid": True,
+            "expect_appropriate": True,
+        },
+        {
+            "case_id": "appropriate_03_retrieve_missing_source",
+            "state_context": {"domain": "research", "missing_external_source": True},
+            "proposal": {
+                "selected_tool": "search_and_retrieve_sources",
+                "arguments": {"queries": ["RFC 9110 caching"], "project_id": "p1", "as_of_date": "2026-11-04"},
+                "action_origin": "model_proposal",
+            },
+            "expect_valid": True,
+            "expect_appropriate": True,
+        },
+        {
+            "case_id": "appropriate_04_request_clarification",
+            "state_context": {"domain": "supplier_option_evaluation", "has_material_gaps": True},
+            "proposal": {
+                "policy_action": "request_clarification",
+                "arguments": {"questions": ["What is the maximum delivery lead time?"]},
+                "action_origin": "controller_policy",
+            },
+            "expect_valid": True,
+            "expect_appropriate": True,
+        },
+        {
+            "case_id": "appropriate_05_wait_for_active_lease",
+            "state_context": {"domain": "repository_bugfix", "has_active_draining_lease": True},
+            "proposal": {
+                "policy_action": "wait_for_active_lease",
+                "arguments": {"lease_id": "lease_active_01"},
+                "action_origin": "controller_policy",
+            },
+            "expect_valid": True,
+            "expect_appropriate": True,
+        },
+        {
+            "case_id": "appropriate_06_stop_unproductive_retry",
+            "state_context": {"domain": "repository_bugfix", "unproductive_attempt_count": 2},
+            "proposal": {
+                "policy_action": "stop_unproductive_retry",
+                "arguments": {"task_key": "t2_propose_and_verify_patch"},
+                "action_origin": "controller_policy",
+            },
+            "expect_valid": True,
+            "expect_appropriate": True,
+        },
+        {
+            "case_id": "appropriate_07_report_blocker",
+            "state_context": {"domain": "repository_bugfix", "protected_backend_held": True},
+            "proposal": {
+                "policy_action": "report_blocker",
+                "arguments": {"blocker": "held_protected_backend_required"},
+                "action_origin": "controller_policy",
+            },
+            "expect_valid": True,
+            "expect_appropriate": True,
+        },
+        {
+            "case_id": "inappropriate_08_valid_tool_wrong_domain",
+            "state_context": {"domain": "repository_bugfix", "workspace_inspected": False},
+            "proposal": {
+                "selected_tool": "resolve_quote_revisions",
+                "arguments": {"quotes": [], "as_of_date": "2026-11-04"},
+                "action_origin": "model_proposal",
+            },
+            "expect_valid": True,
+            "expect_appropriate": False,
+        },
+        {
+            "case_id": "inappropriate_09_patch_before_inspection",
+            "state_context": {"domain": "repository_bugfix", "workspace_inspected": False, "defect_reproduced": False},
+            "proposal": {
+                "selected_tool": "apply_and_verify_repository_patch",
+                "arguments": {
+                    "workspace_path": "/tmp/repo",
+                    "target_file": "pkg/mod.py",
+                    "patched_content": "x = 1\n",
+                    "public_test_rel_path": "tests/test_mod.py",
+                    "holdout_test_dir": "/tmp/holdout",
+                },
+                "action_origin": "model_proposal",
+            },
+            "expect_valid": True,
+            "expect_appropriate": False,
+        },
+        {
+            "case_id": "inappropriate_10_execute_when_clarification_needed",
+            "state_context": {"domain": "supplier_option_evaluation", "has_material_gaps": True},
+            "proposal": {
+                "selected_tool": "resolve_quote_revisions",
+                "arguments": {"quotes": [], "as_of_date": "2026-11-04"},
+                "action_origin": "model_proposal",
+            },
+            "expect_valid": True,
+            "expect_appropriate": False,
+        },
+    ]
+
+    results = []
+    appropriate_passed = 0
+    inappropriate_rejected = 0
+    for c in cases:
+        ev = evaluate_next_action_appropriateness(c["state_context"], c["proposal"])
+        passed_check = (
+            ev["proposal_validity"] is c["expect_valid"]
+            and ev["action_appropriateness"] is c["expect_appropriate"]
+        )
+        if c["expect_appropriate"] and passed_check:
+            appropriate_passed += 1
+        if not c["expect_appropriate"] and ev["proposal_validity"] is True and ev["action_appropriateness"] is False:
+            inappropriate_rejected += 1
+        results.append({
+            "case_id": c["case_id"],
+            "evaluation": ev,
+            "benchmark_assertion_passed": passed_check,
+        })
+
+    return {
+        "schema": "qc.action_selection_benchmark.v1",
+        "total_cases": sum(1 for c in cases if c["expect_appropriate"]),
+        "appropriate_cases_passed": appropriate_passed,
+        "inappropriate_but_syntactically_valid_rejected": inappropriate_rejected,
+        "all_cases_count": len(cases),
+        "cases": results,
+    }
+
+
 def advance_deliberate_project(
     project_id: str,
     *,
@@ -1581,6 +1886,7 @@ def advance_deliberate_project(
     as_of_date: str = "2026-11-04",
     worker_poll_step: Optional[Callable[[str, str], None]] = None,
     simulate_first_attempt_defect: bool = False,
+    injected_first_attempt_candidate: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Generalized evidence-driven next-action coordinator for durable projects (Increment 19).
 
@@ -1596,12 +1902,29 @@ def advance_deliberate_project(
     """
     from app.services.orchestration import working_memory as wm
 
+    empty_stats: Dict[str, Any] = {
+        "total_proposals": 0,
+        "valid_proposals": 0,
+        "valid_selections": 0,
+        "rejected_proposals": 0,
+        "proposal_validation_rate": "not_evaluated",
+        "model_tool_selection_accuracy": "not_evaluated",
+        "tool_selection_accuracy": "not_evaluated",
+        "action_origin_counts": {
+            "template": 0,
+            "caller_supplied_contract": 0,
+            "model_proposal": 0,
+            "controller_policy": 0,
+        },
+    }
+
     wm.reconcile_crash_publication_journal(project_id)
     if wm.is_project_dispatch_stopped(project_id):
         return {
             "project_id": project_id,
             "status": "dispatch_stopped",
             "detail": "Project is parked or cancelling; dispatch is stopped.",
+            "tool_selection_stats": empty_stats,
         }
 
     run = get_run_for_project(project_id)
@@ -1618,11 +1941,14 @@ def advance_deliberate_project(
             contradictions=conflict_info["conflicts"],
             next_action={"action": "clarify_material_gaps", "gaps": conflict_info["material_gaps"]},
         )
+        clarify_stats = copy.deepcopy(empty_stats)
+        clarify_stats["action_origin_counts"]["controller_policy"] = 1
         return {
             "project_id": project_id,
             "status": "clarify",
             "material_gaps": conflict_info["material_gaps"],
             "conflicts": conflict_info["conflicts"],
+            "tool_selection_stats": clarify_stats,
         }
 
     domain_inputs = _load_project_domain_inputs(
@@ -1642,11 +1968,7 @@ def advance_deliberate_project(
     native_leases: List[str] = []
     repair_events: List[Dict[str, Any]] = []
     decision_summaries: List[str] = []
-    tool_selection_stats = {
-        "total_proposals": 0,
-        "valid_selections": 0,
-        "rejected_proposals": 0,
-    }
+    tool_selection_stats: Dict[str, Any] = copy.deepcopy(empty_stats)
     previous_action_signatures: Dict[str, int] = {}
 
     for _ in range(max(1, int(max_steps))):
@@ -1664,7 +1986,17 @@ def advance_deliberate_project(
                     escalation_step=7,
                     next_action={"action": "halt_budget_exhausted", "reason": budget_reason},
                 )
-                steps_executed.append({"status": "blocked", "error_class": "budget_exhausted", "reason": budget_reason})
+                tool_selection_stats["action_origin_counts"]["controller_policy"] += 1
+                steps_executed.append({
+                    "status": "blocked",
+                    "error_class": "budget_exhausted",
+                    "reason": budget_reason,
+                    "action_origin": "controller_policy",
+                    "proposal_validity": True,
+                    "action_appropriateness": True,
+                    "execution_outcome": "not_executed",
+                    "task_outcome": "blocked",
+                })
                 break
 
         ledger = intake_mod.load_durable_requirement_ledger(project_id)
@@ -1726,11 +2058,18 @@ def advance_deliberate_project(
         verifier_id = str(next_tc.get("verifier_id") or "")
         verifier_fn = REGISTERED_CONTROLLER_VERIFIERS.get(verifier_id)
 
+        raw_val_args = dict(next_tc.get("validated_arguments") or {})
+        action_origin = str(raw_val_args.pop("action_origin", "template") or "template")
+        if action_origin not in tool_selection_stats["action_origin_counts"]:
+            action_origin = "template"
+        tool_selection_stats["action_origin_counts"][action_origin] += 1
+
         # Build proposed action for the current contract
         proposed_action = {
             "selected_tool": next_tc.get("selected_tool"),
-            "arguments": dict(next_tc.get("validated_arguments") or {}),
-            "decision_summary": f"Execute contract '{tkey}' via tool '{next_tc.get('selected_tool')}' under revision {ledger.revision_number}.",
+            "arguments": raw_val_args,
+            "action_origin": action_origin,
+            "decision_summary": f"Execute contract '{tkey}' via tool '{next_tc.get('selected_tool')}' (origin={action_origin}) under revision {ledger.revision_number}.",
         }
         tool_selection_stats["total_proposals"] += 1
         val_gate = validate_proposed_action(
@@ -1756,9 +2095,20 @@ def advance_deliberate_project(
                     "UPDATE project_task_contracts SET status = 'blocked', blocker_conditions_json = ?, updated_at = ? WHERE project_id = ? AND task_key = ?",
                     (jdump([val_gate["reason"]]), now_iso(), project_id, tkey),
                 )
-            steps_executed.append({"task_key": tkey, "status": "blocked", "error_class": val_gate["error_class"], "reason": val_gate["reason"]})
+            steps_executed.append({
+                "task_key": tkey,
+                "status": "blocked",
+                "error_class": val_gate["error_class"],
+                "reason": val_gate["reason"],
+                "action_origin": action_origin,
+                "proposal_validity": False,
+                "action_appropriateness": False,
+                "execution_outcome": "not_executed",
+                "task_outcome": "blocked",
+            })
             break
 
+        tool_selection_stats["valid_proposals"] += 1
         tool_selection_stats["valid_selections"] += 1
         op_summary = summarize_operational_decision(
             task_key=tkey,
@@ -1773,7 +2123,16 @@ def advance_deliberate_project(
         sig = f"{tkey}:{val_gate['selected_tool']}:{ledger.revision_number}"
         previous_action_signatures[sig] = previous_action_signatures.get(sig, 0) + 1
         if previous_action_signatures[sig] > int(next_tc.get("max_attempts") or 3):
-            steps_executed.append({"task_key": tkey, "status": "blocked", "error_class": "repeated_unproductive_action"})
+            steps_executed.append({
+                "task_key": tkey,
+                "status": "blocked",
+                "error_class": "repeated_unproductive_action",
+                "action_origin": "controller_policy",
+                "proposal_validity": True,
+                "action_appropriateness": False,
+                "execution_outcome": "not_executed",
+                "task_outcome": "blocked",
+            })
             break
 
         # -------------------------------------------------------------------
@@ -1821,7 +2180,17 @@ def advance_deliberate_project(
                 },
                 verifier_fn=verifier_fn,
             )
-            steps_executed.append({"task_key": tkey, "status": res1["task_status"], "artifact_id": res1["published_artifact_id"], "selected_tool": val_gate["selected_tool"]})
+            steps_executed.append({
+                "task_key": tkey,
+                "status": res1["task_status"],
+                "artifact_id": res1["published_artifact_id"],
+                "selected_tool": val_gate["selected_tool"],
+                "action_origin": action_origin,
+                "proposal_validity": True,
+                "action_appropriateness": "unmeasured" if action_origin == "template" else True,
+                "execution_outcome": "succeeded",
+                "task_outcome": res1["task_status"],
+            })
 
         elif verifier_id == "verifier:option_constraint_comparison_v1":
             tool_obs = tool_catalogue.GLOBAL_TOOL_CATALOGUE.execute_tool(
@@ -1870,7 +2239,17 @@ def advance_deliberate_project(
                     candidate_options=cmp_res["evaluated_options"],
                     next_action={"action": "resolve_infeasible_constraints", "blocker": cmp_res.get("blocker")},
                 )
-                steps_executed.append({"task_key": tkey, "status": "blocked", "blocker": cmp_res.get("blocker"), "selected_tool": val_gate["selected_tool"]})
+                steps_executed.append({
+                    "task_key": tkey,
+                    "status": "blocked",
+                    "blocker": cmp_res.get("blocker"),
+                    "selected_tool": val_gate["selected_tool"],
+                    "action_origin": action_origin,
+                    "proposal_validity": True,
+                    "action_appropriateness": "unmeasured" if action_origin == "template" else True,
+                    "execution_outcome": "succeeded",
+                    "task_outcome": "blocked",
+                })
                 break
 
             rec_opt = cmp_res["recommended_option"]
@@ -1910,6 +2289,11 @@ def advance_deliberate_project(
                 "recommended_supplier": rec_id,
                 "total_cost": rec_cost,
                 "selected_tool": val_gate["selected_tool"],
+                "action_origin": action_origin,
+                "proposal_validity": True,
+                "action_appropriateness": "unmeasured" if action_origin == "template" else True,
+                "execution_outcome": "succeeded",
+                "task_outcome": res2["task_status"],
             })
 
         elif verifier_id == "verifier:grounded_recommendation_memo_v1":
@@ -2025,6 +2409,7 @@ def advance_deliberate_project(
                         )
                         repair_events.append({
                             **r_plan,
+                            "failure_origin": "simulated_fixture" if (attempt == 1 and simulate_first_attempt_defect) else "natural_model_failure",
                             "lease_id": lease_used,
                             "task_id": inf_out.get("task_id"),
                         })
@@ -2085,6 +2470,11 @@ def advance_deliberate_project(
                 "lease_id": lease_used,
                 "producing_actor": producing_actor,
                 "selected_tool": val_gate["selected_tool"],
+                "action_origin": action_origin,
+                "proposal_validity": True,
+                "action_appropriateness": "unmeasured" if action_origin == "template" else True,
+                "execution_outcome": "succeeded",
+                "task_outcome": res3["task_status"],
             })
 
         # -------------------------------------------------------------------
@@ -2092,7 +2482,16 @@ def advance_deliberate_project(
         # -------------------------------------------------------------------
         elif verifier_id == "verifier:repo_inspection_and_reproduction_v1":
             if not eff_ws:
-                steps_executed.append({"task_key": tkey, "status": "blocked", "error_class": "missing_workspace_path"})
+                steps_executed.append({
+                    "task_key": tkey,
+                    "status": "blocked",
+                    "error_class": "missing_workspace_path",
+                    "action_origin": "controller_policy",
+                    "proposal_validity": True,
+                    "action_appropriateness": True,
+                    "execution_outcome": "not_executed",
+                    "task_outcome": "blocked",
+                })
                 break
 
             insp_obs = tool_catalogue.GLOBAL_TOOL_CATALOGUE.execute_tool(
@@ -2101,14 +2500,22 @@ def advance_deliberate_project(
             )
             insp_res = insp_obs["result"]
 
-            pub_test_rel = active_constraints.get("public_test_rel_path") or "tests/test_allocator_public.py"
+            pub_test_rel = active_constraints.get("public_test_rel_path")
+            if not pub_test_rel:
+                for cand_t in sorted((insp_res.get("files") or {}).keys()):
+                    if cand_t.startswith("tests/test_") and cand_t.endswith(".py"):
+                        pub_test_rel = cand_t
+                        break
+            pub_test_rel = pub_test_rel or "tests/test_allocator_public.py"
             test_obs = tool_catalogue.GLOBAL_TOOL_CATALOGUE.execute_tool(
                 "run_repository_test_suite",
                 {"workspace_path": eff_ws, "test_rel_path": pub_test_rel},
             )
             test_res = test_obs["result"]
             tool_selection_stats["total_proposals"] += 1
+            tool_selection_stats["valid_proposals"] += 1
             tool_selection_stats["valid_selections"] += 1
+            tool_selection_stats["action_origin_counts"][action_origin] += 1
 
             combined_obs = {
                 "schema": "qc.repo_inspection_and_reproduction.v1",
@@ -2167,11 +2574,25 @@ def advance_deliberate_project(
                 "status": res_repo_t1["task_status"],
                 "artifact_id": res_repo_t1["published_artifact_id"],
                 "selected_tool": val_gate["selected_tool"],
+                "action_origin": action_origin,
+                "proposal_validity": True,
+                "action_appropriateness": "unmeasured" if action_origin == "template" else True,
+                "execution_outcome": "succeeded",
+                "task_outcome": res_repo_t1["task_status"],
             })
 
         elif verifier_id == "verifier:protected_repo_bugfix_v1":
             if not eff_ws:
-                steps_executed.append({"task_key": tkey, "status": "blocked", "error_class": "missing_workspace_path"})
+                steps_executed.append({
+                    "task_key": tkey,
+                    "status": "blocked",
+                    "error_class": "missing_workspace_path",
+                    "action_origin": "controller_policy",
+                    "proposal_validity": True,
+                    "action_appropriateness": True,
+                    "execution_outcome": "not_executed",
+                    "task_outcome": "blocked",
+                })
                 break
 
             insp_now = tool_catalogue.inspect_repository_workspace(eff_ws)
@@ -2179,11 +2600,22 @@ def advance_deliberate_project(
             target_file = active_constraints.get("target_file")
             if not target_file:
                 for cand_f in sorted(files_map.keys()):
-                    if cand_f.endswith(".py") and not cand_f.startswith("tests/") and not cand_f.endswith("__init__.py") and "reporting" not in cand_f:
+                    if (
+                        cand_f.endswith(".py")
+                        and not cand_f.startswith("tests/")
+                        and not cand_f.endswith("__init__.py")
+                        and not any(aux in cand_f for aux in ("reporting", "formatting", "escalation_policy", "audit_log"))
+                    ):
                         target_file = cand_f
                         break
             target_file = target_file or "batch_allocator/allocator.py"
-            pub_test_rel = active_constraints.get("public_test_rel_path") or "tests/test_allocator_public.py"
+            pub_test_rel = active_constraints.get("public_test_rel_path")
+            if not pub_test_rel:
+                for cand_t in sorted(files_map.keys()):
+                    if cand_t.startswith("tests/test_") and cand_t.endswith(".py"):
+                        pub_test_rel = cand_t
+                        break
+            pub_test_rel = pub_test_rel or "tests/test_allocator_public.py"
 
             target_source = (files_map.get(target_file) or {}).get("sanitized_content") or ""
             pub_test_source = (files_map.get(pub_test_rel) or {}).get("sanitized_content") or ""
@@ -2198,104 +2630,119 @@ def advance_deliberate_project(
             patch_res: Optional[Dict[str, Any]] = None
             lease_used: Optional[str] = None
             producing_actor = "authenticated_worker_model"
+            prompts_sent: List[Dict[str, Any]] = []
 
             max_patch_attempts = 2
             for attempt in range(1, max_patch_attempts + 1):
+                failure_origin_label = "natural_model_failure"
+                inf_patch: Dict[str, Any] = {}
                 if use_live_worker:
-                    if attempt == 1 and simulate_first_attempt_defect:
-                        # Controlled fault-injection test hook: ask the model on Attempt 1 to keep the original buggy function body
-                        # or introduce a partial fix so we can deterministically prove the 5-step failure repair cycle on Attempt 2
-                        prompt_patch = context_manager.build_inference_prompt(
-                            instruction=(
-                                f"Output the Python source code for `{target_file}` inside a ```python ... ``` code block, "
-                                "keeping the existing `sort(reverse=True)` line unchanged so we can test the verifier's failure diagnostics."
-                            ),
-                            inputs={"target_file_source": target_source},
-                            budget_chars=context_manager.MAX_EXPANDED_CONTEXT_CHARS,
-                            user_constraints=constraint_texts,
+                    if attempt == 1 and (injected_first_attempt_candidate is not None or simulate_first_attempt_defect):
+                        # Explicit test-fixture fault injection: never prompts the model to write a specific bug;
+                        # evaluates the fixture-supplied broken candidate on Attempt 1 and dispatches genuine
+                        # model repair on Attempt 2 with the domain-neutral repair prompt.
+                        failure_origin_label = "injected_test_fixture"
+                        candidate_code = (
+                            injected_first_attempt_candidate
+                            if injected_first_attempt_candidate is not None
+                            else target_source
                         )
-                    elif attempt == 1:
-                        prompt_patch = context_manager.build_inference_prompt(
-                            instruction=(
-                                f"You are repairing a Python bug in `{target_file}` (Objective: {'; '.join(obj_texts)}).\n"
-                                "Inspect the `<evidence_data>` containing the complete current source of the target file, the public unit tests, "
-                                "and the public test failure output, as well as all active `<user_constraints>`.\n"
-                                "Write the complete, corrected Python module for the target file inside a single ```python ... ``` code block.\n"
-                                "Requirements:\n"
-                                "- Preserve all public function signatures and return dict keys.\n"
-                                "- Fix all defects identified by the docstring specification, public tests, and user constraints.\n"
-                                "- Output ONLY the valid Python module inside ```python ... ```."
-                            ),
-                            inputs={
-                                "target_file_source": target_source,
-                                "public_tests_and_failure": f"{pub_test_source}\n\nFAILURE OUTPUT:\n{pub_failure_excerpt[:600]}",
-                            },
-                            budget_chars=context_manager.MAX_EXPANDED_CONTEXT_CHARS,
-                            user_constraints=constraint_texts,
-                        )
-                    else:
-                        last_repair = repair_events[-1]
-                        prompt_patch = context_manager.build_inference_prompt(
-                            instruction=(
-                                f"REPAIR ATTEMPT {attempt} for `{target_file}` (Objective: {'; '.join(obj_texts)}).\n"
-                                f"Previous attempt failed verification: {last_repair['repair_instruction']}\n"
-                                f"Failed checks: {', '.join(last_repair['failed_check_names'])}\n"
-                                f"Diagnostics: {'; '.join(last_repair['sanitized_diagnostics'])}\n\n"
-                                "Carefully review the `<evidence_data>` (target file source and public unit tests) and `<user_constraints>`, "
-                                "fix both the reserved stock subtraction (`int(b.get('on_hand', 0)) - int(b.get('reserved', 0))`) and the ascending FEFO sort (`reverse=False`), "
-                                "and output the complete corrected Python module for the target file inside a single ```python ... ``` block."
-                            ),
-                            inputs={
-                                "target_file_source": target_source,
-                                "public_tests_and_failure": f"{pub_test_source}\n\nFAILURE OUTPUT:\n{pub_failure_excerpt[:600]}",
-                            },
-                            budget_chars=context_manager.MAX_EXPANDED_CONTEXT_CHARS,
-                            user_constraints=constraint_texts,
-                        )
-
-                    inf_patch = execute_native_worker_inference(
-                        project_id=project_id,
-                        run_id=run_id,
-                        orch_task_id=None,
-                        purpose=f"t2_propose_and_verify_patch_attempt_{attempt}",
-                        prompt=prompt_patch,
-                        role="code_generation",
-                        preferred_model=preferred_model,
-                        max_tokens=1024,
-                        worker_poll_step=worker_poll_step,
-                    )
-                    if inf_patch.get("lease_id"):
-                        lease_used = inf_patch["lease_id"]
-                        native_leases.append(lease_used)
-
-                    if inf_patch.get("status") != "completed":
                         wm.record_epistemic_item(
                             project_id,
-                            epistemic_category="verification_failure",
-                            statement=f"Worker inference for patch attempt {attempt} did not complete: {inf_patch.get('status')}",
-                            verification_status="blocked",
+                            epistemic_category="model_proposal",
+                            statement=f"Injected test-fixture candidate for '{target_file}' (Attempt {attempt}, origin=injected_test_fixture).",
+                            verification_status="proposed",
                             run_id=run_id,
                             task_key=tkey,
-                            qualifiers={"worker_result": inf_patch},
+                            qualifiers={
+                                "producing_actor": "injected_test_fixture",
+                                "failure_origin": "injected_test_fixture",
+                                "attempt": attempt,
+                                "code_sha256": hashlib.sha256(candidate_code.encode("utf-8")).hexdigest(),
+                            },
                         )
-                        break
+                    else:
+                        if attempt == 1:
+                            prompt_patch = context_manager.build_inference_prompt(
+                                instruction=(
+                                    f"You are repairing a Python bug in `{target_file}` (Objective: {'; '.join(obj_texts)}).\n"
+                                    "Inspect the `<evidence_data>` containing the complete current source of the target file, the public unit tests, "
+                                    "and the public test failure output, as well as all active `<user_constraints>`.\n"
+                                    "Write the complete, corrected Python module for the target file inside a single ```python ... ``` code block.\n"
+                                    "Requirements:\n"
+                                    "- Preserve all public function signatures and return dict keys.\n"
+                                    "- Fix all defects identified by the docstring specification, public tests, and user constraints.\n"
+                                    "- Output ONLY the valid Python module inside ```python ... ```."
+                                ),
+                                inputs={
+                                    "target_file_source": target_source,
+                                    "public_tests_and_failure": f"{pub_test_source}\n\nFAILURE OUTPUT:\n{pub_failure_excerpt[:600]}",
+                                },
+                                budget_chars=context_manager.MAX_EXPANDED_CONTEXT_CHARS,
+                                user_constraints=constraint_texts,
+                            )
+                        else:
+                            last_repair = repair_events[-1]
+                            prompt_patch = build_repository_repair_prompt(
+                                target_file=target_file,
+                                attempt=attempt,
+                                obj_texts=obj_texts,
+                                constraint_texts=constraint_texts,
+                                target_source=target_source,
+                                pub_test_source=pub_test_source,
+                                pub_failure_excerpt=pub_failure_excerpt,
+                                last_repair=last_repair,
+                            )
 
-                    candidate_code = extract_python_code_from_model_response(inf_patch.get("response") or "")
-                    # Step 5: Record model's proposed patch as `proposed` before running independent test verifier
-                    wm.record_epistemic_item(
-                        project_id,
-                        epistemic_category="model_proposal",
-                        statement=f"Worker model proposed candidate patch for '{target_file}' (Attempt {attempt}, lease={lease_used}).",
-                        verification_status="proposed",
-                        run_id=run_id,
-                        task_key=tkey,
-                        qualifiers={
-                            "producing_actor": "authenticated_worker_model",
-                            "lease_id": lease_used,
+                        prompts_sent.append({
                             "attempt": attempt,
-                            "code_sha256": hashlib.sha256(candidate_code.encode("utf-8")).hexdigest(),
-                        },
-                    )
+                            "prompt_sha256": hashlib.sha256(prompt_patch.encode("utf-8")).hexdigest(),
+                            "prompt_chars": len(prompt_patch),
+                            "public_diagnostics_excerpt": pub_failure_excerpt[:400],
+                        })
+                        inf_patch = execute_native_worker_inference(
+                            project_id=project_id,
+                            run_id=run_id,
+                            orch_task_id=None,
+                            purpose=f"t2_propose_and_verify_patch_attempt_{attempt}",
+                            prompt=prompt_patch,
+                            role="code_generation",
+                            preferred_model=preferred_model,
+                            max_tokens=1024,
+                            worker_poll_step=worker_poll_step,
+                        )
+                        if inf_patch.get("lease_id"):
+                            lease_used = inf_patch["lease_id"]
+                            native_leases.append(lease_used)
+
+                        if inf_patch.get("status") != "completed":
+                            wm.record_epistemic_item(
+                                project_id,
+                                epistemic_category="verification_failure",
+                                statement=f"Worker inference for patch attempt {attempt} did not complete: {inf_patch.get('status')}",
+                                verification_status="blocked",
+                                run_id=run_id,
+                                task_key=tkey,
+                                qualifiers={"worker_result": inf_patch},
+                            )
+                            break
+
+                        candidate_code = extract_python_code_from_model_response(inf_patch.get("response") or "")
+                        # Step 5: Record model's proposed patch as `proposed` before running independent test verifier
+                        wm.record_epistemic_item(
+                            project_id,
+                            epistemic_category="model_proposal",
+                            statement=f"Worker model proposed candidate patch for '{target_file}' (Attempt {attempt}, lease={lease_used}).",
+                            verification_status="proposed",
+                            run_id=run_id,
+                            task_key=tkey,
+                            qualifiers={
+                                "producing_actor": "authenticated_worker_model",
+                                "lease_id": lease_used,
+                                "attempt": attempt,
+                                "code_sha256": hashlib.sha256(candidate_code.encode("utf-8")).hexdigest(),
+                            },
+                        )
                 else:
                     producing_actor = "deterministic_fallback_disabled_without_live_worker"
                     break
@@ -2310,9 +2757,16 @@ def advance_deliberate_project(
                         "public_test_rel_path": pub_test_rel,
                         "holdout_test_dir": eff_holdout,
                         "revert_on_failure": True,
+                        "project_id": project_id,
+                        "run_id": run_id or "run_repo_verif",
+                        "native_execution_id": str(inf_patch.get("execution_id") or inf_patch.get("task_id") or "exec_bound"),
+                        "native_lease_id": str(lease_used or "lease_bound"),
+                        "native_idempotency_key": str(inf_patch.get("idempotency_key") or lease_used or "idem_bound"),
                     },
                 )
                 patch_res = tool_patch_obs["result"]
+                if patch_res.get("status") == "held_protected_backend_required":
+                    break
                 if patch_res.get("accepted"):
                     break
 
@@ -2325,24 +2779,30 @@ def advance_deliberate_project(
                 )
                 repair_events.append({
                     **r_plan,
+                    "failure_origin": failure_origin_label,
                     "lease_id": lease_used,
                     "task_id": inf_patch.get("task_id"),
                 })
                 wm.record_epistemic_item(
                     project_id,
                     epistemic_category="verification_failure",
-                    statement=f"Patch attempt {attempt} rejected by independent test verifier: {r_plan['failed_check_names']}",
+                    statement=f"Patch attempt {attempt} rejected by independent test verifier (origin={failure_origin_label}): {r_plan['failed_check_names']}",
                     verification_status="failed",
                     run_id=run_id,
                     task_key=tkey,
-                    qualifiers={"repair_plan": r_plan, "lease_id": lease_used},
+                    qualifiers={"repair_plan": r_plan, "failure_origin": failure_origin_label, "lease_id": lease_used},
                 )
 
             if not patch_res or not patch_res.get("accepted"):
+                blocker_msg = (
+                    "Protected repository verifier backend is held; candidate code execution refused on host"
+                    if (patch_res and patch_res.get("status") == "held_protected_backend_required")
+                    else "Patch verification failed or worker unavailable"
+                )
                 with db_transaction() as c:
                     c.execute(
                         "UPDATE project_task_contracts SET status = 'blocked', blocker_conditions_json = ?, updated_at = ? WHERE project_id = ? AND task_key = ?",
-                        (jdump(["Patch verification failed or worker unavailable"]), now_iso(), project_id, tkey),
+                        (jdump([blocker_msg]), now_iso(), project_id, tkey),
                     )
                 context_manager.save_project_memory_state(
                     project_id,
@@ -2350,9 +2810,18 @@ def advance_deliberate_project(
                     current_cycle_phase="blocked",
                     escalation_step=7,
                     failed_approaches=repair_events,
-                    next_action={"action": "patch_verification_blocked", "task_key": tkey},
+                    next_action={"action": "patch_verification_blocked", "task_key": tkey, "reason": blocker_msg},
                 )
-                steps_executed.append({"task_key": tkey, "status": "blocked", "lease_id": lease_used})
+                steps_executed.append({
+                    "task_key": tkey,
+                    "status": "blocked",
+                    "lease_id": lease_used,
+                    "action_origin": action_origin,
+                    "proposal_validity": True,
+                    "action_appropriateness": "unmeasured" if action_origin == "template" else True,
+                    "execution_outcome": "held" if (patch_res and patch_res.get("status") == "held_protected_backend_required") else "failed",
+                    "task_outcome": "blocked",
+                })
                 break
 
             diff_bytes = str(patch_res.get("unified_diff") or "").encode("utf-8")
@@ -2365,6 +2834,7 @@ def advance_deliberate_project(
                         f"Applied and verified bug-fix patch on '{target_file}' under revision {ledger.revision_number} "
                         f"(publicran={patch_res['public_tests']['tests_run']}, "
                         f"holdoutran={(patch_res.get('holdout_tests') or {}).get('tests_run', 0)}, "
+                        f"backend={patch_res.get('containment_backend')}, "
                         f"unrelated_preserved={patch_res['unrelated_files_preserved']})."
                     ),
                     "lease_id": lease_used,
@@ -2379,8 +2849,11 @@ def advance_deliberate_project(
                         "after_sha256": patch_res.get("after_sha256"),
                         "public_tests_run": patch_res["public_tests"]["tests_run"],
                         "holdout_tests_run": (patch_res.get("holdout_tests") or {}).get("tests_run", 0),
+                        "containment_backend": patch_res.get("containment_backend"),
+                        "filesystem_and_network_containment": patch_res.get("filesystem_and_network_containment", False),
                         "unrelated_files_preserved": patch_res["unrelated_files_preserved"],
                         "unrelated_file_hashes": patch_res.get("unrelated_file_hashes") or {},
+                        "prompts_sent": prompts_sent,
                         "producing_actor": producing_actor,
                         "lease_id": lease_used,
                         "decision_summary": op_summary,
@@ -2396,6 +2869,11 @@ def advance_deliberate_project(
                 "lease_id": lease_used,
                 "producing_actor": producing_actor,
                 "selected_tool": val_gate["selected_tool"],
+                "action_origin": action_origin,
+                "proposal_validity": True,
+                "action_appropriateness": "unmeasured" if action_origin == "template" else True,
+                "execution_outcome": "succeeded",
+                "task_outcome": res_repo_t2["task_status"],
             })
 
         elif verifier_id == "verifier:repo_change_summary_v1":
@@ -2417,6 +2895,7 @@ def advance_deliberate_project(
                 f"- **Initial Failing Public Tests Reproduced**: `{t1_out.get('initial_failures', 1)}` failure(s) across `{t1_out.get('initial_tests_run', 0)}` test(s)\n"
                 f"- **Post-Patch Public Tests Passed**: `{t2_out.get('public_tests_run', 0)}` passed, `0` failed\n"
                 f"- **Protected Holdout Tests Passed**: `{t2_out.get('holdout_tests_run', 0)}` passed, `0` failed\n"
+                f"- **Containment Backend**: `{t2_out.get('containment_backend', 'held')}`\n"
                 f"- **Unrelated Files Preserved**: `{t2_out.get('unrelated_files_preserved', True)}`\n"
                 f"- **Untouched File SHA-256 Digests**: `{json.dumps(t2_out.get('unrelated_file_hashes') or {}, sort_keys=True)}`\n"
             )
@@ -2457,6 +2936,11 @@ def advance_deliberate_project(
                 "artifact_id": res_repo_t3["published_artifact_id"],
                 "lease_id": lease_from_t2,
                 "selected_tool": val_gate["selected_tool"],
+                "action_origin": action_origin,
+                "proposal_validity": True,
+                "action_appropriateness": "unmeasured" if action_origin == "template" else True,
+                "execution_outcome": "succeeded",
+                "task_outcome": res_repo_t3["task_status"],
             })
 
         else:
@@ -2465,6 +2949,11 @@ def advance_deliberate_project(
                 "status": "blocked",
                 "error_class": "unregistered_verifier",
                 "reason": f"Verifier '{verifier_id}' is not registered in REGISTERED_CONTROLLER_VERIFIERS.",
+                "action_origin": action_origin,
+                "proposal_validity": False,
+                "action_appropriateness": False,
+                "execution_outcome": "not_executed",
+                "task_outcome": "blocked",
             })
             break
 
@@ -2495,9 +2984,26 @@ def advance_deliberate_project(
         final_phase = "execute"
 
     total_p = tool_selection_stats["total_proposals"]
-    tool_selection_stats["tool_selection_accuracy"] = (
-        round(tool_selection_stats["valid_selections"] / total_p, 4) if total_p > 0 else 1.0
+    tool_selection_stats["proposal_validation_rate"] = (
+        round(tool_selection_stats["valid_proposals"] / total_p, 4) if total_p > 0 else "not_evaluated"
     )
+    model_prop_count = tool_selection_stats["action_origin_counts"]["model_proposal"]
+    if model_prop_count > 0:
+        appropriate_model_steps = [
+            s for s in steps_executed
+            if s.get("action_origin") == "model_proposal" and isinstance(s.get("action_appropriateness"), bool)
+        ]
+        if appropriate_model_steps:
+            tool_selection_stats["model_tool_selection_accuracy"] = round(
+                sum(1 for s in appropriate_model_steps if s["action_appropriateness"] is True) / len(appropriate_model_steps),
+                4,
+            )
+        else:
+            tool_selection_stats["model_tool_selection_accuracy"] = "not_evaluated"
+    else:
+        tool_selection_stats["model_tool_selection_accuracy"] = "not_evaluated"
+
+    tool_selection_stats["tool_selection_accuracy"] = tool_selection_stats["model_tool_selection_accuracy"]
 
     return {
         "project_id": project_id,

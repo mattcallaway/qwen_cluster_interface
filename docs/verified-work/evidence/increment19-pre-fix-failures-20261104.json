@@ -1,0 +1,40 @@
+{
+  "schema": "qc.increment19_pre_fix_failures.v1",
+  "recorded_at": "2026-11-04T19:50:15-08:00",
+  "reviewed_commit_sha": "301c15ddb6cf487df9d1d73547cbe9f8def7c5bf",
+  "branch": "feature/increment19-general-purpose-coordinator",
+  "source_hashes_before_fix": {
+    "app/services/orchestration/tool_catalogue.py": "1ad9770a7fad990d0b459cbd0beeb08bff0c20a2a080923f8702542795c3986f",
+    "app/services/orchestration/deliberate_loop.py": "3f407edaeffb5848c0d9b465795d423bfe325b58eb4451d94daeed96489873dd",
+    "app/services/orchestration/working_memory.py": "b535ad5cbe18282c625efbc7c619237af15d7a773dd510147779015a1fc61965",
+    "app/services/orchestration/context_manager.py": "b687e9747322345cc6ab86a46c432761850f957bd86faca44da89a795797031f",
+    "app/services/orchestration/protected_verification.py": "56adc7dc86213dec997b776630c2425537e13e6475a2f358e4396b84c82a3fa0",
+    "vps_agent/independent_verifier.py": "73dca9f38be78a13b09bb0347a621a346dea6889afaf568bda0ddbf9e2bdf127",
+    "vps_agent/linux_sandbox.py": "933a950c6fe7774ad28a09a071f05bf851c037b9af1e9984ed44407e50f24c68"
+  },
+  "test_file": "tests/test_increment19_review_remediation.py",
+  "summary": "4 failed in 1.89s",
+  "failures": [
+    {
+      "test": "test_01_host_in_interpreter_holdout_and_stdout_spoofing_rejected",
+      "defect_category": "in_interpreter_test_authority_and_uncontained_host_execution",
+      "observed_failure": "AssertionError: Candidate printing fake SUMMARY + os._exit(0) must not pass! assert True is False"
+    },
+    {
+      "test": "test_02_no_embedded_domain_solution_in_coordinator_repair_prompt",
+      "defect_category": "embedded_domain_solution_in_repair_prompt",
+      "observed_failure": "AssertionError: Embedded domain solution/hook still present in deliberate_loop.py: int(b.get('on_hand', 0)) - int(b.get('reserved', 0))"
+    },
+    {
+      "test": "test_03_action_validation_rate_and_origin_separation",
+      "defect_category": "misleading_tool_selection_accuracy_and_missing_action_origin",
+      "observed_failure": "AssertionError: assert 'proposal_validation_rate' in {'total_proposals': 1, 'valid_selections': 1, 'rejected_proposals': 0, 'tool_selection_accuracy': 1.0}"
+    },
+    {
+      "test": "test_04_independent_action_appropriateness_judged_cases",
+      "defect_category": "missing_independent_action_appropriateness_evaluation",
+      "observed_failure": "AssertionError: deliberate_loop must implement evaluate_next_action_appropriateness"
+    }
+  ]
+}
+

@@ -4,17 +4,26 @@
   "model_identity": "qwen2.5:3b",
   "worker_node_id": "node-inc19-live-worker",
   "supplier_domain": {
-    "project_id": "prj-bf4afbab88714e30a9352ca964d3f9b1",
+    "project_id": "prj-282e364f2d8748b8b5132b16f01544f9",
     "domain": "supplier_option_evaluation",
     "final_cycle_phase": "completed",
     "native_worker_lease_ids": [
-      "lease_ac3848b02e5a"
+      "lease_0770a22b1349"
     ],
     "tool_selection_stats": {
       "total_proposals": 3,
+      "valid_proposals": 3,
       "valid_selections": 3,
       "rejected_proposals": 0,
-      "tool_selection_accuracy": 1.0
+      "proposal_validation_rate": 1.0,
+      "model_tool_selection_accuracy": "not_evaluated",
+      "tool_selection_accuracy": "not_evaluated",
+      "action_origin_counts": {
+        "template": 3,
+        "caller_supplied_contract": 0,
+        "model_proposal": 0,
+        "controller_policy": 0
+      }
     },
     "integration_verified": true,
     "artifacts": [
@@ -24,7 +33,7 @@
     ]
   },
   "repository_bugfix_domain": {
-    "project_id": "prj-d9ee29d10e644aeaa8c826f20c5d3783",
+    "project_id": "prj-afa2682efc824587abf0f656087b7d48",
     "domain": "repository_bugfix",
     "initial_clarification_phase": "clarify",
     "step1_inspection_status": "verified",
@@ -32,18 +41,27 @@
     "attempt1_natural_repair": {
       "final_cycle_phase": "completed",
       "native_worker_lease_ids": [
-        "lease_53491a5290a7"
+        "lease_6550b4916e23"
       ],
       "tool_selection_stats": {
         "total_proposals": 2,
+        "valid_proposals": 2,
         "valid_selections": 2,
         "rejected_proposals": 0,
-        "tool_selection_accuracy": 1.0
+        "proposal_validation_rate": 1.0,
+        "model_tool_selection_accuracy": "not_evaluated",
+        "tool_selection_accuracy": "not_evaluated",
+        "action_origin_counts": {
+          "template": 2,
+          "caller_supplied_contract": 0,
+          "model_proposal": 0,
+          "controller_policy": 0
+        }
       },
       "integration_verified": true,
       "untouched_reporting_sha256": "d66c879595e1c52ca8cda492c2282d574aee7a738dc664d5cf5e354265164074",
       "untouched_public_test_sha256": "c29ea0aa89052a8de91b803a104d2436ff7545876e50a36630e1fc727857d18c",
-      "patched_allocator_sha256": "fa5170a0d18dd843cd0afd7b0ea16f7fccf8804425ae19fed09335cb90ccc689"
+      "patched_allocator_sha256": "0edfab7de93a2ec4adbdb5a3b996767b9ce6aec0dadd93d8cb7d3eb35a3a9f45"
     },
     "mid_flight_steering_and_fault_injection_recovery": {
       "invalidated_task_keys": [
@@ -55,8 +73,7 @@
       ],
       "final_cycle_phase": "completed",
       "native_worker_lease_ids": [
-        "lease_81fc249ecddc",
-        "lease_0a72c31774dd"
+        "lease_043250ff6c79"
       ],
       "repair_events_count": 1,
       "oracle_exposure_prevented": true

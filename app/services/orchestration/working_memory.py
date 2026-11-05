@@ -261,6 +261,25 @@ def is_project_dispatch_stopped(project_id: str) -> bool:
         conn.close()
 
 
+def set_project_dispatch_stopped(project_id: str, stopped: bool = True) -> None:
+    """Set or clear the dispatch_stopped flag in project_memory_state."""
+    conn_chk = get_db_connection()
+    try:
+        has_mem = conn_chk.execute(
+            "SELECT 1 FROM project_memory_state WHERE project_id = ?", (project_id,)
+        ).fetchone()
+    finally:
+        conn_chk.close()
+    if not has_mem:
+        from app.services.orchestration import context_manager
+        context_manager.save_project_memory_state(project_id)
+    with db_transaction() as conn:
+        conn.execute(
+            "UPDATE project_memory_state SET dispatch_stopped = ?, updated_at = ? WHERE project_id = ?",
+            (1 if stopped else 0, now_iso(), project_id),
+        )
+
+
 class WorkingMemoryError(Exception):
     """Base error for live operational working-memory violations."""
 

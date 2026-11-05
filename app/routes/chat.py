@@ -667,6 +667,7 @@ async def chat_deliberate_api(request: Request):
             workspace_path=body.get("workspace_path"),
             holdout_test_dir=body.get("holdout_test_dir"),
             simulate_first_attempt_defect=bool(body.get("simulate_first_attempt_defect", False)),
+            injected_first_attempt_candidate=body.get("injected_first_attempt_candidate"),
         )
         return {
             "ok": True,
@@ -793,6 +794,7 @@ async def chat_deliberate_api(request: Request):
             workspace_path=workspace_from_intake,
             holdout_test_dir=holdout_from_intake,
             simulate_first_attempt_defect=bool(body.get("simulate_first_attempt_defect", False)),
+            injected_first_attempt_candidate=body.get("injected_first_attempt_candidate"),
         )
 
     return {

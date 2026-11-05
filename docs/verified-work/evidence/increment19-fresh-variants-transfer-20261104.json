@@ -1,0 +1,172 @@
+{
+  "schema": "qc.increment19_fresh_variants_transfer_evidence.v1",
+  "host": "100.101.187.115",
+  "image_sha256": "43b057aa6a7133de2bbed57a8caaeecd07aea9228fa7cb6bec1608286b967b61",
+  "model": "qwen2.5:3b",
+  "worker_id": "node-inc19-variants-live",
+  "variants_evaluated": 3,
+  "all_variants_verified": true,
+  "variants": [
+    {
+      "variant_id": "variant_a_boundary_handling",
+      "project_id": "prj-7cf7c4c5fb064705bfaae73d519eb588",
+      "target_file": "sla_credit_calculator/credits.py",
+      "frozen_before_sha256": "44adbcae66aeec676c561f87313afd688c1d3911faeff2b9f141bb6b28429233",
+      "verified_after_sha256": "310089804fc3655e47e6671efa58cc3c213633aea1d1690b3ed146c0e3a9dcc6",
+      "frozen_holdout_sha256": "78dbbf5b4a2d0d828bb2affeeb3dea4b4fc109d82de9abc7df7c2276dab20775",
+      "unrelated_files_preserved": true,
+      "unrelated_file_hashes": {
+        "README.md": "e3762662963ea73a464f4f3f38c32e132ec5bc92fb9c21712ef772851b583f2b",
+        "sla_credit_calculator/__init__.py": "812847a0f15bbef730884d3fc589921fd72694a59dd68ff8e1799555a4f576c9",
+        "sla_credit_calculator/formatting.py": "a1f597ca99f6cee029820e811fea01738cff89db6e5b0451c4d4223ebc571282",
+        "tests/test_credits_public.py": "c085da862bef8d832ffbf1c5fc8a0ef90cf9310c7f008d43a43820572e04a13e"
+      },
+      "worker_id": "node-inc19-variants-live",
+      "lease_id": "lease_90ff8dcade4a",
+      "producing_actor": "authenticated_worker_model",
+      "containment_backend": "linux_systemd_root_image_sandbox",
+      "filesystem_and_network_containment": true,
+      "public_tests_run": 4,
+      "holdout_tests_run": 4,
+      "prompts_sent": [
+        {
+          "attempt": 1,
+          "prompt_chars": 5985,
+          "prompt_sha256": "10cb737e165ecc471686b042c4e52626d152090dfc33f2e2397ae160b423e859",
+          "public_diagnostics_excerpt": "===========================================\r\nFAIL: test_downtime_clamping (test_credits_public.TestSlaCreditsPublic.test_downtime_clamping)\r\n----------------------------------------------------------------------\r\nTraceback (most recent call last):\r\n  File \"C:\\Users\\Matt C\\AppData\\Local\\Temp\\pytest-of-Matt C\\pytest-576\\test_fresh_variants_repair_tra0\\variant_a_sla_repo\\tests\\test_credits_public.py\""
+        }
+      ],
+      "repair_events": [],
+      "tool_selection_stats": {
+        "total_proposals": 4,
+        "valid_proposals": 4,
+        "valid_selections": 4,
+        "rejected_proposals": 0,
+        "proposal_validation_rate": 1.0,
+        "model_tool_selection_accuracy": "not_evaluated",
+        "tool_selection_accuracy": "not_evaluated",
+        "action_origin_counts": {
+          "template": 4,
+          "caller_supplied_contract": 0,
+          "model_proposal": 0,
+          "controller_policy": 0
+        }
+      },
+      "patched_code": "from __future__ import annotations\nfrom typing import Any, Dict\n\n\ndef calculate_sla_credit(\n    monthly_fee_cents: int,\n    downtime_minutes: int,\n    total_minutes: int = 43200,\n) -> Dict[str, Any]:\n    \"\"\"Calculate SLA uptime in integer basis points (0..10000) and credit amount.\n\n    Specification rules:\n    1. If `monthly_fee_cents < 0` or `total_minutes <= 0`, raise `ValueError`.\n    2. Clamp `downtime_minutes` to `[0, total_minutes]` so `clamped_downtime = min(max(int(downtime_minutes), 0), int(total_minutes))`.\n    3. Compute `uptime_minutes = total_minutes - clamped_downtime` and integer basis points:\n       `uptime_bps = (uptime_minutes * 10000) // total_minutes`.\n    4. Determine `credit_rate_pct` using inclusive upper boundaries on `uptime_bps`:\n       - If `uptime_bps >= 9990`: `credit_rate_pct = 0`\n       - Else if `uptime_bps >= 9900`: `credit_rate_pct = 10`\n       - Else if `uptime_bps >= 9500`: `credit_rate_pct = 25`\n       - Else (`uptime_bps < 9500`): `credit_rate_pct = 50`\n    5. Compute `credit_cents = (int(monthly_fee_cents) * credit_rate_pct) // 100`.\n    6. Return `{\"uptime_bps\": int, \"credit_rate_pct\": int, \"credit_cents\": int, \"sla_breached\": bool}`\n       where `sla_breached` is `credit_rate_pct > 0`.\n    \"\"\"\n    if monthly_fee_cents < 0 or total_minutes <= 0:\n        raise ValueError(\"Invalid fee or total_minutes\")\n\n    clamped_downtime = min(max(int(downtime_minutes), 0), int(total_minutes))\n    uptime_minutes = total_minutes - clamped_downtime\n    uptime_bps = (uptime_minutes * 10000) // total_minutes\n\n    if uptime_bps >= 9990:\n        credit_rate_pct = 0\n    elif uptime_bps >= 9900:\n        credit_rate_pct = 10\n    elif uptime_bps >= 9500:\n        credit_rate_pct = 25\n    else:\n        credit_rate_pct = 50\n\n    credit_cents = (int(monthly_fee_cents) * credit_rate_pct) // 100\n    return {\n        \"uptime_bps\": uptime_bps,\n        \"credit_rate_pct\": credit_rate_pct,\n        \"credit_cents\": credit_cents,\n        \"sla_breached\": credit_rate_pct > 0,\n    }\n"
+    },
+    {
+      "variant_id": "variant_b_ordering_selection",
+      "project_id": "prj-307c0d10cfd14b9895d85df381546157",
+      "target_file": "incident_router/router.py",
+      "frozen_before_sha256": "5263a8a1cff245f583b0eb247e59dbbf54859c79023fa3f0cf4f8ab8f9a668fd",
+      "verified_after_sha256": "e25a1d936e54930b434f5265a3e2e9e93bf58e6f3c38d41de1cfc28afb61f622",
+      "frozen_holdout_sha256": "bacb0897d6ceaa7c8320fc28d29a888e1c48221c5cf0b618b03c788f85b0ac63",
+      "unrelated_files_preserved": true,
+      "unrelated_file_hashes": {
+        "incident_router/__init__.py": "72b5781039ca1b3ce704aaab21ea77c3d9ae2e0cdbbb8a841d38b0720f607580",
+        "incident_router/escalation_policy.py": "8d27761ed95bafa6763be6b0a609a183dba8ba42e8d532a9a93e47b878b146c7",
+        "README.md": "313b06e706b782cfb37e612b565d981b9c71cea73bf9358f677f9d2aaa2aa706",
+        "tests/test_router_public.py": "41afbd9c8c86e131531299014fae0a084a57e3f109ac196f93efd81c962f1a34"
+      },
+      "worker_id": "node-inc19-variants-live",
+      "lease_id": "lease_9cdc36a11135",
+      "producing_actor": "authenticated_worker_model",
+      "containment_backend": "linux_systemd_root_image_sandbox",
+      "filesystem_and_network_containment": true,
+      "public_tests_run": 3,
+      "holdout_tests_run": 3,
+      "prompts_sent": [
+        {
+          "attempt": 1,
+          "prompt_chars": 5943,
+          "prompt_sha256": "49fffe970ccd7f207ebf61e38806067818472ad0bb142f31a8de39bc8391ea61",
+          "public_diagnostics_excerpt": "--------------------------------------------------------------\r\nTraceback (most recent call last):\r\n  File \"C:\\Users\\Matt C\\AppData\\Local\\Temp\\pytest-of-Matt C\\pytest-576\\test_fresh_variants_repair_tra0\\variant_b_router_repo\\tests\\test_router_public.py\", line 15, in test_least_loaded_on_duty_with_skill\r\n    self.assertEqual(res[\"selected_engineer_id\"], \"ENG-02\")\r\nAssertionError: 'ENG-05' != 'ENG-0"
+        }
+      ],
+      "repair_events": [],
+      "tool_selection_stats": {
+        "total_proposals": 4,
+        "valid_proposals": 4,
+        "valid_selections": 4,
+        "rejected_proposals": 0,
+        "proposal_validation_rate": 1.0,
+        "model_tool_selection_accuracy": "not_evaluated",
+        "tool_selection_accuracy": "not_evaluated",
+        "action_origin_counts": {
+          "template": 4,
+          "caller_supplied_contract": 0,
+          "model_proposal": 0,
+          "controller_policy": 0
+        }
+      },
+      "patched_code": "from __future__ import annotations\nfrom typing import Any, Dict, List\n\n\ndef select_oncall_engineer(\n    engineers: List[Dict[str, Any]],\n    required_skill: str,\n    max_active_incidents: int = 3,\n) -> Dict[str, Any]:\n    \"\"\"Select the least-loaded eligible on-call engineer for an incident.\n\n    Specification rules:\n    1. An engineer is eligible if and only if:\n       - `bool(eng.get(\"on_duty\", False))` is True\n       - `required_skill` is in `eng.get(\"skills\", [])`\n       - `int(eng.get(\"active_incidents\", 0)) < int(max_active_incidents)`\n    2. Sort eligible engineers ascending by `(int(eng.get(\"active_incidents\", 0)), str(eng[\"engineer_id\"]))`\n       so the responder with the fewest active incidents (and lexicographically smallest `engineer_id` on ties)\n       is selected first.\n    3. Return:\n       - `\"selected_engineer_id\"`: str or None (if no eligible engineer exists)\n       - `\"eligible_count\"`: int count of eligible engineers\n       - `\"candidate_order\"`: list of `str(eng[\"engineer_id\"])` in sorted eligible order\n    \"\"\"\n    eligible: List[Dict[str, Any]] = []\n    for eng in engineers:\n        if bool(eng.get(\"on_duty\", False)) and required_skill in eng.get(\"skills\", []) and int(eng.get(\"active_incidents\", 0)) < max_active_incidents:\n            eligible.append(eng)\n\n    # Sort eligible engineers ascending by (active_incidents, engineer_id)\n    eligible.sort(key=lambda e: (int(e.get(\"active_incidents\", 0)), str(e[\"engineer_id\"])))\n    order = [str(e[\"engineer_id\"]) for e in eligible]\n    return {\n        \"selected_engineer_id\": order[0] if order else None,\n        \"eligible_count\": len(order),\n        \"candidate_order\": order,\n    }\n"
+    },
+    {
+      "variant_id": "variant_c_state_aggregation_and_repair",
+      "project_id": "prj-db534c6b5ad94be79e2b4b7dfa09e640",
+      "target_file": "ledger_reconciler/reconcile.py",
+      "frozen_before_sha256": "9d930b8b48a292cdf945e5cd9af047298e3d9d9346a84dcb1dc1822a2deb0f30",
+      "verified_after_sha256": "dca2d6c07761bfaef1d56e2de3b2d99d2ec558ab961242684ab2da3220a95f87",
+      "frozen_holdout_sha256": "d67786653d20979e42c2d57e2ba0161d7f8d2e099f22dcfacb6d6cf64e78f2ec",
+      "unrelated_files_preserved": true,
+      "unrelated_file_hashes": {
+        "ledger_reconciler/__init__.py": "626f845cd829db985ad0da399c2928c7089130f71a37e5cb2b89c2798ee797a6",
+        "ledger_reconciler/audit_log.py": "41af60fd8dea6093b977002a9b87ca8ec7b35d4bcf80c2da78c5817fcab15cc5",
+        "README.md": "a5150ccb9725853e774e34037b19159f70f8a856b9652ac084acafbc996815a9",
+        "tests/test_reconcile_public.py": "c9e5b7441a5ff3e78bfdfc63035484a91013ddc992671eed307ec625c7ec5f56"
+      },
+      "worker_id": "node-inc19-variants-live",
+      "lease_id": "lease_1dd2cdb8776a",
+      "producing_actor": "authenticated_worker_model",
+      "containment_backend": "linux_systemd_root_image_sandbox",
+      "filesystem_and_network_containment": true,
+      "public_tests_run": 2,
+      "holdout_tests_run": 2,
+      "prompts_sent": [
+        {
+          "attempt": 2,
+          "prompt_chars": 5924,
+          "prompt_sha256": "201076b514d6b67b8fe0effba88d41d47acac09cc24664e5f3c97a57c9db7681",
+          "public_diagnostics_excerpt": "test_credit_debit_and_status_filtering (test_reconcile_public.TestLedgerReconcilePublic.test_credit_debit_and_status_filtering) ... FAIL\r\n\r\n======================================================================\r\nFAIL: test_credit_debit_and_status_filtering (test_reconcile_public.TestLedgerReconcilePublic.test_credit_debit_and_status_filtering)\r\n-----------------------------------------------------"
+        }
+      ],
+      "repair_events": [
+        {
+          "schema": "qc.repair_plan.v1",
+          "attempt_number": 1,
+          "failure_category": "test_assertion_failure",
+          "failed_check_names": [
+            "protected_holdout_suite_passed",
+            "public_test_suite_passed"
+          ],
+          "sanitized_diagnostics": [
+            "protected_holdout_suite_passed: Protected black-box cases failed (failures=2, errors=0, failed_cases=['ledger_posted_credits_and_debits[req_debit_subtraction_and_status_filter]', 'ledger_currency_isolation[req_currency_filter]'])",
+            "public_test_suite_passed: ran=2 failures=2 errors=0 (linux_systemd_root_image_sandbox, host_exec=False)"
+          ],
+          "repair_instruction": "Review the edge cases, boundary conditions, and return types required by the specification. Do not hardcode example outputs; implement the general algorithm.",
+          "recommended_escalation_step": 5,
+          "oracle_exposure_prevented": true,
+          "failure_origin": "injected_test_fixture",
+          "lease_id": null,
+          "task_id": null
+        }
+      ],
+      "tool_selection_stats": {
+        "total_proposals": 4,
+        "valid_proposals": 4,
+        "valid_selections": 4,
+        "rejected_proposals": 0,
+        "proposal_validation_rate": 1.0,
+        "model_tool_selection_accuracy": "not_evaluated",
+        "tool_selection_accuracy": "not_evaluated",
+        "action_origin_counts": {
+          "template": 4,
+          "caller_supplied_contract": 0,
+          "model_proposal": 0,
+          "controller_policy": 0
+        }
+      },
+      "patched_code": "from __future__ import annotations\nfrom typing import Any, Dict, List\n\n\ndef summarize_account_balances(\n    entries: List[Dict[str, Any]],\n    target_currency: str = \"USD\",\n) -> Dict[str, Any]:\n    \"\"\"Aggregate posted journal entries by `account_id` for `target_currency`.\n\n    Specification rules:\n    1. Only process entries where `entry.get(\"status\") == \"posted\"` and\n       `entry.get(\"currency\", \"USD\") == target_currency`. Ignore all other entries\n       (such as `\"voided\"` or `\"pending\"` status or other currencies).\n    2. For each matching posted entry:\n       - If `entry.get(\"kind\") == \"credit\"`, add `int(entry[\"amount_cents\"])` to the account balance.\n       - If `entry.get(\"kind\") == \"debit\"`, subtract `int(entry[\"amount_cents\"])` from the account balance.\n       - Otherwise raise `ValueError(\"Unsupported entry kind\")`.\n    3. Return a dict with:\n       - `\"accounts\"`: dict mapping `account_id` (sorted keys) to its integer net balance in cents\n       - `\"net_total_cents\"`: integer sum of all account balances in `\"accounts\"`\n       - `\"applied_count\"`: integer number of posted entries applied\n    \"\"\"\n    balances: Dict[str, int] = {}\n    applied_count = 0\n\n    for entry in entries:\n        # Filter by status == 'posted' and currency == target_currency\n        if entry.get(\"status\") != \"posted\" or entry.get(\"currency\") != target_currency:\n            continue\n\n        # Only process entries with kind == 'credit' or 'debit'\n        if entry.get(\"kind\") not in (\"credit\", \"debit\"):\n            raise ValueError(f\"Unsupported entry kind: {entry['kind']}\")\n\n        # Add credit amount_cents and subtract debit amount_cents\n        acct = str(entry[\"account_id\"])\n        amt = int(entry[\"amount_cents\"])\n        kind = entry.get(\"kind\")\n        if kind == \"credit\":\n            balances[acct] = balances.get(acct, 0) + amt\n        elif kind == \"debit\":\n            balances[acct] = balances.get(acct, 0) - amt\n        applied_count += 1\n\n    sorted_accounts = {k: balances[k] for k in sorted(balances.keys())}\n    return {\n        \"accounts\": sorted_accounts,\n        \"net_total_cents\": sum(sorted_accounts.values()),\n        \"applied_count\": applied_count,\n    }\n"
+    }
+  ]
+}
