@@ -161,14 +161,13 @@ def test_cannot_bypass_execution_restriction_via_deliverable_acceptance():
 
 
 def test_code_sandbox_clean_execution():
-    """Valid code and test fixture execute cleanly when subprocess isolation runner is invoked."""
+    """AUD-10b: Even when allow_untrusted_subprocess=True is passed, host subprocess execution is blocked."""
     code = "def add(a, b):\n    return a + b\n"
     test_code = "assert add(2, 3) == 5\n"
     res = code_sandbox.run_isolated_code_evaluation(code, test_code, allow_untrusted_subprocess=True)
-    assert res.success is True
-    assert res.status == "ACCEPTED"
-    assert "code_execution_clean" in res.passed_checks
-    assert "test_fixture_passed" in res.passed_checks
+    assert res.success is False
+    assert res.status == "BLOCKED"
+    assert "secure_execution_unavailable" in (res.failed_checks or [])
 
 
 def test_code_sandbox_tamper_resistance_host_unaffected():
@@ -182,12 +181,13 @@ if 'app.services.orchestration.evaluator' in sys.modules:
 """
     test_code = "assert True\n"
     res = code_sandbox.run_isolated_code_evaluation(adversarial_code, test_code, allow_untrusted_subprocess=True)
+    assert res.status == "BLOCKED"
     # The host evaluator function is completely unchanged
     assert evaluator.evaluate_code_deliverable is original_fn
 
 
 def test_code_sandbox_network_isolation_blocked():
-    """Negative test: Attempting socket network connection is intercepted and raises PermissionError."""
+    """Negative test: Attempting socket network connection is blocked before host execution."""
     network_code = """
 import socket
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -195,20 +195,20 @@ s.connect(("127.0.0.1", 80))
 """
     res = code_sandbox.run_isolated_code_evaluation(network_code, allow_untrusted_subprocess=True)
     assert res.success is False
-    assert res.status == "REJECTED"
-    assert "PermissionError" in (res.error_message or "") or "disabled" in (res.error_message or "").lower()
+    assert res.status == "BLOCKED"
+    assert "secure_execution_unavailable" in (res.failed_checks or [])
 
 
 def test_code_sandbox_subprocess_spawning_blocked():
-    """Negative test: Attempting to spawn uncontrolled host subprocesses is intercepted."""
+    """Negative test: Attempting to spawn uncontrolled host subprocesses is blocked."""
     spawn_code = """
 import subprocess
 p = subprocess.Popen(["cmd.exe", "/c", "echo pwned"])
 """
     res = code_sandbox.run_isolated_code_evaluation(spawn_code, allow_untrusted_subprocess=True)
     assert res.success is False
-    assert res.status == "REJECTED"
-    assert "PermissionError" in (res.error_message or "") or "disabled" in (res.error_message or "").lower()
+    assert res.status == "BLOCKED"
+    assert "secure_execution_unavailable" in (res.failed_checks or [])
 
 
 def test_code_sandbox_environment_sanitization():
@@ -218,15 +218,17 @@ def test_code_sandbox_environment_sanitization():
     os.environ["QC_DATABASE_PATH"] = "/var/data/qc.db"
     os.environ["CONTROLLER_DATABASE_URL"] = "sqlite:////tmp/ctrl.db"
     try:
-        env_probe_code = """
-import os
-import sys
-# Check if any secret or DB env var leaked into child environment
-leaked = [k for k in os.environ if k in ("SECRET_CONTROLLER_KEY", "QC_DATABASE_PATH", "CONTROLLER_DATABASE_URL") or "SECRET" in k or "DATABASE" in k]
-assert len(leaked) == 0, f"Leaked sensitive env vars: {leaked}"
-"""
-        res = code_sandbox.run_isolated_code_evaluation(env_probe_code, allow_untrusted_subprocess=True)
-        assert res.success is True, f"Failed environment check: {res.error_message}"
+        sanitized = code_sandbox.build_sanitized_environment()
+        leaked = [
+            k
+            for k in sanitized
+            if k in ("SECRET_CONTROLLER_KEY", "QC_DATABASE_PATH", "CONTROLLER_DATABASE_URL")
+            or "SECRET" in k
+            or "DATABASE" in k
+        ]
+        assert len(leaked) == 0, f"Leaked sensitive env vars: {leaked}"
+        res = code_sandbox.run_isolated_code_evaluation("import os", allow_untrusted_subprocess=True)
+        assert res.status == "BLOCKED"
     finally:
         os.environ.pop("SECRET_CONTROLLER_KEY", None)
         os.environ.pop("QC_DATABASE_PATH", None)
@@ -234,15 +236,14 @@ assert len(leaked) == 0, f"Leaked sensitive env vars: {leaked}"
 
 
 def test_code_sandbox_wall_clock_timeout_enforced():
-    """Negative test: Code exceeding wall-clock budget is terminated and fails."""
+    """Negative test: Infinite loop code is blocked immediately without running on the host."""
     infinite_loop_code = "while True:\n    pass\n"
     start = time.time()
     res = code_sandbox.run_isolated_code_evaluation(infinite_loop_code, timeout_seconds=1.0, allow_untrusted_subprocess=True)
     duration = time.time() - start
     assert res.success is False
-    assert res.status == "REJECTED"
-    assert "TimeoutExpired" in (res.error_message or "") or "exceeded wall-clock budget" in (res.error_message or "")
-    assert duration < 4.0  # Terminated swiftly
+    assert res.status == "BLOCKED"
+    assert duration < 4.0
 
 
 def test_code_sandbox_runner_unavailable_fails_closed():
@@ -255,7 +256,7 @@ def test_code_sandbox_runner_unavailable_fails_closed():
     )
     assert res.success is False
     assert res.status == "BLOCKED"
-    assert "runner_unavailable" in (res.failed_checks or [])
+    assert "secure_execution_unavailable" in (res.failed_checks or [])
 
 
 def test_evaluator_evaluate_code_deliverable_uses_sandbox(monkeypatch):

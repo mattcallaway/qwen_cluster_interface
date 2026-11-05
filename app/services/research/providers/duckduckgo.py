@@ -105,7 +105,7 @@ class DuckDuckGoProvider(SearchProvider):
             }
             transport = PinningHTTPTransport(trust_env=False)
             resp = None
-            with httpx.Client(transport=transport, timeout=self.timeout_seconds, follow_redirects=True) as client:
+            with httpx.Client(transport=transport, timeout=self.timeout_seconds, follow_redirects=False) as client:
                 try:
                     resp = client.post("https://html.duckduckgo.com/html/", data={"q": effective_query}, headers=headers)
                     if resp.status_code == 202 or len(resp.text) < 500:

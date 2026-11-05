@@ -33,6 +33,7 @@ class Settings(BaseModel):
 
     # Project Orchestrator background engine (opt-in; the UI/API are always available, the engine loop only runs when enabled)
     orchestrator_enabled: bool = os.getenv("QC_ORCHESTRATOR_ENABLED", "0").lower() in ("1", "true", "yes")
+    allowed_workspace_roots: str = Field(default_factory=lambda: os.getenv("QC_ALLOWED_WORKSPACE_ROOTS", ""))
     
     # Paths derived from data_dir
     @property
@@ -52,6 +53,14 @@ class Settings(BaseModel):
     @property
     def artifacts_dir(self) -> Path:
         p = self.data_dir / "artifacts"
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+        return p
+
+    @property
+    def workspaces_dir(self) -> Path:
+        p = self.data_dir / "workspaces"
         p.mkdir(parents=True, exist_ok=True)
         return p
 

@@ -374,9 +374,9 @@ def test_liveness_health_endpoint(anon_client):
         assert "version" in data
 
 
-def test_cluster_health_snapshot_api_spec_section_6_1(anon_client):
+def test_cluster_health_snapshot_api_spec_section_6_1(auth_client):
     """Verify Cluster Real-Time Health Snapshot matches API Specification Section 6.1 schema."""
-    resp = anon_client.get("/api/v1/observatory/snapshots/latest")
+    resp = auth_client.get("/api/v1/observatory/snapshots/latest")
     assert resp.status_code == 200
     data = resp.json()
 
@@ -396,9 +396,9 @@ def test_cluster_health_snapshot_api_spec_section_6_1(anon_client):
         assert "ram_free_mb" in n
 
 
-def test_operational_diagnostics_service_and_api(anon_client):
+def test_operational_diagnostics_service_and_api(auth_client):
     """Verify full operational diagnostics endpoint /api/v1/system/diagnostics."""
-    resp = anon_client.get("/api/v1/system/diagnostics")
+    resp = auth_client.get("/api/v1/system/diagnostics")
     assert resp.status_code == 200
     data = resp.json()
 
@@ -604,11 +604,12 @@ def test_worker_automation_token_cannot_approve_or_promote_or_transfer():
     node_id = f"node-{uuid.uuid4().hex[:8]}"
     raw_token = f"worker-tok-{uuid.uuid4().hex[:16]}"
     register_node(node_id, "vps_worker", models=[])
+    import hashlib
     conn = get_db_connection()
     try:
         conn.execute(
             "INSERT INTO worker_auth_tokens (token_hash, token_prefix, node_id, revoked, created_at) VALUES (?, ?, ?, 0, datetime('now'))",
-            (raw_token, raw_token[:8], node_id),
+            (hashlib.sha256(raw_token.encode("utf-8")).hexdigest(), raw_token[:8], node_id),
         )
         conn.commit()
     finally:
@@ -737,10 +738,10 @@ def test_plan_approval_digest_mismatch_denied():
     assert "Plan digest mismatch" in resp.json()["error"]
 
 
-def test_diagnostics_does_not_expose_credentials_or_tokens(anon_client):
-    """Verify that public diagnostics and health snapshots do not leak secrets or tokens."""
-    snap = anon_client.get("/api/v1/observatory/snapshots/latest").json()
-    diag = anon_client.get("/api/v1/system/diagnostics").json()
+def test_diagnostics_does_not_expose_credentials_or_tokens(auth_client):
+    """Verify that diagnostics and health snapshots do not leak secrets or tokens."""
+    snap = auth_client.get("/api/v1/observatory/snapshots/latest").json()
+    diag = auth_client.get("/api/v1/system/diagnostics").json()
 
     snap_str = json.dumps(snap).lower()
     diag_str = json.dumps(diag).lower()

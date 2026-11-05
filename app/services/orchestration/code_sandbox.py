@@ -214,7 +214,7 @@ def run_isolated_code_evaluation(
     - The internal_harness_test_only flag is restricted solely to testing internal runner mechanics
       and is strictly forbidden for untrusted acceptance evaluation.
     """
-    if not is_os_enforced_sandbox_available() and not (allow_untrusted_subprocess or internal_harness_test_only):
+    if not is_os_enforced_sandbox_available():
         logger.warning(
             "Automatic execution of generated code disabled: OS-enforced execution isolation unavailable. "
             "Subprocess isolation is blocked by policy."

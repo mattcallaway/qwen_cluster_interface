@@ -62,7 +62,7 @@ class SearXNGProvider(SearchProvider):
 
         try:
             transport = PinningHTTPTransport(trust_env=False)
-            with httpx.Client(transport=transport, timeout=self.timeout_seconds, follow_redirects=True) as client:
+            with httpx.Client(transport=transport, timeout=self.timeout_seconds, follow_redirects=False) as client:
                 resp = client.get(endpoint, params=params, headers=headers)
                 resp.raise_for_status()
                 data = resp.json()

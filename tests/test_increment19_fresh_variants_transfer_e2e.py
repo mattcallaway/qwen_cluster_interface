@@ -73,6 +73,8 @@ def _start_controller_with_protected_linux_verifier(
 ) -> subprocess.Popen:
     env = os.environ.copy()
     env["QC_DATA_DIR"] = str(data_dir)
+    env["QC_ALLOWED_WORKSPACE_ROOTS"] = str(data_dir.parent)
+    env["QC_VERIFIER_HOLDOUT_ROOTS"] = str(data_dir.parent)
     env["QC_ENV"] = "development"
     env["QC_SECRET_KEY"] = secret_key
     env["QC_ORCHESTRATOR_ENABLED"] = "0"
@@ -834,12 +836,33 @@ def test_fresh_variants_repair_transfer_live_e2e(tmp_path: Path, monkeypatch: py
                     "preferred_model": "qwen2.5:3b",
                 }
                 if vspec["injected_first_attempt_candidate"] is not None:
-                    payload["injected_first_attempt_candidate"] = vspec["injected_first_attempt_candidate"]
+                    # Assert HTTP /api/v1/chat/deliberate rejects injected_first_attempt_candidate on external API requests (AUD-03)
+                    rejected_payload = dict(payload)
+                    rejected_payload["injected_first_attempt_candidate"] = vspec["injected_first_attempt_candidate"]
+                    rej_resp = client.post("/api/v1/chat/deliberate", json=rejected_payload, headers=csrf_headers)
+                    assert rej_resp.status_code == 400, f"Expected 400 for injected_first_attempt_candidate over HTTP: {rej_resp.text}"
+                    # Create project via HTTP with advance=False, then invoke internal harness with injected_first_attempt_candidate
+                    init_payload = dict(payload)
+                    init_payload["advance"] = False
+                    resp = client.post("/api/v1/chat/deliberate", json=init_payload, headers=csrf_headers)
+                    assert resp.status_code == 200, f"HTTP {resp.status_code}: {resp.text}"
+                    body = resp.json()
+                    from app.services.orchestration import deliberate_loop
 
-                resp = client.post("/api/v1/chat/deliberate", json=payload, headers=csrf_headers)
-                assert resp.status_code == 200, f"HTTP {resp.status_code}: {resp.text}"
-                body = resp.json()
-                adv = body["advance_result"]
+                    adv = deliberate_loop.advance_deliberate_project(
+                        body["project_id"],
+                        run_id=body["run_id"],
+                        actor="admin",
+                        max_steps=5,
+                        use_live_worker=True,
+                        preferred_model="qwen2.5:3b",
+                        injected_first_attempt_candidate=vspec["injected_first_attempt_candidate"],
+                    )
+                else:
+                    resp = client.post("/api/v1/chat/deliberate", json=payload, headers=csrf_headers)
+                    assert resp.status_code == 200, f"HTTP {resp.status_code}: {resp.text}"
+                    body = resp.json()
+                    adv = body["advance_result"]
                 assert adv["final_cycle_phase"] == "completed", f"Variant {meta['variant_id']} did not complete: {json.dumps(adv, indent=2)}"
 
                 pid = body["project_id"]

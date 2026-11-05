@@ -138,7 +138,8 @@ def get_active_pipeline_topologies() -> List[Dict[str, Any]]:
     try:
         from app.database import get_db_connection
 
-        with get_db_connection() as conn:
+        conn = get_db_connection()
+        try:
             cursor = conn.cursor()
             cursor.execute(
                 """
@@ -179,6 +180,8 @@ def get_active_pipeline_topologies() -> List[Dict[str, Any]]:
                             "is_last_stage": r["layer_end"] == r["total_layers"],
                         })
                     return list(grouped.values())
+        finally:
+            conn.close()
     except Exception:
         pass
 

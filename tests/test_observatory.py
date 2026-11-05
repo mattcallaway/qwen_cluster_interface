@@ -147,7 +147,9 @@ def test_capacity_weighted_aggregation_excludes_legacy(test_db):
 
 def test_worker_telemetry_authentication_and_spoofing(test_db):
     """Verify worker telemetry submission requires Bearer token and rejects node spoofing."""
+    from app.auth import create_session_token
     client = TestClient(app)
+    client.cookies.set("qc_session", create_session_token("admin"))
 
     # 1. Reject unauthenticated submission
     res = client.post("/api/v1/worker/telemetry", json={"node_id": "qwen-laptop", "cpu_percent": 25.0})
@@ -302,7 +304,9 @@ def test_rollups_and_retention_pruning(test_db):
 
 def test_observatory_api_and_page_rendering(test_db):
     """Verify HTTP endpoints and HTML dashboard rendering for all 6 tabs."""
+    from app.auth import create_session_token
     client = TestClient(app)
+    client.cookies.set("qc_session", create_session_token("admin"))
 
     # 1. Primary Observatory HTML page
     res = client.get("/observatory")

@@ -44,9 +44,19 @@ def _authenticate_request(request: Request, mutating: bool = True) -> tuple[str,
             user = "admin"
             is_bearer = True
         else:
+            import hashlib
+            tok_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
             c = get_db_connection()
             try:
-                row = c.execute("SELECT node_id FROM worker_auth_tokens WHERE token_hash = ? AND revoked = 0", (raw_token,)).fetchone()
+                row = c.execute(
+                    """SELECT t.node_id
+                       FROM worker_auth_tokens t
+                       LEFT JOIN infrastructure_nodes n ON n.id = t.node_id
+                       WHERE t.token_hash = ? AND t.revoked = 0
+                         AND COALESCE(n.is_enabled, 1) != 0
+                         AND t.node_id != 'node-d35568f5'""",
+                    (tok_hash,),
+                ).fetchone()
                 if row:
                     user = f"node:{row['node_id']}"
                     is_bearer = True
@@ -318,7 +328,8 @@ def handle_artifact_reuse_form(
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/auth/login", status_code=status.HTTP_302_FOUND)
-    verify_csrf(request, csrf_token)
+    if not verify_csrf(request, csrf_token):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid or missing CSRF token.")
 
     try:
         res = artifact_service.reuse_artifact_in_project(
@@ -352,7 +363,8 @@ def handle_create_project_from_artifact(
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/auth/login", status_code=status.HTTP_302_FOUND)
-    verify_csrf(request, csrf_token)
+    if not verify_csrf(request, csrf_token):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid or missing CSRF token.")
 
     try:
         res = artifact_service.create_project_from_artifact(
@@ -384,7 +396,8 @@ def handle_extract_knowledge_form(
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/auth/login", status_code=status.HTTP_302_FOUND)
-    verify_csrf(request, csrf_token)
+    if not verify_csrf(request, csrf_token):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid or missing CSRF token.")
 
     try:
         artifact_service.extract_knowledge_from_artifact(

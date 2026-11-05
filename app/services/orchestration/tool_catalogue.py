@@ -582,15 +582,107 @@ def run_bounded_python_verification(
 # 2b. Scoped Repository Inspection, Isolated Test Runner & Patch Verifier (Increment 19)
 # ---------------------------------------------------------------------------
 
+def _check_no_symlink_or_reparse(path: Path) -> None:
+    """Raise PermissionError if `path` or any entry inside it (if a directory) is a symlink or reparse point."""
+    from app.services.orchestration.protected_repo_verifier import is_reparse_or_symlink
+
+    if is_reparse_or_symlink(path):
+        raise PermissionError(f"Symlink or reparse point/junction forbidden in workspace path: {path}")
+
+
+def validate_and_confine_workspace_path(
+    workspace_path: str,
+    *,
+    holdout_path: Optional[str] = None,
+    enforce_allowed_roots: bool = False,
+) -> Path:
+    """Validate and canonicalize `workspace_path`, rejecting symlinks, Windows junctions/reparse
+    points, controller repository self-targeting, holdout directory overlap, and (when
+    `enforce_allowed_roots=True`) paths outside `settings.workspaces_dir` / `QC_ALLOWED_WORKSPACE_ROOTS`.
+    """
+    import os
+    from app.config import settings
+    from app.services.orchestration.protected_repo_verifier import is_reparse_or_symlink
+
+    if not workspace_path or not str(workspace_path).strip() or "\x00" in str(workspace_path):
+        raise PermissionError("Workspace path must be a non-empty valid directory path.")
+
+    raw_p = Path(str(workspace_path).strip())
+    _check_no_symlink_or_reparse(raw_p)
+    # Check existing ancestor components before resolve() so junctions/symlinks in parent paths are caught
+    cur = raw_p if raw_p.is_absolute() else (Path.cwd() / raw_p)
+    for anc in [cur] + list(cur.parents):
+        if anc.exists() and is_reparse_or_symlink(anc):
+            raise PermissionError(f"Symlink or reparse point/junction forbidden along workspace path: {anc}")
+
+    try:
+        resolved = raw_p.resolve(strict=True)
+    except FileNotFoundError as exc:
+        raise ValueError(f"Workspace directory does not exist: {workspace_path}") from exc
+
+    if not resolved.is_dir():
+        raise ValueError(f"Workspace path is not a directory: {workspace_path}")
+
+    controller_repo_root = Path(__file__).resolve().parents[3]
+    if resolved == controller_repo_root or resolved in controller_repo_root.parents:
+        raise PermissionError(f"Controller repository root cannot be used as a mutable workspace: {resolved}")
+
+    # Inspect all entries inside the workspace for symlinks or junctions
+    for entry in resolved.rglob("*"):
+        if is_reparse_or_symlink(entry):
+            raise PermissionError(f"Symlink or reparse point/junction forbidden inside workspace: {entry}")
+
+    if holdout_path and str(holdout_path).strip():
+        hold_raw = Path(str(holdout_path).strip())
+        _check_no_symlink_or_reparse(hold_raw)
+        if hold_raw.exists():
+            hold_resolved = hold_raw.resolve()
+            if (
+                resolved == hold_resolved
+                or resolved in hold_resolved.parents
+                or hold_resolved in resolved.parents
+            ):
+                raise PermissionError(
+                    f"Workspace '{resolved}' must not overlap holdout directory '{hold_resolved}'"
+                )
+
+    if enforce_allowed_roots:
+        allowed_roots: List[Path] = [settings.workspaces_dir.resolve()]
+        extra_raw = getattr(settings, "allowed_workspace_roots", "") or os.environ.get("QC_ALLOWED_WORKSPACE_ROOTS", "")
+        for part in re.split(r"[;,]", str(extra_raw)):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                allowed_roots.append(Path(part).resolve(strict=True))
+            except OSError:
+                continue
+
+        in_allowed = any(
+            resolved == a_root or a_root in resolved.parents
+            for a_root in allowed_roots
+        )
+        if not in_allowed:
+            raise PermissionError(
+                f"Workspace path '{workspace_path}' is outside authorized workspace roots."
+            )
+
+    return resolved
+
+
 def _resolve_safe_workspace_path(workspace_path: str, relative_path: str) -> Path:
-    """Resolve `relative_path` inside `workspace_path`, rejecting traversal (`..`) or outside-workspace access."""
-    root = Path(workspace_path).resolve()
-    if not root.exists() or not root.is_dir():
-        raise ValueError(f"Workspace directory does not exist: {workspace_path}")
+    """Resolve `relative_path` inside `workspace_path`, rejecting traversal (`..`), symlinks/junctions, or outside-workspace access."""
+    root = validate_and_confine_workspace_path(workspace_path, enforce_allowed_roots=False)
     rel = str(relative_path or "").replace("\\", "/").lstrip("/")
-    if ".." in Path(rel).parts:
+    if not rel or ".." in Path(rel).parts:
         raise PermissionError(f"Path traversal rejected in workspace path: {relative_path}")
-    target = (root / rel).resolve()
+    candidate = root / rel
+    for anc in [candidate] + list(candidate.parents):
+        if anc == root:
+            break
+        if anc.exists():
+            _check_no_symlink_or_reparse(anc)
+    target = candidate.resolve()
     if root != target and root not in target.parents:
         raise PermissionError(f"Target path '{relative_path}' escapes workspace root '{root}'")
     return target
@@ -602,12 +694,13 @@ def inspect_repository_workspace(
     max_file_chars: int = 8000,
 ) -> Dict[str, Any]:
     """Inspect a scoped repository workspace with prompt-injection stripping and SHA-256 file inventory."""
-    root = Path(workspace_path).resolve()
-    if not root.exists() or not root.is_dir():
+    try:
+        root = validate_and_confine_workspace_path(workspace_path, enforce_allowed_roots=False)
+    except Exception as exc:
         return {
             "schema": "qc.repo_inspection.v1",
             "status": "failed",
-            "error": f"Workspace not found: {workspace_path}",
+            "error": f"Workspace invalid or not found ({workspace_path}): {exc}",
             "files": {},
         }
 
@@ -762,6 +855,11 @@ def apply_and_verify_repository_patch(
     import difflib
     from app.services.orchestration import protected_repo_verifier
 
+    validate_and_confine_workspace_path(
+        workspace_path,
+        holdout_path=holdout_test_dir,
+        enforce_allowed_roots=False,
+    )
     target_path = _resolve_safe_workspace_path(workspace_path, target_file)
     if not target_path.exists():
         return {

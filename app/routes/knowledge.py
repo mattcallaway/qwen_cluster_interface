@@ -152,7 +152,7 @@ def create_record_submit(
             project_id=project_id if scope == "project" else None,
             verification_status=verification_status,
             topics=top_list,
-            promoted_by=user.get("username") if scope == "collective" else None,
+            promoted_by=(user if isinstance(user, str) else user.get("username")) if scope == "collective" else None,
         )
     except Exception:
         pass
@@ -223,13 +223,31 @@ def flag_obsolete_submit(
 # JSON APIs for programmatic access and Observatory integration
 # ---------------------------------------------------------------------------
 
+def _require_knowledge_api_auth(request: Request) -> str:
+    auth_hdr = request.headers.get("Authorization", "")
+    if auth_hdr.startswith("Bearer "):
+        from app.auth import verify_session_token
+        from app.config import settings
+        tok = auth_hdr[7:].strip()
+        user = verify_session_token(tok) or ("admin" if tok == settings.admin_password else None)
+        if user:
+            return user if isinstance(user, str) else user.get("username", "user")
+    user = get_current_user(request)
+    if not user:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
+    return user if isinstance(user, str) else user.get("username", "user")
+
+
 @router.get("/api/knowledge/records")
 def api_list_records(
+    request: Request,
     project_id: Optional[str] = None,
     scope: Optional[str] = None,
     q: Optional[str] = None,
     limit: int = 50
 ):
+    _require_knowledge_api_auth(request)
     if q and q.strip():
         recs = search_knowledge_records(q.strip(), project_id=project_id, scope=scope, limit=limit)
     else:
@@ -238,13 +256,15 @@ def api_list_records(
 
 
 @router.get("/api/knowledge/impacts/{project_id}")
-def api_project_impacts(project_id: str):
+def api_project_impacts(project_id: str, request: Request):
+    _require_knowledge_api_auth(request)
     impacts = list_affected_impacts(project_id)
     return JSONResponse(content={"affected_impacts": impacts, "count": len(impacts)})
 
 
 @router.get("/api/knowledge/checkpoints/{project_id}")
-def api_project_checkpoints(project_id: str):
+def api_project_checkpoints(project_id: str, request: Request):
+    _require_knowledge_api_auth(request)
     from app.services.orchestration.research_checkpoint import list_project_checkpoints
     checkpoints = list_project_checkpoints(project_id)
     return JSONResponse(content={"checkpoints": checkpoints, "count": len(checkpoints)})

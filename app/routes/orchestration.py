@@ -42,9 +42,19 @@ async def _auth(request: Request, mutating: bool = False):
                 user = "admin"
                 is_bearer = True
             else:
+                import hashlib
+                tok_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
                 c = get_db_connection()
                 try:
-                    row = c.execute("SELECT node_id FROM worker_auth_tokens WHERE token_hash = ? AND revoked = 0", (raw_token,)).fetchone()
+                    row = c.execute(
+                        """SELECT t.node_id
+                           FROM worker_auth_tokens t
+                           LEFT JOIN infrastructure_nodes n ON n.id = t.node_id
+                           WHERE t.token_hash = ? AND t.revoked = 0
+                             AND COALESCE(n.is_enabled, 1) != 0
+                             AND t.node_id != 'node-d35568f5'""",
+                        (tok_hash,),
+                    ).fetchone()
                     if row:
                         user = f"node:{row['node_id']}"
                         is_bearer = True

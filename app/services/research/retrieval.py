@@ -43,9 +43,10 @@ class PinningSyncBackend(SyncBackend):
     Prevents TOCTOU DNS rebinding by pinning the raw TCP socket to the verified IP address,
     while allowing TLS handshake to use the original hostname for SNI and certificate validation.
     """
-    def __init__(self, policy: ResearchSecurityPolicy):
+    def __init__(self, policy: ResearchSecurityPolicy, expected_ips: Optional[Dict[str, List[str]]] = None):
         super().__init__()
         self.policy = policy
+        self.expected_ips = expected_ips or {}
 
     def connect_tcp(
         self,
@@ -60,7 +61,17 @@ class PinningSyncBackend(SyncBackend):
             logger.warning("PinningSyncBackend blocked destination %s:%d - %s", host, port, dest_reason)
             raise DestinationBlockedError(f"Destination blocked by SSRF policy: {dest_reason}")
 
-        pinned_ip = resolved_ips[0]
+        clean_host = host.strip("[]").rstrip(".").lower()
+        expected_for_host = self.expected_ips.get(clean_host)
+        if expected_for_host:
+            overlap = [ip for ip in resolved_ips if ip in expected_for_host]
+            if not overlap:
+                raise DestinationBlockedError(
+                    f"DNS rebinding / address change detected for '{host}': pre-validated {expected_for_host}, connect resolved {resolved_ips}"
+                )
+            pinned_ip = overlap[0]
+        else:
+            pinned_ip = resolved_ips[0]
 
         if socket_options is None:
             socket_options = []
@@ -102,8 +113,10 @@ class PinningHTTPTransport(httpx.HTTPTransport):
         limits: Any = None,
         retries: int = 0,
         socket_options: Any = None,
+        expected_ips: Optional[Dict[str, List[str]]] = None,
     ):
         self.policy = policy or get_security_policy()
+        self.expected_ips = expected_ips or {}
         if limits is None:
             # Zero keepalive to prevent DNS rebinding connection reuse across queries
             limits = httpx.Limits(max_connections=50, max_keepalive_connections=0, keepalive_expiry=0.0)
@@ -127,8 +140,9 @@ class PinningHTTPTransport(httpx.HTTPTransport):
             http2=http2,
             retries=retries,
             socket_options=socket_options,
-            network_backend=PinningSyncBackend(policy=self.policy),
+            network_backend=PinningSyncBackend(policy=self.policy, expected_ips=self.expected_ips),
         )
+
 
 # Indicators that page is a JavaScript Single Page App needing browser automation
 SPA_INDICATORS = [
@@ -160,9 +174,19 @@ class FetchResult:
 
     def __post_init__(self):
         if self.redirect_chain is None:
-            self.redirect_chain = []
-        if not self.content_hash and self.content_bytes:
-            self.content_hash = compute_content_hash(self.content_bytes)
+            self.redirect_chain = [self.url]
+
+    @property
+    def text(self) -> str:
+        """Decode content bytes to UTF-8 text."""
+        try:
+            return self.content_bytes.decode("utf-8", errors="replace")
+        except Exception:
+            return ""
+
+    @property
+    def content(self) -> bytes:
+        return self.content_bytes
 
     @property
     def status(self) -> str:
@@ -277,7 +301,10 @@ class SecureFetcher:
 
             # 4. Perform streaming GET request without auto-following redirects
             try:
-                transport = PinningHTTPTransport(policy=self.policy)
+                transport = PinningHTTPTransport(
+                    policy=self.policy,
+                    expected_ips={hostname.strip("[]").rstrip(".").lower(): list(resolved_ips)},
+                )
                 with httpx.Client(transport=transport, timeout=timeout, follow_redirects=False) as client:
                     with client.stream("GET", current_url, headers=req_headers) as resp:
                         # Check redirect status codes (301, 302, 303, 307, 308)
@@ -387,6 +414,7 @@ class SecureFetcher:
                     or "SSRF" in err_str
                     or "blocked" in err_str.lower()
                     or "prohibited" in err_str.lower()
+                    or "rebind" in err_str.lower()
                 )
                 duration_ms = round((time.time() - start_time) * 1000.0, 1)
                 logger.warning("SSRF / connection block for %s: %s", current_url, conn_err)

@@ -286,6 +286,7 @@ def test_f6_chat_deliberate_direct_answer_and_durable_consumer(isolated_repair_e
                 "quotes": acceptance_harness.SYNTHETIC_SUPPLIER_QUOTES,
             },
             "advance": True,
+            "use_live_worker": False,
         },
         headers=headers,
     )

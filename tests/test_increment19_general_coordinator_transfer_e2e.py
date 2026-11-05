@@ -54,6 +54,8 @@ def _wait_for_health(base_url: str, timeout_s: float = 25.0) -> None:
 def _start_controller_subprocess(repo_root: Path, data_dir: Path, port: int, secret_key: str) -> subprocess.Popen:
     env = os.environ.copy()
     env["QC_DATA_DIR"] = str(data_dir)
+    env["QC_ALLOWED_WORKSPACE_ROOTS"] = str(data_dir.parent)
+    env["QC_VERIFIER_HOLDOUT_ROOTS"] = str(data_dir.parent)
     env["QC_ENV"] = "development"
     env["QC_SECRET_KEY"] = secret_key
     env["QC_ORCHESTRATOR_ENABLED"] = "0"
@@ -502,6 +504,7 @@ def test_live_general_coordinator_cross_domain_transfer_e2e(tmp_path: Path, monk
             assert repo_init_resp.status_code == 200, repo_init_resp.text
             repo_init_data = repo_init_resp.json()
             repo_project_id = repo_init_data["project_id"]
+            repo_run_id = repo_init_data["run_id"]
             assert repo_init_data["project_status"]["cycle_phase"] == "clarify"
             assert len(repo_init_data["project_status"]["uncertainty_and_blockers"]["material_missing_info"]) == 1
 
@@ -657,7 +660,8 @@ def test_live_general_coordinator_cross_domain_transfer_e2e(tmp_path: Path, monk
             # after the simulated Attempt 1 defect!
             _, _, _ = _create_disposable_allocator_repo(tmp_path)
 
-            fault_recovery_resp = client2.post(
+            # Verify HTTP /api/v1/chat/deliberate rejects fault-injection flags on external API requests (AUD-03)
+            fault_rejected_resp = client2.post(
                 "/api/v1/chat/deliberate",
                 headers=csrf_headers2,
                 json={
@@ -669,9 +673,20 @@ def test_live_general_coordinator_cross_domain_transfer_e2e(tmp_path: Path, monk
                     "simulate_first_attempt_defect": True,
                 },
             )
-            assert fault_recovery_resp.status_code == 200, fault_recovery_resp.text
-            fr_data = fault_recovery_resp.json()
-            adv_fr = fr_data["advance_result"]
+            assert fault_rejected_resp.status_code == 400, fault_rejected_resp.text
+
+            # Execute the internal fault-injection harness directly via deliberate_loop.advance_deliberate_project
+            from app.services.orchestration import deliberate_loop
+
+            adv_fr = deliberate_loop.advance_deliberate_project(
+                repo_project_id,
+                run_id=repo_run_id,
+                actor="admin",
+                max_steps=5,
+                use_live_worker=True,
+                preferred_model="qwen2.5:3b",
+                simulate_first_attempt_defect=True,
+            )
             assert adv_fr["final_cycle_phase"] == "completed", json.dumps(adv_fr, indent=2)
             assert len(adv_fr["repair_events"]) >= 1
             assert adv_fr["repair_events"][0]["oracle_exposure_prevented"] is True

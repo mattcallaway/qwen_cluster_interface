@@ -45,6 +45,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import stat
 import sys
 import tempfile
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -65,6 +66,100 @@ _ACTIVE_TRANSPORT: Optional[Callable[[Dict[str, Any], bytes], Dict[str, Any]]] =
 _ACTIVE_BACKEND_KIND: str = "held"
 _ACTIVE_NONPRODUCTION: bool = False
 _ACTIVE_ALLOW_UNCONTAINED_TEST_DOUBLE: bool = False
+_REGISTERED_HOLDOUT_SUITES: Dict[str, str] = {}
+
+
+def is_reparse_or_symlink(path: Path) -> bool:
+    """Return True if `path` is a symlink or a Windows reparse point / directory junction."""
+    try:
+        if path.is_symlink():
+            return True
+        st = os.lstat(path)
+        file_attrs = getattr(st, "st_file_attributes", 0)
+        reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        return bool(file_attrs & reparse_flag)
+    except OSError:
+        return False
+
+
+def register_verifier_holdout_suite(suite_id: str, holdout_dir: str | Path) -> str:
+    """Register a verifier-owned holdout test suite directory by ID for non-production verification."""
+    p = Path(holdout_dir)
+    if is_reparse_or_symlink(p):
+        raise ValueError(f"Holdout directory cannot be a symlink or reparse point: {holdout_dir}")
+    resolved = str(p.resolve(strict=True))
+    _REGISTERED_HOLDOUT_SUITES[str(suite_id)] = resolved
+    _REGISTERED_HOLDOUT_SUITES[resolved] = resolved
+    return resolved
+
+
+def clear_verifier_holdout_registry() -> None:
+    """Clear all registered in-memory verifier holdout suites."""
+    _REGISTERED_HOLDOUT_SUITES.clear()
+
+
+def resolve_registered_holdout_dir(
+    holdout_ref: Optional[str],
+    workspace_path: Optional[str] = None,
+) -> Optional[str]:
+    """Resolve `holdout_ref` ONLY if it matches a verifier-registered holdout suite or root.
+
+    Rejects arbitrary caller-supplied holdout paths, symlinks/junctions, and any holdout path
+    that overlaps with `workspace_path`.
+    """
+    if not holdout_ref or not str(holdout_ref).strip():
+        return None
+    raw_ref = str(holdout_ref).strip()
+    matched_path: Optional[Path] = None
+
+    if raw_ref in _REGISTERED_HOLDOUT_SUITES:
+        matched_path = Path(_REGISTERED_HOLDOUT_SUITES[raw_ref])
+    else:
+        try:
+            cand = Path(raw_ref)
+            if is_reparse_or_symlink(cand):
+                raise PermissionError(f"Holdout path cannot be a symlink or reparse point: {raw_ref}")
+            resolved_cand = cand.resolve(strict=True)
+        except FileNotFoundError:
+            return None
+
+        if str(resolved_cand) in _REGISTERED_HOLDOUT_SUITES:
+            matched_path = resolved_cand
+        else:
+            env_roots_raw = os.environ.get("QC_VERIFIER_HOLDOUT_ROOTS", "")
+            for part in re.split(r"[;,]", env_roots_raw):
+                part = part.strip()
+                if not part:
+                    continue
+                try:
+                    root_p = Path(part).resolve(strict=True)
+                    if resolved_cand == root_p or root_p in resolved_cand.parents:
+                        matched_path = resolved_cand
+                        break
+                except OSError:
+                    continue
+
+    if matched_path is None:
+        return None
+
+    if is_reparse_or_symlink(matched_path):
+        raise PermissionError(f"Holdout directory contains symlink or reparse point: {matched_path}")
+    for sub in matched_path.rglob("*"):
+        if is_reparse_or_symlink(sub):
+            raise PermissionError(f"Holdout suite entry contains symlink or reparse point: {sub}")
+
+    if workspace_path:
+        ws_resolved = Path(workspace_path).resolve()
+        if (
+            matched_path == ws_resolved
+            or matched_path in ws_resolved.parents
+            or ws_resolved in matched_path.parents
+        ):
+            raise PermissionError(
+                f"Holdout directory '{matched_path}' must not overlap workspace '{ws_resolved}'"
+            )
+
+    return str(matched_path)
 
 
 def configure_protected_repo_verifier(
@@ -89,6 +184,7 @@ def configure_protected_repo_verifier(
         _ACTIVE_BACKEND_KIND = "held"
         _ACTIVE_NONPRODUCTION = False
         _ACTIVE_ALLOW_UNCONTAINED_TEST_DOUBLE = False
+        _REGISTERED_HOLDOUT_SUITES.clear()
         return
 
     caps = getattr(transport, "_qc_backend_capabilities", None)
@@ -272,7 +368,10 @@ def build_repository_code_bundle(
 
     Returns `(bundle_dict, unrelated_file_hashes)`.
     """
-    root = Path(workspace_path).resolve()
+    raw_root = Path(workspace_path)
+    if is_reparse_or_symlink(raw_root):
+        raise ValueError(f"Symlink or reparse point forbidden in repository workspace: {workspace_path}")
+    root = raw_root.resolve()
     if not root.exists() or not root.is_dir():
         raise ValueError(f"Workspace directory not found: {workspace_path}")
 
@@ -289,8 +388,8 @@ def build_repository_code_bundle(
     found_target = norm_target is None
 
     for p in sorted(root.rglob("*")):
-        if p.is_symlink():
-            raise ValueError(f"Symlink forbidden in repository workspace: {p}")
+        if is_reparse_or_symlink(p):
+            raise ValueError(f"Symlink or reparse point forbidden in repository workspace: {p}")
         if not p.is_file():
             continue
         rel = p.relative_to(root).as_posix()

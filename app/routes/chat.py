@@ -494,28 +494,99 @@ def chat_clear(request: Request, csrf_token: str = Form(...), session_id: str = 
 @router.post("/api/v1/chat/deliberate")
 async def chat_deliberate_api(request: Request):
     """Unified conversational entry point supporting direct-response mode and durable-project mode (Increment 18)."""
-    user = get_current_user(request)
+    user = None
+    is_bearer = False
+    auth_hdr = request.headers.get("Authorization", "")
+    if auth_hdr.startswith("Bearer "):
+        from app.auth import verify_session_token
+        from app.config import settings
+        tok = auth_hdr[7:].strip()
+        user = verify_session_token(tok) or ("admin" if tok == settings.admin_password else None)
+        if user:
+            is_bearer = True
     if not user:
-        auth_hdr = request.headers.get("Authorization", "")
-        if auth_hdr.startswith("Bearer "):
-            from app.auth import verify_session_token
-            from app.config import settings
-            tok = auth_hdr[7:].strip()
-            user = verify_session_token(tok) or ("admin" if tok == settings.admin_password else None)
+        user = get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required.")
+
+    if not is_bearer:
+        csrf_hdr = request.headers.get("X-CSRF-Token")
+        if not verify_csrf(request, csrf_hdr):
+            raise HTTPException(status_code=403, detail="Invalid or missing CSRF token.")
 
     try:
         body = await request.json()
     except Exception:
         body = {}
 
+    intake_override = body.get("intake")
+    has_fault_injection = bool(
+        body.get("simulate_first_attempt_defect")
+        or body.get("injected_first_attempt_candidate") is not None
+        or (
+            isinstance(intake_override, dict)
+            and (
+                intake_override.get("simulate_first_attempt_defect")
+                or intake_override.get("injected_first_attempt_candidate") is not None
+            )
+        )
+    )
+    if has_fault_injection:
+        raise HTTPException(
+            status_code=400,
+            detail="Fault-injection parameters (simulate_first_attempt_defect, injected_first_attempt_candidate) are prohibited on external API routes.",
+        )
+
+    from app.services.orchestration import protected_repo_verifier, tool_catalogue
+
+    raw_ws = (
+        (intake_override.get("workspace_path") if isinstance(intake_override, dict) else None)
+        or body.get("workspace_path")
+    )
+    raw_holdout = (
+        (intake_override.get("holdout_test_dir") if isinstance(intake_override, dict) else None)
+        or body.get("holdout_test_dir")
+    )
+    validated_ws: Optional[str] = None
+    validated_holdout: Optional[str] = None
+
+    if raw_ws is not None and str(raw_ws).strip():
+        try:
+            resolved_ws_path = tool_catalogue.validate_and_confine_workspace_path(
+                str(raw_ws),
+                enforce_allowed_roots=True,
+            )
+            validated_ws = str(resolved_ws_path)
+        except (PermissionError, ValueError) as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    if raw_holdout is not None and str(raw_holdout).strip():
+        try:
+            resolved_hold = protected_repo_verifier.resolve_registered_holdout_dir(
+                str(raw_holdout),
+                workspace_path=validated_ws,
+            )
+        except (PermissionError, ValueError) as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        if resolved_hold is None:
+            raise HTTPException(
+                status_code=403,
+                detail="Holdout test locations are under verifier control; arbitrary user-supplied holdout paths are prohibited.",
+            )
+        validated_holdout = resolved_hold
+
+    if isinstance(intake_override, dict):
+        intake_override = dict(intake_override)
+        if "workspace_path" in intake_override:
+            intake_override["workspace_path"] = validated_ws
+        if "holdout_test_dir" in intake_override:
+            intake_override["holdout_test_dir"] = validated_holdout
+
     message = str(body.get("message") or "").strip()
     project_id = body.get("project_id")
-    intake_override = body.get("intake")
     action = str(body.get("action") or "auto")
     should_advance = bool(body.get("advance", False) or action == "advance")
-    use_live_worker = bool(body.get("use_live_worker", False))
+    use_live_worker = bool(body.get("use_live_worker", True))
     actor_name = user if isinstance(user, str) else user["username"]
 
     from starlette.concurrency import run_in_threadpool
@@ -599,9 +670,8 @@ async def chat_deliberate_api(request: Request):
                 use_live_worker=use_live_worker,
                 preferred_model=str(body.get("preferred_model") or "qwen2.5:3b"),
                 quotes_data=body.get("quotes"),
-                workspace_path=body.get("workspace_path"),
-                holdout_test_dir=body.get("holdout_test_dir"),
-                simulate_first_attempt_defect=bool(body.get("simulate_first_attempt_defect", False)),
+                workspace_path=validated_ws,
+                holdout_test_dir=validated_holdout,
             )
         return {
             "ok": True,
@@ -642,9 +712,8 @@ async def chat_deliberate_api(request: Request):
                 use_live_worker=use_live_worker,
                 preferred_model=str(body.get("preferred_model") or "qwen2.5:3b"),
                 quotes_data=body.get("quotes"),
-                workspace_path=body.get("workspace_path"),
-                holdout_test_dir=body.get("holdout_test_dir"),
-                simulate_first_attempt_defect=bool(body.get("simulate_first_attempt_defect", False)),
+                workspace_path=validated_ws,
+                holdout_test_dir=validated_holdout,
             )
         return {
             "ok": True,
@@ -664,10 +733,8 @@ async def chat_deliberate_api(request: Request):
             use_live_worker=use_live_worker,
             preferred_model=str(body.get("preferred_model") or "qwen2.5:3b"),
             quotes_data=body.get("quotes"),
-            workspace_path=body.get("workspace_path"),
-            holdout_test_dir=body.get("holdout_test_dir"),
-            simulate_first_attempt_defect=bool(body.get("simulate_first_attempt_defect", False)),
-            injected_first_attempt_candidate=body.get("injected_first_attempt_candidate"),
+            workspace_path=validated_ws,
+            holdout_test_dir=validated_holdout,
         )
         return {
             "ok": True,
@@ -706,14 +773,8 @@ async def chat_deliberate_api(request: Request):
     elif isinstance(body.get("quotes"), list):
         quotes_from_intake = body["quotes"]
 
-    workspace_from_intake = (
-        (intake_override.get("workspace_path") if isinstance(intake_override, dict) else None)
-        or body.get("workspace_path")
-    )
-    holdout_from_intake = (
-        (intake_override.get("holdout_test_dir") if isinstance(intake_override, dict) else None)
-        or body.get("holdout_test_dir")
-    )
+    workspace_from_intake = validated_ws
+    holdout_from_intake = validated_holdout
     explicit_contracts = (
         (intake_override.get("task_contracts") if isinstance(intake_override, dict) else None)
         or body.get("task_contracts")
@@ -793,8 +854,6 @@ async def chat_deliberate_api(request: Request):
             quotes_data=quotes_from_intake,
             workspace_path=workspace_from_intake,
             holdout_test_dir=holdout_from_intake,
-            simulate_first_attempt_defect=bool(body.get("simulate_first_attempt_defect", False)),
-            injected_first_attempt_candidate=body.get("injected_first_attempt_candidate"),
         )
 
     return {

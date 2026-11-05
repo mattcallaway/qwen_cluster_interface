@@ -143,6 +143,16 @@ def get_runtime_revision() -> str:
 def health_check():
     return {
         "status": "healthy",
+        "app": settings.app_name,
+        "app_name": settings.app_name,
+        "version": settings.app_version,
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
+
+
+def _legacy_health_check_unused():
+    return {
+        "status": "healthy",
         "app_name": settings.app_name,
         "version": settings.app_version,
         "git_revision": get_runtime_revision(),

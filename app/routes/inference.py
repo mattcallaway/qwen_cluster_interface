@@ -207,21 +207,40 @@ def record_benchmark(
 # Increment 17: Paged KV & Pipeline Parallelism API & Widget Endpoints
 # ---------------------------------------------------------------------------
 
+def _require_inference_api_auth(request: Request) -> str:
+    auth_hdr = request.headers.get("Authorization", "")
+    if auth_hdr.startswith("Bearer "):
+        from app.auth import verify_session_token
+        from app.config import settings
+        tok = auth_hdr[7:].strip()
+        user = verify_session_token(tok) or ("admin" if tok == settings.admin_password else None)
+        if user:
+            return user if isinstance(user, str) else user.get("username", "user")
+    user = get_current_user(request)
+    if not user:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
+    return user if isinstance(user, str) else user.get("username", "user")
+
+
 @router.get("/api/v1/inference/paged-kv/metrics")
-def api_paged_kv_metrics():
+def api_paged_kv_metrics(request: Request):
     """Returns real-time Paged KV virtual memory statistics and prefix hit rates."""
+    _require_inference_api_auth(request)
     return get_paged_kv_metrics()
 
 
 @router.get("/api/v1/inference/pipeline/stages")
-def api_pipeline_stages():
+def api_pipeline_stages(request: Request):
     """Returns active cluster pipeline topologies, stage slices, and latency baselines."""
+    _require_inference_api_auth(request)
     return get_active_pipeline_topologies()
 
 
 @router.get("/inference/paged-kv/widget", response_class=HTMLResponse)
 def paged_kv_widget(request: Request):
     """HTML partial for live-updating Paged KV metrics widget via HTMX."""
+    _require_inference_api_auth(request)
     metrics = get_paged_kv_metrics()
     return templates.TemplateResponse(request=request, name="inference/paged_kv_widget.html", context={
         "paged_kv_metrics": metrics
@@ -231,6 +250,7 @@ def paged_kv_widget(request: Request):
 @router.get("/inference/pipeline/widget", response_class=HTMLResponse)
 def pipeline_widget(request: Request):
     """HTML partial for live-updating Pipeline Parallelism Topology widget via HTMX."""
+    _require_inference_api_auth(request)
     topologies = get_active_pipeline_topologies()
     return templates.TemplateResponse(request=request, name="inference/pipeline_widget.html", context={
         "pipeline_topologies": topologies

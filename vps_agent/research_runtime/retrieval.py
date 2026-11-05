@@ -43,9 +43,10 @@ class PinningSyncBackend(SyncBackend):
     Prevents TOCTOU DNS rebinding by pinning the raw TCP socket to the verified IP address,
     while allowing TLS handshake to use the original hostname for SNI and certificate validation.
     """
-    def __init__(self, policy: ResearchSecurityPolicy):
+    def __init__(self, policy: ResearchSecurityPolicy, expected_ips: Optional[Dict[str, List[str]]] = None):
         super().__init__()
         self.policy = policy
+        self.expected_ips = expected_ips or {}
 
     def connect_tcp(
         self,
@@ -60,7 +61,17 @@ class PinningSyncBackend(SyncBackend):
             logger.warning("PinningSyncBackend blocked destination %s:%d - %s", host, port, dest_reason)
             raise DestinationBlockedError(f"Destination blocked by SSRF policy: {dest_reason}")
 
-        pinned_ip = resolved_ips[0]
+        clean_host = host.strip("[]").rstrip(".").lower()
+        expected_for_host = self.expected_ips.get(clean_host)
+        if expected_for_host:
+            overlap = [ip for ip in resolved_ips if ip in expected_for_host]
+            if not overlap:
+                raise DestinationBlockedError(
+                    f"DNS rebinding / address change detected for '{host}': pre-validated {expected_for_host}, connect resolved {resolved_ips}"
+                )
+            pinned_ip = overlap[0]
+        else:
+            pinned_ip = resolved_ips[0]
 
         if socket_options is None:
             socket_options = []
@@ -102,10 +113,11 @@ class PinningHTTPTransport(httpx.HTTPTransport):
         limits: Any = None,
         retries: int = 0,
         socket_options: Any = None,
+        expected_ips: Optional[Dict[str, List[str]]] = None,
     ):
         self.policy = policy or get_security_policy()
+        self.expected_ips = expected_ips or {}
         if limits is None:
-            # Zero keepalive to prevent DNS rebinding connection reuse across queries
             limits = httpx.Limits(max_connections=50, max_keepalive_connections=0, keepalive_expiry=0.0)
         super().__init__(
             verify=verify,
@@ -127,10 +139,10 @@ class PinningHTTPTransport(httpx.HTTPTransport):
             http2=http2,
             retries=retries,
             socket_options=socket_options,
-            network_backend=PinningSyncBackend(policy=self.policy),
+            network_backend=PinningSyncBackend(policy=self.policy, expected_ips=self.expected_ips),
         )
 
-# Indicators that page is a JavaScript Single Page App needing browser automation
+
 SPA_INDICATORS = [
     "you need to enable javascript to run this app",
     "please enable javascript to continue",
@@ -160,9 +172,18 @@ class FetchResult:
 
     def __post_init__(self):
         if self.redirect_chain is None:
-            self.redirect_chain = []
-        if not self.content_hash and self.content_bytes:
-            self.content_hash = compute_content_hash(self.content_bytes)
+            self.redirect_chain = [self.url]
+
+    @property
+    def text(self) -> str:
+        try:
+            return self.content_bytes.decode("utf-8", errors="replace")
+        except Exception:
+            return ""
+
+    @property
+    def content(self) -> bytes:
+        return self.content_bytes
 
     @property
     def status(self) -> str:
@@ -195,10 +216,6 @@ class SecureFetcher:
         max_bytes: Optional[int] = None,
         headers: Optional[Dict[str, str]] = None,
     ) -> FetchResult:
-        """
-        Fetch a public document with pre-connection SSRF screening, redirect revalidation,
-        and streaming byte-budget enforcement.
-        """
         start_time = time.time()
         timeout = timeout_seconds or self.policy.request_timeout_seconds
         byte_limit = max_bytes or self.policy.max_response_bytes
@@ -217,7 +234,6 @@ class SecureFetcher:
             req_headers.update(headers)
 
         while redirects_followed <= self.policy.max_redirects:
-            # 1. URL syntax and policy check
             is_valid, reason, hostname = self.policy.validate_url(current_url)
             if not is_valid:
                 duration_ms = round((time.time() - start_time) * 1000.0, 1)
@@ -236,7 +252,6 @@ class SecureFetcher:
                     redirect_chain=redirect_chain,
                 )
 
-            # 2. DNS resolution and address verification
             is_dest_valid, dest_reason, resolved_ips = self.policy.resolve_and_verify_destination(hostname)
             if not is_dest_valid:
                 duration_ms = round((time.time() - start_time) * 1000.0, 1)
@@ -255,7 +270,6 @@ class SecureFetcher:
                     redirect_chain=redirect_chain,
                 )
 
-            # 3. Domain rate limit
             allowed, wait = self.policy.check_rate_limit(hostname)
             if not allowed and wait > 0:
                 if wait > 3.0:
@@ -275,12 +289,13 @@ class SecureFetcher:
                     )
                 time.sleep(wait)
 
-            # 4. Perform streaming GET request without auto-following redirects
             try:
-                transport = PinningHTTPTransport(policy=self.policy)
+                transport = PinningHTTPTransport(
+                    policy=self.policy,
+                    expected_ips={hostname.strip("[]").rstrip(".").lower(): list(resolved_ips)},
+                )
                 with httpx.Client(transport=transport, timeout=timeout, follow_redirects=False) as client:
                     with client.stream("GET", current_url, headers=req_headers) as resp:
-                        # Check redirect status codes (301, 302, 303, 307, 308)
                         if resp.status_code in (301, 302, 303, 307, 308):
                             loc = resp.headers.get("Location")
                             if not loc:
@@ -302,7 +317,6 @@ class SecureFetcher:
                             next_url = urljoin(current_url, loc)
                             redirect_chain.append(next_url)
 
-                            # Credential isolation: Strip sensitive auth headers on cross-origin redirects
                             orig_parsed = urlparse(url)
                             next_parsed = urlparse(next_url)
                             if (next_parsed.scheme, next_parsed.hostname, next_parsed.port) != (orig_parsed.scheme, orig_parsed.hostname, orig_parsed.port):
@@ -315,7 +329,6 @@ class SecureFetcher:
                             redirects_followed += 1
                             continue
 
-                        # Check non-200 responses
                         if resp.status_code >= 400:
                             duration_ms = round((time.time() - start_time) * 1000.0, 1)
                             return FetchResult(
@@ -332,7 +345,6 @@ class SecureFetcher:
                                 redirect_chain=redirect_chain,
                             )
 
-                        # Enforce streaming byte limits
                         chunks: List[bytes] = []
                         total_bytes = 0
                         for chunk in resp.iter_bytes(chunk_size=16384):
@@ -359,7 +371,6 @@ class SecureFetcher:
                         content_type = resp.headers.get("Content-Type", "")
                         duration_ms = round((time.time() - start_time) * 1000.0, 1)
 
-                        # Detect SPA shell needing browser automation
                         needs_browser = False
                         if "html" in content_type.lower():
                             sample_text = content_bytes[:4096].decode("utf-8", errors="ignore").lower()
@@ -387,6 +398,7 @@ class SecureFetcher:
                     or "SSRF" in err_str
                     or "blocked" in err_str.lower()
                     or "prohibited" in err_str.lower()
+                    or "rebind" in err_str.lower()
                 )
                 duration_ms = round((time.time() - start_time) * 1000.0, 1)
                 logger.warning("SSRF / connection block for %s: %s", current_url, conn_err)

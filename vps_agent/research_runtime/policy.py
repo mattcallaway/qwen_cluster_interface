@@ -138,6 +138,9 @@ class ResearchSecurityPolicy:
         if not hostname:
             return False, "Missing hostname in URL.", None
 
+        if "%" in (parsed.netloc or "") or "%" in hostname:
+            return False, "IPv6 zone/scope identifiers (%) are prohibited.", None
+
         # Check explicit metadata and localhost hosts (including FQDN with trailing dot)
         clean_host = hostname.rstrip(".")
         if clean_host in BLOCKED_METADATA_HOSTS or hostname in BLOCKED_METADATA_HOSTS:

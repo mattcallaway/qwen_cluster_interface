@@ -341,7 +341,7 @@ def verify_worker_token(raw_token: str) -> Optional[Dict[str, Any]]:
             SELECT t.id, t.node_id, t.revoked, n.name, n.role, n.health_status
             FROM worker_auth_tokens t
             JOIN infrastructure_nodes n ON t.node_id = n.id
-            WHERE t.token_hash = ? AND t.revoked = 0
+            WHERE t.token_hash = ? AND t.revoked = 0 AND COALESCE(n.is_enabled, 1) != 0 AND n.id != 'node-d35568f5'
             """,
             (token_hash,),
         ).fetchone()
