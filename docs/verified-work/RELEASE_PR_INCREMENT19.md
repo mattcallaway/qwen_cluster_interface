@@ -68,3 +68,4 @@
   # 5. Full 21-File Increment 18, Increment 19 & Application Regression Selection (352 tests)
   python -m pytest tests/test_increment19_review_remediation.py tests/test_increment19_coordinator_adversarial_limits.py tests/test_increment18_repair_regressions.py tests/test_working_memory_adversarial.py tests/test_increment18_deliberate_assistant.py tests/test_stage02_planning.py tests/test_inference.py tests/test_inference_and_observatory_widgets.py tests/test_observatory.py tests/test_metric_integrity.py tests/test_web_routes.py tests/test_worker_authorization_enforcement.py tests/test_script_authorization.py tests/test_certification_block_reporting.py tests/test_claim_contracts.py tests/test_financial_reasoning.py tests/test_code_proposals.py tests/test_protected_verification.py tests/test_migrations.py tests/test_migration_compatibility.py tests/test_migration_robustness_and_backup.py -q --tb=short
   ```
+
