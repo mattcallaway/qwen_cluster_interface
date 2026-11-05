@@ -1,0 +1,96 @@
+{
+  "steps": {
+    "step_10_authoritative_park_and_cancel_cleanup": {
+      "cancel_after_drain_status": "cancelled",
+      "cancel_cleanup_lifecycle_state": "cleanup_confirmed",
+      "park_after_drain_status": "parked",
+      "park_cleanup_lifecycle_state": "cleanup_confirmed",
+      "passed": true,
+      "refused_while_lease_active_http_status": 409
+    },
+    "step_1_and_2_intake_and_contracts": {
+      "initial_checkpoint": {
+        "boundary_type": "task_boundary",
+        "checkpoint_id": "wckpt-21f1b9dc62db4aee",
+        "checkpoint_seq": 1,
+        "created_at": "2026-11-05T01:09:02.042072+00:00",
+        "requirement_revision": 1,
+        "state_revision": 1
+      },
+      "passed": true,
+      "project_id": "prj-1b38dfa869a2467d9e0f2e0ca07c2f89",
+      "requirement_revision": 1,
+      "task_contracts": [
+        "t1_reconcile_quotes",
+        "t2_evaluate_constraints",
+        "t3_synthesize_recommendation"
+      ]
+    },
+    "step_3_and_4_tools_and_live_worker_lease": {
+      "comparison_artifact_id": "art-55a050e4e9c544a4",
+      "native_worker_lease_id": "lease_648968d86bb3",
+      "passed": true,
+      "phase1_recommended_supplier": "SUP-HELIOS",
+      "phase1_total_cost": "14200.00",
+      "quote_artifact_id": "art-54a4a36dc43e4883",
+      "report_artifact_id": "art-1878b14adbfb465b",
+      "worker_id": "dev-live-worker-01"
+    },
+    "step_5_and_6_steering_and_atomic_fence": {
+      "new_requirement_revision": 2,
+      "passed": true,
+      "stale_commit_rejected": true,
+      "t1_status": "verified",
+      "t2_status": "stale",
+      "t3_status": "stale",
+      "upstream_quote_artifact_valid": true
+    },
+    "step_7_controller_cold_restart_and_resume": {
+      "next_task_key": "t2_evaluate_constraints",
+      "passed": true,
+      "preserved_verified_tasks": [
+        "t1_reconcile_quotes"
+      ],
+      "replayed_full_conversation": false,
+      "restarted_from_scratch": false
+    },
+    "step_8_controlled_failure_and_bounded_repair": {
+      "native_worker_lease_ids": [
+        "lease_f13740c088e2",
+        "lease_42c4c3b91f66"
+      ],
+      "passed": true,
+      "phase2_recommended_supplier": "SUP-ORION",
+      "phase2_total_cost": "11890.00",
+      "re_executed_tasks": [
+        "t2_evaluate_constraints",
+        "t3_synthesize_recommendation"
+      ],
+      "repair_event": {
+        "attempt_number": 1,
+        "failed_check_names": [
+          "cites_recommended_supplier",
+          "cites_exact_decimal_cost"
+        ],
+        "failure_category": "missing_or_contradicted_evidence",
+        "lease_id": "lease_f13740c088e2",
+        "oracle_exposure_prevented": true,
+        "recommended_escalation_step": 4,
+        "repair_instruction": "Address the failed validation checks while preserving all mandatory user constraints.",
+        "sanitized_diagnostics": [
+          "cites_recommended_supplier: Must cite the feasible recommended supplier ID from <evidence_data>",
+          "cites_exact_decimal_cost: Must cite the exact Decimal total_cost of the recommended option from <evidence_data>"
+        ],
+        "schema": "qc.repair_plan.v1",
+        "task_id": "task-6f8a1378"
+      }
+    },
+    "step_9_infeasible_constraint_blocked": {
+      "blocker": "INFEASIBLE_CONSTRAINTS: 0 of 3 evaluated options satisfy all hard constraints. SUP-HELIOS: exceeds_max_budget ($14200.00 > ceiling $9500.00, over by $4700.00) | SUP-ORION: exceeds_max_budget ($11890.00 > ceiling $9500.00, over by $2390.00) | SUP-VANGUARD: exceeds_max_budget ($10150.00 > ceiling $9500.00, over by $650.00); missing_required_capabilities (iso27001); missing_required_dependencies (dep_api_v2)",
+      "final_cycle_phase": "blocked",
+      "passed": true
+    }
+  },
+  "pre_fix_baseline_commit": "2cc6dab4e9e4e1c539f024cfe062f55f36732e8b",
+  "tested_implementation_commit": "ffc771662e31e4665913fe407f8c0e0e934714e1"
+}

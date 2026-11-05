@@ -1,0 +1,608 @@
+{
+  "schema": "qc.audit_findings_register.v1",
+  "audit_date": "2026-11-05",
+  "repository": "C:/Users/Matt C/.gemini/antigravity-ide/scratch/qwen-collective-integration",
+  "branch": "feature/increment19-general-purpose-coordinator",
+  "head_sha": "7cd9a91141a60d9582fee7bd4421ba1241403cb4",
+  "tested_implementation_sha": "7cd9a91141a60d9582fee7bd4421ba1241403cb4",
+  "rehearsed_merge_sha": "ae2d418a419701cf44a2cd5b576aa6bc10c31d63",
+  "base_main_sha": "4be7f547f4919380a22abdd2122961d559d2f46f",
+  "summary": {
+    "total_findings": 12,
+    "critical": 4,
+    "high": 3,
+    "medium_high": 2,
+    "medium": 3,
+    "merge_review_blockers": [
+      "AUD-01",
+      "AUD-02",
+      "AUD-03",
+      "AUD-04",
+      "AUD-05",
+      "AUD-07",
+      "AUD-08",
+      "AUD-10a",
+      "AUD-10b",
+      "AUD-10c",
+      "AUD-11c",
+      "AUD-12"
+    ],
+    "production_release_blockers": [
+      "AUD-01",
+      "AUD-02",
+      "AUD-03",
+      "AUD-04",
+      "AUD-05",
+      "AUD-06",
+      "AUD-07",
+      "AUD-08",
+      "AUD-09",
+      "AUD-10a",
+      "AUD-10b",
+      "AUD-10c",
+      "AUD-11a",
+      "AUD-11b",
+      "AUD-11c",
+      "AUD-12"
+    ],
+    "authoritative_repair_increments": {
+      "R1": [
+        "AUD-03",
+        "AUD-05",
+        "AUD-10b",
+        "AUD-11c"
+      ],
+      "R2": [
+        "AUD-04",
+        "AUD-07",
+        "AUD-10c"
+      ],
+      "R3": [
+        "AUD-01",
+        "AUD-02",
+        "AUD-08",
+        "AUD-10a",
+        "AUD-12"
+      ],
+      "R4": [
+        "AUD-06",
+        "AUD-11a",
+        "AUD-11b",
+        "AUD-09"
+      ]
+    },
+    "remediation_status": "14_of_16_findings_verified_2_partial_retained_open_for_production",
+    "remediation_commits": {
+      "R1": "d268819dfb1d6298a6f7165b091d41bd03ba733f",
+      "R2": "8e15335828a125ff3cb0a2d56b02d230e521e543",
+      "R3": "acec0e3e3ebc04c6a5d54087c321c26660409075",
+      "R4": "3c5af4ab81cb386dedf8394c36f85219ec9bc2c9",
+      "R1_R4_independent_verification_repairs": "7cd9a91141a60d9582fee7bd4421ba1241403cb4"
+    },
+    "open_merge_review_blockers": [],
+    "open_production_release_blockers": [
+      "AUD-09",
+      "AUD-11a"
+    ],
+    "verified_findings": [
+      "AUD-01",
+      "AUD-02",
+      "AUD-03",
+      "AUD-04",
+      "AUD-05",
+      "AUD-06",
+      "AUD-07",
+      "AUD-08",
+      "AUD-10a",
+      "AUD-10b",
+      "AUD-10c",
+      "AUD-11b",
+      "AUD-11c",
+      "AUD-12"
+    ],
+    "partial_findings": [
+      "AUD-09",
+      "AUD-11a"
+    ],
+    "not_evaluated_findings": []
+  },
+  "findings": [
+    {
+      "id": "AUD-01",
+      "severity": "CRITICAL",
+      "category": "general_purpose_orchestration_and_grounding",
+      "subsystem": "General-Purpose Coordinator & Task Decomposition",
+      "file_paths": [
+        "app/services/orchestration/deliberate_loop.py"
+      ],
+      "line_numbers": [
+        "959-984",
+        "1374-1510",
+        "1513-1578",
+        "2141-3011"
+      ],
+      "claim_or_expectation": "The Increment 19 coordinator decomposes general-purpose project requests into appropriate domain-specific or multi-domain task contracts, grounded strictly in user-supplied project inputs or explicit missing-information requests.",
+      "observed_behavior": "`detect_project_domain` (lines 959-984) is a binary classifier: if a narrow list of 7 software keywords ('repository', 'bug', 'allocator.py', 'unit test', 'pytest', 'patch', 'defect', 'holdout') or a `workspace_path` qualifier is absent, it unconditionally returns `'supplier_option_evaluation'`. `ensure_deliberate_task_contracts` (lines 1444-1510) then registers the 3 supplier tasks (`t1_reconcile_quotes`, `t2_evaluate_constraints`, `t3_synthesize_recommendation`). Worse, when `quotes_data` is absent, `_load_project_domain_inputs` (line 1575) silently injects `acceptance_harness.SYNTHETIC_SUPPLIER_QUOTES` (`SUP-NOVA`, `SUP-APEX`, `SUP-VERTEX`, `SUP-OMEGA`) and `advance_deliberate_project` completes the user's non-supplier project by recommending `SUP-NOVA` ($134,820.00).",
+      "reproduction_or_evidence": "Independently reproduced in `comprehensive-audit-20261105.json` (`section6_provenance_and_acceptance.aud01_non_supplier_project_gets_synthetic_quotes` and `section12_mutation_and_test_adequacy.mutation_and_gap_probes`): creating a project titled 'Hydrological Grant Compliance Audit' ('Reconcile Q3 watershed telemetry and federal grant match requirements') and calling `advance_deliberate_project(use_live_worker=False)` returned `detected_domain='supplier_option_evaluation'`, `final_cycle_phase='completed'`, and published a recommendation for `SUP-NOVA` without any supplier quotes ever supplied by the user.",
+      "impact": "Any user project outside the narrow `repository_bugfix` keyword list (e.g. research, grant reconciliation, data analysis, architecture design, web app verification) is silently misclassified as a supplier procurement project and fulfilled with hardcoded synthetic demo data (`SYNTHETIC_SUPPLIER_QUOTES`), violating epistemic grounding and making general-purpose project execution non-functional outside the 2 hardcoded templates.",
+      "recommended_fix": "1. Remove the `SYNTHETIC_SUPPLIER_QUOTES` fallback from `_load_project_domain_inputs` in production code paths; if a supplier evaluation project lacks user-provided quote data, record a `missing_info` blocker and transition to `awaiting_clarification`. 2. Replace the binary `detect_project_domain` heuristic with explicit multi-domain classification (`research`, `financial_reconciliation`, `structured_data_analysis`, `repository_bugfix`, `supplier_option_evaluation`, `general_artifact`) backed by planner/contract decomposition or explicit `unsupported_domain` / clarification routing.",
+      "verification_test": "Add regression tests verifying that (a) a supplier project without `quotes_data` halts in `awaiting_clarification` and never loads `SYNTHETIC_SUPPLIER_QUOTES`, and (b) research, financial, and data-analysis projects are never routed to `supplier_option_evaluation`.",
+      "blocks": [
+        "merge_review_blocker",
+        "production_release_blocker"
+      ],
+      "assigned_repair_increment": "R3",
+      "status": "verified",
+      "remediation_commit_sha": "acec0e3e3ebc04c6a5d54087c321c26660409075",
+      "verified_by_test": "tests/test_audit_r3_grounding_tools_finance_memory.py::test_aud01_supplier_project_without_quotes_requires_clarification_never_synthetic_quotes"
+    },
+    {
+      "id": "AUD-02",
+      "severity": "HIGH",
+      "category": "tool_dispatch_and_reachability",
+      "subsystem": "General-Purpose Coordinator & Tool Catalogue",
+      "file_paths": [
+        "app/services/orchestration/deliberate_loop.py",
+        "app/services/orchestration/tool_catalogue.py"
+      ],
+      "line_numbers": [
+        "deliberate_loop.py:2068-2081",
+        "deliberate_loop.py:2141-3011",
+        "tool_catalogue.py:1140-1255",
+        "tool_catalogue.py:1300-1452"
+      ],
+      "claim_or_expectation": "The coordinator validates `selected_tool` and `validated_arguments` via `validate_proposed_action` and dispatches the validated tool from `GLOBAL_TOOL_CATALOGUE` across all 7 tool domains (14 registered tools).",
+      "observed_behavior": "1. `advance_deliberate_project` (lines 2141-3011) dispatches exclusively via a 6-way `if/elif` switch on `verifier_id` (`verifier:quote_reconciliation_v1`, `verifier:option_constraint_comparison_v1`, `verifier:grounded_recommendation_memo_v1`, `verifier:repo_inspection_and_reproduction_v1`, `verifier:protected_repo_bugfix_v1`, `verifier:repo_change_summary_v1`). Inside each branch, the tool call is hardcoded, ignoring `val_gate['selected_tool']` and `val_gate['validated_arguments']`. 2. Eight of the 14 tools registered in `GLOBAL_TOOL_CATALOGUE` (`inspect_document_or_repo`, `search_and_retrieve_sources`, `decimal_calculate_and_reconcile`, `analyze_structured_dataset`, `execute_and_test_code`, `verify_web_application_behavior`, `create_or_revise_artifact`, `inspect_operational_state`) are never dispatched by `advance_deliberate_project`. 3. In `ToolCatalogue.execute_tool` (`tool_catalogue.py:1248-1451`), 3 registered tools (`search_and_retrieve_sources`, `create_or_revise_artifact`, `worker_model_inference`) have no implementation branch and fall through to lines 1446-1451, echoing `arguments` back as `'result': arguments` with `status='observed'`. 4. `validate_proposed_action` (`deliberate_loop.py:1087-1103`) checks `isinstance(raw_args, dict)` but never validates required or undeclared argument keys against `spec.input_schema`.",
+      "reproduction_or_evidence": "Independently reproduced in `comprehensive-audit-20261105.json`: (a) `section6_provenance_and_acceptance.aud02_custom_tool_contract_blocked` shows a contract with `selected_tool='analyze_structured_dataset'` is blocked or ignored; (b) `section8_research_reasoning_and_repair.research_and_repair_probes.search_tool_in_catalogue_is_noop_passthrough=true` confirms `execute_tool('search_and_retrieve_sources', ...)` echoes its input arguments; (c) `section12_mutation_and_test_adequacy.mutation_and_gap_probes.m2b_undeclared_tool_arg_accepted_without_schema_key_check=true` confirms `validate_proposed_action` accepts undeclared argument keys.",
+      "impact": "Model-proposed or caller-supplied task contracts selecting tools outside the 2 hardcoded domain templates cannot execute in `advance_deliberate_project`, and calling `execute_tool('search_and_retrieve_sources', ...)` returns a no-op echo.",
+      "recommended_fix": "1. Wire `search_and_retrieve_sources` (to `research_checkpoint.py`) and `create_or_revise_artifact` (to `artifact_manager`) inside `ToolCatalogue.execute_tool`. 2. Enforce `spec.input_schema` required/allowed key validation inside `validate_proposed_action`. 3. Add generic contract-driven tool execution and corresponding registered verifiers in `advance_deliberate_project` so validated `selected_tool` and `validated_arguments` drive execution.",
+      "verification_test": "Add unit and integration tests executing `search_and_retrieve_sources`, `decimal_calculate_and_reconcile`, `analyze_structured_dataset`, and `verify_web_application_behavior` through `advance_deliberate_project` and verifying `validate_proposed_action` rejects missing/undeclared schema keys.",
+      "blocks": [
+        "merge_review_blocker",
+        "production_release_blocker"
+      ],
+      "assigned_repair_increment": "R3",
+      "status": "verified",
+      "remediation_commit_sha": "acec0e3e3ebc04c6a5d54087c321c26660409075",
+      "verified_by_test": "tests/test_audit_r3_grounding_tools_finance_memory.py::test_aud02_tool_catalogue_input_schema_validation_and_real_handlers"
+    },
+    {
+      "id": "AUD-03",
+      "severity": "CRITICAL",
+      "category": "security_and_containment_boundary",
+      "subsystem": "Deliberate Chat API & Repository Inspection",
+      "file_paths": [
+        "app/routes/chat.py",
+        "app/services/orchestration/tool_catalogue.py"
+      ],
+      "line_numbers": [
+        "chat.py:495-520",
+        "chat.py:602-604",
+        "chat.py:645-647",
+        "chat.py:667-670",
+        "chat.py:709-716",
+        "chat.py:793-798",
+        "tool_catalogue.py:598-662"
+      ],
+      "claim_or_expectation": "User-facing API routes enforce CSRF protection on cookie-authenticated state-mutating POST requests, confine repository workspace paths to approved disposable sandboxes, and never expose internal test-only fault-injection hooks.",
+      "observed_behavior": "1. `POST /api/v1/chat/deliberate` (`chat.py:495-506`) authenticates via session cookie (`get_current_user(request)`) without calling `verify_csrf()`. 2. It accepts arbitrary host filesystem paths in `body['workspace_path']` and `body['holdout_test_dir']` (`lines 602-604, 645-647, 709-716`) without confining `workspace_path` to an approved sandbox root; `inspect_repository_workspace` (`tool_catalogue.py:598-662`) then recursively reads all `.py`, `.md`, `.json`, `.txt`, and `.toml` files under `workspace_path` and stores their contents in `project_epistemic_items`. 3. It accepts `simulate_first_attempt_defect` and `injected_first_attempt_candidate` directly from the production HTTP request body (`lines 669-670, 796-797`). 4. It defaults `use_live_worker` to `False` (`line 518`), whereas `advance_deliberate_project` defaults `use_live_worker` to `True` (`deliberate_loop.py:1881`).",
+      "reproduction_or_evidence": "Direct source inspection of `app/routes/chat.py:495-805` and `app/services/orchestration/tool_catalogue.py:598-662`.",
+      "impact": "An authenticated caller (or cross-site request via missing CSRF check) can pass `workspace_path='C:/...'` to read arbitrary `.py`/`.json`/`.md`/`.txt`/`.toml` files from the controller host filesystem into project epistemic memory, or inject arbitrary candidate code via `injected_first_attempt_candidate`.",
+      "recommended_fix": "1. Enforce `verify_csrf` (or Bearer token auth) on `POST /api/v1/chat/deliberate`. 2. Confine `workspace_path` and `holdout_test_dir` to an explicit configured sandbox base directory (`settings.workspaces_dir`), rejecting any path outside that root. 3. Remove `simulate_first_attempt_defect` and `injected_first_attempt_candidate` from the HTTP route payload. 4. Align `use_live_worker` default to `True`.",
+      "verification_test": "Add API security tests verifying `POST /api/v1/chat/deliberate` rejects missing CSRF tokens on cookie sessions, rejects `workspace_path` outside `settings.workspaces_dir` with HTTP 403, and ignores `injected_first_attempt_candidate` in HTTP payloads.",
+      "blocks": [
+        "merge_review_blocker",
+        "production_release_blocker"
+      ],
+      "assigned_repair_increment": "R1",
+      "status": "verified",
+      "remediation_commit_sha": "d268819dfb1d6298a6f7165b091d41bd03ba733f",
+      "verified_by_test": "tests/test_audit_r1_security_and_containment.py::test_aud03_workspace_confinement_holdout_isolation_and_fault_injection_rejected"
+    },
+    {
+      "id": "AUD-04",
+      "severity": "CRITICAL",
+      "category": "provenance_identity_and_acceptance",
+      "subsystem": "Legacy UI Routes, Worker Service & Orchestration Engine",
+      "file_paths": [
+        "app/routes/projects.py",
+        "app/routes/deliverables.py",
+        "app/routes/infrastructure.py",
+        "app/routes/knowledge.py",
+        "app/services/deliverables.py",
+        "app/services/tasks.py",
+        "app/services/worker.py",
+        "app/services/orchestration/engine.py",
+        "app/services/orchestration/model_router.py"
+      ],
+      "line_numbers": [
+        "projects.py:293-305, 413-427, 457-467, 513-545, 641-720",
+        "deliverables.py:721-770",
+        "services/deliverables.py:238-308",
+        "engine.py:1457-1458",
+        "services/tasks.py:364-450",
+        "model_router.py:325-336",
+        "services/worker.py:192-214, 1666-1669",
+        "infrastructure.py:157-172",
+        "knowledge.py:127-159"
+      ],
+      "claim_or_expectation": "No route or service can mark tasks, deliverables, artifacts, metrics, capabilities, or collective knowledge as `completed`, `accepted`, `verified`, `supported`, or `corroborated` without authenticated worker lease provenance and independent verification.",
+      "observed_behavior": "Multiple legacy UI routes and service methods bypass lease provenance and independent verification: 1. `POST /projects/{project_id}/deliverables/{deliverable_id}/review` (`decision='accept'`) calls `review_deliverable` (`services/deliverables.py:238-308`), which sets `deliverables.status = 'accepted'`, marks linked `artifacts.status = 'accepted'`, and extracts `'supported'` knowledge without running `evaluator.py` or `certification.native_output_provenance`; worse, `engine.py:1457-1458` (`if dd['status'] == 'accepted': continue`) skips all 3-layer evaluation for pre-accepted deliverables during run completion. 2. `POST /projects/{project_id}/tasks/{task_id}/execute` calls `record_task_execution` (`services/tasks.py:364-450`), setting `tasks.status = 'completed'` without any `worker_task_leases` row, and `WorkerOllamaProvider.poll` (`model_router.py:325-336`) accepts any task with `status == 'completed'`. 3. `verify_worker_task_authorization` (`services/worker.py:192-214`) synthesizes an in-memory lease (`id='direct_{worker_id}'`, `lease_expires_at='9999-12-31T23:59:59Z'`) when `assigned_worker == worker_id`, `any_leases == 0`, and `operation == 'submit'`, allowing `submit_task_result` to complete an assigned task without ever acquiring a lease. 4. `services/worker.py:1666-1669` marks any worker-submitted metric observation `'verified'` if `evidence_ref.startswith('execution:')` without checking that the execution exists or succeeded. 5. UI routes allow directly setting `projects.status = 'completed'` (`projects.py:293-305`), marking metrics `'verified'` (`projects.py:649, 692`), marking node capabilities `'verified'` without a probe (`infrastructure.py:157-172`), and creating/promoting `'supported'`/`'corroborated'` collective knowledge without `OperatorAuthority` (`knowledge.py:127-159`, `deliverables.py:721-770`, `projects.py:513-545`).",
+      "reproduction_or_evidence": "Independently reproduced in `comprehensive-audit-20261105.json` (`section6_provenance_and_acceptance`): `aud04a_deliverable_review_bypass` (`deliverable_status='accepted'`, `artifact_status='accepted'`, `knowledge_support_level='supported'` with zero worker leases), `aud04b_task_execute_bypass` (`task_status='completed'`, `worker_leases_count=0`), `aud04c_direct_submit_synthetic_lease_bypass` (`submit_succeeded_without_lease_row=true`), and `aud04d_worker_metric_self_verify_bypass` (`metric_verification_status='verified'` for `execution:nonexistent-fake-id`).",
+      "impact": "Attackers or operators using legacy routes can pre-accept deliverables (causing `engine.py` to skip evaluation), inject unleased task completions into `WorkerOllamaProvider.poll`, submit worker task results without a lease row, and fabricate `'verified'` metrics/capabilities or `'supported'` collective knowledge.",
+      "recommended_fix": "1. Remove the `if dd['status'] == 'accepted': continue` skip in `engine.py:1457-1458` and require `certification.native_output_provenance` before `review_deliverable` can set `status='accepted'` or extract `'supported'` knowledge. 2. Remove the synthesized `'direct_{worker_id}'` lease fallback in `services/worker.py:192-214`. 3. Require a verified `worker_task_leases` row in `WorkerOllamaProvider.poll` and prevent `record_task_execution` from completing `worker_inference` tasks. 4. Validate `execution_id` against `task_executions` before setting `verification_status='verified'` in `services/worker.py:1666-1669`. 5. Gate knowledge/capability/metric verification routes behind `OperatorAuthority` and independent verification checks.",
+      "verification_test": "Re-run the Section 6 negative probes (`aud04a` through `aud04d`) and verify all 4 bypass attempts are rejected.",
+      "blocks": [
+        "merge_review_blocker",
+        "production_release_blocker"
+      ],
+      "assigned_repair_increment": "R2",
+      "status": "verified",
+      "remediation_commit_sha": "8e15335828a125ff3cb0a2d56b02d230e521e543",
+      "verified_by_test": "tests/test_audit_r2_provenance_and_status.py::test_aud04_no_synthetic_direct_lease_or_expired_submit_or_unleased_inference_poll"
+    },
+    {
+      "id": "AUD-05",
+      "severity": "HIGH",
+      "category": "authentication_csrf_and_route_hygiene",
+      "subsystem": "FastAPI Route Layer & Database Connections",
+      "file_paths": [
+        "app/routes/orchestration.py",
+        "app/routes/deliverables.py",
+        "app/routes/observatory.py",
+        "app/routes/knowledge.py",
+        "app/routes/inference.py",
+        "app/routes/chat.py",
+        "app/services/pipeline_parallel/topology.py",
+        "app/main.py"
+      ],
+      "line_numbers": [
+        "orchestration.py:41, 45-50",
+        "deliverables.py:43, 47-54, 321, 355, 387",
+        "observatory.py:33-42, 45-264",
+        "knowledge.py:155-158, 226-251",
+        "inference.py:210-238",
+        "chat.py:432-447",
+        "topology.py:141",
+        "main.py:112, 141-148"
+      ],
+      "claim_or_expectation": "All API routes authenticate callers consistently, enforce CSRF on browser POSTs, avoid route collisions, and close SQLite connections cleanly.",
+      "observed_behavior": "1. Broken Worker Bearer Token Hash Lookup: `orchestration.py:47` and `deliverables.py:49` query `SELECT id FROM worker_tokens WHERE token_hash = ?` passing the raw plaintext bearer token instead of `hashlib.sha256(raw_token.encode()).hexdigest()`, whereas `worker.py:42-43` stores the SHA-256 hex digest in `token_hash`. 2. Ignored `verify_csrf()` Boolean Return: `deliverables.py:321, 355, 387` calls `verify_csrf(request, csrf_token)` as a bare statement without checking its boolean return value (unlike `verify_csrf` in `auth.py:72-76`, which returns `bool` and does not raise), rendering CSRF checks on those 3 POST endpoints a no-op. 3. Unauthenticated Endpoints & Route Shadowing: All `/api/v1/observatory/*` endpoints (including `POST /api/v1/observatory/alerts/{alert_id}/acknowledge`), `/api/knowledge/records`, `/api/knowledge/impacts/{project_id}`, `/api/knowledge/checkpoints/{project_id}`, `/api/v1/inference/paged-kv/metrics`, and `/api/v1/inference/pipeline/stages` have no authentication check. Furthermore, `observatory.py:33-34` registers `/health` and `/api/v1/health` before `main.py:141-148`, shadowing the main health endpoints. 4. Swallowed `AttributeError` & SQLite Connection Leaks: `knowledge.py:155` calls `user.get('username')` on `user: str`, raising `AttributeError` (swallowed at `line 157`) and skipping vault sync; `chat.py:432-447` (`chat_project_status`) and `topology.py:141` (`with get_db_connection() as conn:`) leak open SQLite connections.",
+      "reproduction_or_evidence": "Independently reproduced in `comprehensive-audit-20261105.json` (`section6_provenance_and_acceptance.aud05_worker_token_hash_mismatch`: `worker_service_lookup_matches=true` vs `orchestration_route_raw_lookup_matches=false`) and direct source inspection.",
+      "impact": "Worker Bearer tokens always fail authentication on `/api/v1/orchestration/*` and `/api/v1/deliverables/*`; 3 POST routes in `deliverables.py` have non-functional CSRF checks; unauthenticated callers can query internal knowledge/telemetry or acknowledge observatory alerts; and leaked SQLite connections can cause lock contention.",
+      "recommended_fix": "1. Hash `raw_token` with `hashlib.sha256(raw_token.encode()).hexdigest()` in `orchestration.py:47` and `deliverables.py:49`. 2. Check `if not verify_csrf(request, csrf_token): raise HTTPException(403, 'CSRF validation failed')` in `deliverables.py:321, 355, 387`. 3. Add authentication dependencies to `observatory.py`, `knowledge.py`, and `inference.py`, and remove duplicate `/health` routes from `observatory.py`. 4. Fix `user` string handling in `knowledge.py:155` and add `try/finally: conn.close()` in `chat.py:432` and `topology.py:141`.",
+      "verification_test": "Add route authentication & CSRF unit tests covering Bearer token SHA-256 lookup, invalid CSRF rejection on `deliverables.py`, and unauthenticated request rejection on `observatory.py`/`knowledge.py`/`inference.py`.",
+      "blocks": [
+        "merge_review_blocker",
+        "production_release_blocker"
+      ],
+      "assigned_repair_increment": "R1",
+      "status": "verified",
+      "remediation_commit_sha": "d268819dfb1d6298a6f7165b091d41bd03ba733f",
+      "verified_by_test": "tests/test_audit_r1_security_and_containment.py::test_aud05_worker_token_sha256_and_csrf_and_route_authentication"
+    },
+    {
+      "id": "AUD-06",
+      "severity": "HIGH",
+      "category": "architectural_coherence_and_dead_subsystems",
+      "subsystem": "Dual Orchestration Stacks (`engine.py` vs `deliberate_loop.py`)",
+      "file_paths": [
+        "app/services/orchestration/engine.py",
+        "app/services/orchestration/evaluator.py",
+        "app/services/orchestration/code_proposals.py",
+        "app/routes/orchestration.py",
+        "app/routes/chat.py"
+      ],
+      "line_numbers": [
+        "engine.py:39-79, 392-398, 428, 857, 1305-1348",
+        "evaluator.py:341-346, 971-1032, 1286-1293",
+        "code_proposals.py:5, 19-28",
+        "orchestration.py:385, 530-569, 650-665"
+      ],
+      "claim_or_expectation": "The collective maintains a single coherent project state, task graph, and lifecycle across user entry points and administrative routes.",
+      "observed_behavior": "Two largely disjoint orchestration stacks coexist in the repository: 1. The Stage 1-8 stack (`engine.py`, `planner.py`, `task_graph.py`, `evaluator.py`) operates on `orchestration_runs` and `orchestration_tasks`, but its verifiers (`_PROTECTED_CODE_TRANSPORT` at `engine.py:39`, `_NATIVE_RETRIEVAL_VERIFIER` at `engine.py:40`) are `None` by default and never configured at app startup (`app/main.py`); `install_proposal_schema` (`code_proposals.py:19`) is never called by `migrations.py` or `main.py`; and `evaluator.py` permanently hard-blocks all research and software deliverables (`lines 341-346, 991-1032, 1286-1293`). 2. The Increment 18-19 stack (`deliberate_loop.py`, `working_memory.py`, `intake.py`) creates an `orchestration_runs` row only as a passive foreign-key anchor (`deliberate_loop.py:1994`) while tracking execution in `project_task_contracts` and `project_epistemic_items`. 3. Steering (`POST /api/v1/orchestration/runs/{run_id}/steer` vs `intake.apply_user_steering_update`), parking, and cancellation on one stack do not synchronize with the other. 4. In `engine.py:392-398, 1305-1348`, controller-step tasks are marked `'dispatched'` in SQLite before thread submission and tracked only in in-RAM `_ACTIVE_METADATA`, so a controller restart permanently orphans them.",
+      "reproduction_or_evidence": "Direct source inspection across `engine.py`, `evaluator.py`, `code_proposals.py`, `deliberate_loop.py`, `orchestration.py`, and `main.py`.",
+      "impact": "Operators or UI clients interacting with `/api/v1/orchestration/runs/*` see empty or desynchronized `orchestration_tasks` for projects executed via `/api/v1/chat/deliberate`, while runs started via `engine.py` are permanently blocked on software and research deliverables.",
+      "recommended_fix": "Consolidate `/api/v1/orchestration/*` and `/api/v1/chat/deliberate` onto the durable working-memory contract engine (`working_memory.py` + `deliberate_loop.py`), synchronize `orchestration_runs.state` on completion/park/cancel, and call `install_proposal_schema` in `migrations.py`.",
+      "verification_test": "Add an integration test verifying that steering, parking, resuming, and completing a project via `/api/v1/chat/deliberate` updates `orchestration_runs.state` and is reflected identically in `/api/v1/orchestration/runs/{run_id}`.",
+      "blocks": [
+        "production_release_blocker"
+      ],
+      "assigned_repair_increment": "R4",
+      "status": "verified",
+      "remediation_commit_sha": "3c5af4ab81cb386dedf8394c36f85219ec9bc2c9",
+      "verified_by_test": "tests/test_audit_r4_lifecycle_and_recovery.py::test_aud06_migration24_installs_software_review_items_and_synchronizes_run_lifecycle"
+    },
+    {
+      "id": "AUD-07",
+      "severity": "MEDIUM-HIGH",
+      "category": "provenance_and_verification_accuracy",
+      "subsystem": "Repository Bug-Fix Change Summary (`t3_publish_change_report`)",
+      "file_paths": [
+        "app/services/orchestration/deliberate_loop.py"
+      ],
+      "line_numbers": [
+        "1420-1427",
+        "2932-2998"
+      ],
+      "claim_or_expectation": "Task contracts declared with `selected_tool='worker_model_inference'` only record a worker `lease_id` when that task itself executed on an authenticated worker, and public-only repository bug-fix runs (`holdout_test_dir=None`) do not fail change-report verification for lacking holdouts.",
+      "observed_behavior": "1. `t3_publish_change_report` is registered with `selected_tool='worker_model_inference'` and `permitted_effects=['read_only', 'worker_inference', 'write_project_artifact']` (`lines 1420-1426`), but the `elif verifier_id == 'verifier:repo_change_summary_v1':` branch (`lines 2932-2998`) never dispatches a worker inference call or executes any tool from `GLOBAL_TOOL_CATALOGUE`. Instead, it formats a deterministic Python f-string on the controller (`lines 2938-2951`) and copies `t2_propose_and_verify_patch`'s `lease_id` (`lease_from_t2 = t2_sum.get('lease_id')`) onto `t3`'s checkpointed boundary, output summary, and step result (`lines 2965, 2979, 2991`). 2. Line 2958 checks `int(t2_sum.get('holdout_tests_run') or 0) > 0`, which causes `t3_publish_change_report` to fail verification whenever `t2` was run with public tests only (`holdout_test_dir=None`).",
+      "reproduction_or_evidence": "Direct source inspection of `app/services/orchestration/deliberate_loop.py:1420-1427, 2932-2998`.",
+      "impact": "Misattributes controller template formatting on `t3_publish_change_report` to `t2`'s worker lease (`lease_from_t2`), and prevents public-only repository bug-fix runs from completing `t3`.",
+      "recommended_fix": "1. Either dispatch `t3_publish_change_report` through `execute_native_worker_inference` (like `t3_synthesize_recommendation` at `lines 2348-2460`) or declare `t3_publish_change_report` honestly as a deterministic controller artifact (`selected_tool='create_or_revise_artifact'`, `producing_actor='deterministic_controller'`, `lease_id=None`) while referencing `t2_patch_lease_id` in a separate metadata field. 2. Condition the `holdout_tests_run > 0` check in `t3` on whether `holdout_test_dir` was configured for the run (`public_diagnostics_passed` vs `verified_for_scope`).",
+      "verification_test": "Add unit tests verifying (a) `t3_publish_change_report` never reuses `t2`'s `lease_id` as its own execution lease, and (b) public-only repo bug-fix runs (`holdout_test_dir=None`) report `public_diagnostics_passed` accurately.",
+      "blocks": [
+        "merge_review_blocker",
+        "production_release_blocker"
+      ],
+      "assigned_repair_increment": "R2",
+      "status": "verified",
+      "remediation_commit_sha": "8e15335828a125ff3cb0a2d56b02d230e521e543",
+      "verified_by_test": "tests/test_audit_r2_provenance_and_status.py::test_aud07_repo_change_report_truthful_controller_provenance_and_public_only_scope"
+    },
+    {
+      "id": "AUD-08",
+      "severity": "MEDIUM-HIGH",
+      "category": "financial_and_structured_data_correctness",
+      "subsystem": "Financial & Grant Reconciliation Ledger (`financial_ledger.py`)",
+      "file_paths": [
+        "app/services/orchestration/financial_ledger.py",
+        "app/services/orchestration/tool_catalogue.py"
+      ],
+      "line_numbers": [
+        "financial_ledger.py:72-122",
+        "tool_catalogue.py:1338-1365"
+      ],
+      "claim_or_expectation": "When reconciling multi-fund grant budgets with cost-share/match allocations (`match_for=grant_id`), expenditures counted toward a grant's required match must be eligible under the target grant's rules (`target.eligible_categories`), respect cash vs in-kind share caps, and validate currency and evidence references.",
+      "observed_behavior": "In `financial_ledger.py:90-100`, when an allocation has `a.match_for`, `reconcile()` checks `c.category not in f.eligible_categories` (whether the matching fund itself allows the category) and `f.kind in target.accepted_match_kinds`, but NEVER checks `c.category in target.eligible_categories`. As a result, a cost in a category that is explicitly ineligible under the target grant (e.g. `'admin'` when `F_GRANT.eligible_categories = {'equipment', 'labor'}`) is accepted as valid match (`matched[target.id] += amount`) with `valid=True` and `errors=[]`! Additionally, `financial_ledger.py` has no cash-vs-in-kind match ratio cap (e.g. minimum 50% cash match), no currency field validation, and does not verify `rule_evidence_id` against persisted project evidence.",
+      "reproduction_or_evidence": "Independently reproduced in `comprehensive-audit-20261105.json` (`section10_financial_and_structured_data.financial_ledger_probes.aud08_grant_ineligible_category_accepted_as_match=true`): allocating $20,000 of `F_CASH_MATCH` to `Cost('C_ADMIN', 'admin', '20000.00')` with `match_for='F_GRANT'` (where `F_GRANT` only allows `{'equipment', 'labor'}`) returned `valid=True` and `errors=[]`.",
+      "impact": "Grant reconciliation can certify an illegal cost-share match where unallowable cost categories (such as administrative overhead) are used to satisfy a restricted grant's match requirement.",
+      "recommended_fix": "1. In `financial_ledger.py:90-100`, enforce `if c.category not in target.eligible_categories: err(f'ineligible_match_category:{a.fund_id}->{target.id}:{c.category}')`. 2. Add optional `max_inkind_match_share: str = '1.0'` and `currency: str = 'USD'` fields to `Fund` and `Cost` and enforce them in `reconcile()`.",
+      "verification_test": "Add unit test in `tests/test_financial_ledger.py` asserting that matching a grant with a cost category excluded from `target.eligible_categories` fails with `ineligible_match_category`.",
+      "blocks": [
+        "merge_review_blocker",
+        "production_release_blocker"
+      ],
+      "assigned_repair_increment": "R3",
+      "status": "verified",
+      "remediation_commit_sha": "acec0e3e3ebc04c6a5d54087c321c26660409075",
+      "verified_by_test": "tests/test_audit_r3_grounding_tools_finance_memory.py::test_aud08_financial_reconciliation_grant_match_categories_share_caps_currency_and_evidence"
+    },
+    {
+      "id": "AUD-09",
+      "severity": "MEDIUM",
+      "category": "distributed_inference_and_kv_cache",
+      "subsystem": "Paged KV Sidecar in `inference.py` & Pipeline Parallelism",
+      "file_paths": [
+        "app/services/inference.py",
+        "app/services/paged_kv/manager.py",
+        "app/services/pipeline_parallel/pytorch_split_engine.py",
+        "app/services/pipeline_parallel/topology.py"
+      ],
+      "line_numbers": [
+        "inference.py:46-52, 455-482, 518-527",
+        "manager.py:109, 144",
+        "pytorch_split_engine.py:117, 251-284",
+        "topology.py:185-235"
+      ],
+      "claim_or_expectation": "Paged KV cache reuse and pipeline parallelism must distinguish verified local PyTorch execution from sidecar/simulated paths and never claim end-to-end speedup where external HTTP runtimes or uncached loops are used.",
+      "observed_behavior": "1. Local PyTorch Paged KV (`PyTorchPagedKVAdapter` + `TrustedLocalModelLoader` on `Qwen/Qwen2.5-0.5B-Instruct` FP16 on GTX 1650 SUPER) is genuinely implemented and achieves exact top-1 token agreement (`max_logit_diff_fp16 = 0.015625` across 280 tokens, reusing 272 tokens / 17 blocks), with forward-pass latency dropping from `49.94ms` to `21.11ms` (`2.37x` forward speedup, `1.64x` end-to-end speedup including `DynamicCache` assembly). 2. However, in `app/services/inference.py` (`send_chat_completion`, lines 46-52, 455-482, 518-527), prompts are encoded as UTF-8 bytes (`encode_text_to_tokens`), `ingest_prompt` is called with `authority=None` (so `verified_reuse_authorized=False` and `matched_tokens=0`), and external Ollama/`llama-server` HTTP backends cannot accept pre-computed PyTorch KV blocks. 3. In `LocalSplitPipelineEngine` (`pytorch_split_engine.py`), 2-stage and 3-stage splits achieve `0.0` max logit diff against monolithic execution, but `generate_greedy` (`line 117, 266`) recomputes the entire prefix with `use_cache=False` at every token step, and multi-host remote weight execution across `qwen-laptop` remains unimplemented (`topology.py:209-232`).",
+      "reproduction_or_evidence": "Independently reproduced in `comprehensive-audit-20261105.json` (`section11_distributed_and_cache`): `cache_disabled_startup.is_paged_kv_enabled_default=false`, `inference_sidecar_audit.first_ingest_verified_reuse_authorized=false`, and `gpu_paged_kv_and_split_benchmarks` (`cold_prefill_latencies_ms=[50.69, 49.49, 49.64]`, `warm_forward_only_latencies_ms=[21.45, 20.66, 21.21]`, `warm_total_with_cache_assembly_latencies_ms=[30.22, 29.88, 31.08]`, `split_pipeline_2stage.max_logit_diff_vs_monolithic=0.0`, `split_pipeline_3stage.max_logit_diff_vs_monolithic=0.0`).",
+      "impact": "Enabling `QC_PAGED_KV_ENABLED=true` on the FastAPI controller's Ollama HTTP path (`app/services/inference.py`) provides zero KV reuse (`matched_tokens=0`) because Ollama runs out-of-process and `inference.py` has no `IssuedReuseAuthority`. Genuine KV reuse is currently confined to direct in-process `PyTorchPagedKVAdapter` callers.",
+      "recommended_fix": "Keep `QC_PAGED_KV_ENABLED=false` by default in production; explicitly label the `app/services/inference.py` hook as a telemetry-only shadow sidecar (or wire it to an in-process `PyTorchPagedKVAdapter` worker endpoint), and add per-stage `DynamicCache` support to `LocalSplitPipelineEngine.generate_greedy` before claiming multi-token split generation speedup.",
+      "verification_test": "Existing Increment 17 suite (`tests/test_paged_kv_authority_and_app_behavior.py`) plus `section11_distributed_and_cache` probe in `comprehensive-audit-20261105.json`.",
+      "blocks": [
+        "production_release_blocker"
+      ],
+      "assigned_repair_increment": "R4",
+      "status": "partial",
+      "remediation_commit_sha": "3c5af4ab81cb386dedf8394c36f85219ec9bc2c9",
+      "verified_by_test": "tests/test_audit_r4_lifecycle_and_recovery.py::test_aud09_paged_kv_and_pipeline_capability_reporting_is_truthful",
+      "remaining_limitation": "QC_PAGED_KV_ENABLED=false by default and truthful telemetry-only sidecar reporting (integration_mode='telemetry_only_http_sidecar', external_http_runtime_kv_reuse_supported=False, multi_host_weight_execution_implemented=False) are verified; however, external Ollama HTTP processes cannot accept pre-computed PyTorch KV tensors and multi-host real-weight split execution across qwen-laptop remains unimplemented."
+    },
+    {
+      "id": "AUD-10a",
+      "parent_id": "AUD-10",
+      "finding_classification": "confirmed_defect",
+      "assigned_repair_increment": "R3",
+      "severity": "MEDIUM",
+      "category": "working_memory_fts_consistency",
+      "subsystem": "Working Memory FTS5 Index (`working_memory.py`)",
+      "file_paths": [
+        "app/services/orchestration/working_memory.py"
+      ],
+      "line_numbers": [
+        "working_memory.py:663-668, 1869-1890, 2382-2387, 2500-2560"
+      ],
+      "claim_or_expectation": "`project_epistemic_fts` stays synchronized with `project_epistemic_items` across all insertions, invalidations, supersessions, and crash recoveries, and stale/superseded items are excluded from current decision context by default while remaining accessible for explicit historical queries.",
+      "observed_behavior": "In `working_memory.py:1869-1890`, when `execute_checkpointed_work_boundary` records a `'stale'` epistemic item on fence failure, it inserts into `project_epistemic_items` without inserting into `project_epistemic_fts`. In addition, `search_project_epistemic_fts` returns stale/superseded rows by default unless filtered.",
+      "reproduction_or_evidence": "Direct source inspection of `working_memory.py:1869-1890` and Section 9 FTS5 probe in `comprehensive-audit-20261105.json` (`fts_includes_stale_or_superseded=2`).",
+      "impact": "Fence-failure epistemic items are unsearchable via FTS5, and default FTS5 searches include stale/superseded items unless callers filter them.",
+      "recommended_fix": "Insert into `project_epistemic_fts` on fence-failure in `working_memory.py:1870`, keep `project_epistemic_fts` synchronized across invalidation/supersession/recovery, and default `search_project_epistemic_fts` to `include_historical=False` (`exclude_stale=True`) while allowing `include_historical=True`.",
+      "verification_test": "Unit and integration tests in `tests/test_audit_r3_grounding_tools_finance_memory.py`.",
+      "blocks": [
+        "merge_review_blocker",
+        "production_release_blocker"
+      ],
+      "status": "verified",
+      "remediation_commit_sha": "acec0e3e3ebc04c6a5d54087c321c26660409075",
+      "verified_by_test": "tests/test_audit_r3_grounding_tools_finance_memory.py::test_aud10a_fts5_fence_failure_indexing_and_stale_superseded_filtering"
+    },
+    {
+      "id": "AUD-10b",
+      "parent_id": "AUD-10",
+      "finding_classification": "confirmed_defect",
+      "assigned_repair_increment": "R1",
+      "severity": "HIGH",
+      "category": "execution_containment",
+      "subsystem": "Legacy Code Sandbox (`code_sandbox.py`)",
+      "file_paths": [
+        "app/services/orchestration/code_sandbox.py"
+      ],
+      "line_numbers": [
+        "code_sandbox.py:200-282"
+      ],
+      "claim_or_expectation": "No module in `app/services/orchestration/` permits uncontained host `subprocess.run` of candidate code via a caller boolean flag (`allow_untrusted_subprocess=True` or `internal_harness_test_only=True`).",
+      "observed_behavior": "While `code_sandbox.run_isolated_code_evaluation` blocks by default (`status='BLOCKED'`), passing `allow_untrusted_subprocess=True` or `internal_harness_test_only=True` (`lines 200-282`) executes `subprocess.run([sys.executable, ...])` directly on the Windows host without `WindowsJob` or `protected_repo_verifier`.",
+      "reproduction_or_evidence": "Independently reproduced in `comprehensive-audit-20261105.json` (`section7_containment_and_verifier.code_sandbox_audit.allow_untrusted_subprocess_executes_without_windows_job=true`).",
+      "impact": "Callers of legacy `code_sandbox.py` can bypass containment if `allow_untrusted_subprocess=True` or `internal_harness_test_only=True` is passed.",
+      "recommended_fix": "Remove `allow_untrusted_subprocess` and `internal_harness_test_only` host subprocess execution from `code_sandbox.py` and require approved containment (`protected_repo_verifier`) before any candidate code execution.",
+      "verification_test": "Negative and positive containment tests in `tests/test_audit_r1_security_and_containment.py`.",
+      "blocks": [
+        "merge_review_blocker",
+        "production_release_blocker"
+      ],
+      "status": "verified",
+      "remediation_commit_sha": "d268819dfb1d6298a6f7165b091d41bd03ba733f",
+      "verified_by_test": "tests/test_audit_r1_security_and_containment.py::test_aud10b_code_sandbox_never_executes_untrusted_host_subprocess"
+    },
+    {
+      "id": "AUD-10c",
+      "parent_id": "AUD-10",
+      "finding_classification": "confirmed_defect",
+      "assigned_repair_increment": "R2",
+      "severity": "MEDIUM",
+      "category": "truthful_status_reporting",
+      "subsystem": "Artifact Reuse Status & Identifier Types (`app/services/artifacts/service.py`)",
+      "file_paths": [
+        "app/services/artifacts/service.py"
+      ],
+      "line_numbers": [
+        "artifacts/service.py:42-56"
+      ],
+      "claim_or_expectation": "Status and identifier types must never override `__eq__` or `startswith` to equate distinct lifecycle states (`'queued'` vs `'reused'` vs `'active'`) or mask ID prefixes.",
+      "observed_behavior": "`app/services/artifacts/service.py:42-56` defines `ReuseStatus(str)` where `__eq__` returns `True` for `'queued'`, `'reused'`, and `'active'` simultaneously, and `ReuseId(str)` where `.startswith('ar-')` returns `True` even when the string starts with `'reuse-'`.",
+      "reproduction_or_evidence": "Direct source inspection of `app/services/artifacts/service.py:42-56`.",
+      "impact": "Masks distinct artifact reuse lifecycle states (`queued` vs `reused`) in callers and tests.",
+      "recommended_fix": "Remove `ReuseStatus.__eq__` and `ReuseId.startswith` overrides in `app/services/artifacts/service.py` and return truthful string values.",
+      "verification_test": "Unit tests in `tests/test_audit_r2_provenance_and_status.py`.",
+      "blocks": [
+        "merge_review_blocker",
+        "production_release_blocker"
+      ],
+      "status": "verified",
+      "remediation_commit_sha": "8e15335828a125ff3cb0a2d56b02d230e521e543",
+      "verified_by_test": "tests/test_audit_r2_provenance_and_status.py::test_aud10c_reuse_status_and_reuse_id_truthful_strings"
+    },
+    {
+      "id": "AUD-11a",
+      "parent_id": "AUD-11",
+      "finding_classification": "confirmed_defect",
+      "assigned_repair_increment": "R4",
+      "severity": "MEDIUM",
+      "category": "worker_lease_cancellation",
+      "subsystem": "VPS Worker Agent (`vps_agent/agent.py`, `vps_agent/executor.py`)",
+      "file_paths": [
+        "vps_agent/agent.py",
+        "vps_agent/executor.py"
+      ],
+      "line_numbers": [
+        "vps_agent/agent.py:217-225, 270, 294",
+        "vps_agent/executor.py:480-560"
+      ],
+      "claim_or_expectation": "On lease loss or cancellation, the worker terminates owned in-flight inference or subprocess execution within a defined bound, the controller rejects late results, and cleanup status is reported accurately.",
+      "observed_behavior": "`vps_agent/agent.py:294` checks `if lease_lost.is_set()` only after `execute_leased_task(task)` returns (`line 270`). While `execute_library_script` passes `cancel_event`, `execute_inference` blocks on `urllib.request.urlopen` until completion/timeout without aborting on `lease_lost`.",
+      "reproduction_or_evidence": "Direct source inspection of `vps_agent/agent.py:217-296` and `vps_agent/executor.py:480-560`.",
+      "impact": "Revoked or cancelled worker leases do not abort an in-flight Ollama HTTP generation within a tight bound.",
+      "recommended_fix": "Propagate `cancel_event` (`lease_lost`) into `execute_inference` in `vps_agent/executor.py` so the HTTP socket/stream is closed within a defined bound (`<= 0.5s`) when `lease_lost` fires, and ensure late submissions are rejected by the controller.",
+      "verification_test": "Lease-loss cancellation and late-submission rejection tests in `tests/test_audit_r4_lifecycle_and_recovery.py`.",
+      "blocks": [
+        "production_release_blocker"
+      ],
+      "status": "partial",
+      "remediation_commit_sha": "7cd9a91141a60d9582fee7bd4421ba1241403cb4",
+      "verified_by_test": "tests/test_audit_r4_lifecycle_and_recovery.py::test_aud11a_all_cancellation_stages_and_resource_cleanup, tests/test_audit_r4_live_interruption_checks.py::test_check1_live_leased_model_task_cancelled_during_generation_and_check2_before_headers",
+      "remaining_limitation": "Client HTTP socket shutdown (SHUT_RDWR + close), owned worker request thread/subprocess termination within <= 0.5s, lease-revocation abort, late-result rejection (409), controllable HTTP server generation stop, and fail-closed rejection of unconfirmed termination (error_category='cancellation_termination_unconfirmed') are independently verified. However, uninstrumented Ollama on qwen-laptop (100.101.187.115:11434) does not expose a per-request generation status endpoint (/api/generation-status returns 404), so backend_generation_stopped is reported as 'unconfirmed' on live Ollama runs."
+    },
+    {
+      "id": "AUD-11b",
+      "parent_id": "AUD-11",
+      "finding_classification": "confirmed_defect",
+      "assigned_repair_increment": "R4",
+      "severity": "MEDIUM",
+      "category": "remote_sandbox_cleanup",
+      "subsystem": "Remote Linux Sandbox (`app/services/orchestration/linux_sandbox.py`, `vps_agent/linux_sandbox.py`)",
+      "file_paths": [
+        "app/services/orchestration/linux_sandbox.py",
+        "vps_agent/linux_sandbox.py"
+      ],
+      "line_numbers": [
+        "linux_sandbox.py:238-256"
+      ],
+      "claim_or_expectation": "Remote sandbox execution lifetime and temporary directory cleanup on `qwen-laptop` are enforced independently of the controller SSH connection (surviving controller termination or SSH disconnection).",
+      "observed_behavior": "`linux_sandbox.py:238-256` cleans up `/var/tmp/qc_verify_*` in a controller-side Python `finally` block over a new SSH call; if the controller dies or SSH disconnects during execution, the remote staging directory is not automatically cleaned up by systemd.",
+      "reproduction_or_evidence": "Direct source inspection of `linux_sandbox.py:238-256`.",
+      "impact": "Interrupted SSH sessions or controller crashes can leave `/var/tmp/qc_verify_*` staging directories or transient units behind on the Linux sandbox host.",
+      "recommended_fix": "Configure remote systemd transient unit properties (`RuntimeMaxSec`, `CollectMode=inactive-or-failed`, and an independent systemd transient cleanup unit/timer or `ExecStopPost` bound to the unit lifecycle) so execution lifetime and staging cleanup execute on the Linux host even if the SSH connection drops.",
+      "verification_test": "Controller disconnect, timeout, and partial startup cleanup tests in `tests/test_audit_r4_lifecycle_and_recovery.py`.",
+      "blocks": [
+        "production_release_blocker"
+      ],
+      "status": "verified",
+      "remediation_commit_sha": "7cd9a91141a60d9582fee7bd4421ba1241403cb4",
+      "verified_by_test": "tests/test_audit_r4_live_interruption_checks.py::test_check3_controller_termination_during_protected_execution_cleans_up_remotely, tests/test_audit_r4_live_interruption_checks.py::test_check4_ssh_disconnection_during_remote_execution_cleans_up_remotely, tests/test_audit_r4_live_interruption_checks.py::test_check5_timeout_partial_startup_and_repeated_failures_do_not_accumulate"
+    },
+    {
+      "id": "AUD-11c",
+      "parent_id": "AUD-11",
+      "finding_classification": "confirmed_defect",
+      "assigned_repair_increment": "R1",
+      "severity": "HIGH",
+      "category": "ssrf_and_network_containment",
+      "subsystem": "Research Fetcher (`vps_agent/research_fetch.py`, `app/services/research/fetcher.py`)",
+      "file_paths": [
+        "vps_agent/research_fetch.py",
+        "app/services/research/fetcher.py"
+      ],
+      "line_numbers": [
+        "vps_agent/research_fetch.py:73-112",
+        "app/services/research/fetcher.py:130-260"
+      ],
+      "claim_or_expectation": "Research fetching validates every redirect destination and binds the actual socket connection to the policy-verified public IP address, preventing private-network access via redirects or DNS rebinding.",
+      "observed_behavior": "`vps_agent/research_fetch.py:73-112` calls `_assert_public_host` once before `urllib.request.urlopen`, which neither validates HTTP `301`/`302`/`307`/`308` redirect targets nor pins the socket connection to the resolved IP address checked by `_assert_public_host`. `app/services/research/fetcher.py` similarly resolves DNS separately from `httpx.AsyncClient` connection establishment.",
+      "reproduction_or_evidence": "Direct source inspection of `vps_agent/research_fetch.py:73-112` and `app/services/research/fetcher.py:130-260`.",
+      "impact": "An external URL redirecting to `http://127.0.0.1/...` or `http://169.254.169.254/...`, or a hostname that changes DNS resolution between pre-check and socket connect (DNS rebinding), can reach loopback/private/link-local addresses.",
+      "recommended_fix": "Implement a custom redirect handler that validates every redirect hop (with bounded max redirects) AND a custom HTTP/HTTPS connection dialer that connects directly to the policy-verified resolved IP address (preserving `Host` header and TLS `server_hostname` SNI) so a second DNS lookup cannot rebind to a private IP.",
+      "verification_test": "IPv4, IPv6, loopback, private/link-local, redirect-chain, and DNS-rebinding tests in `tests/test_audit_r1_security_and_containment.py`.",
+      "blocks": [
+        "merge_review_blocker",
+        "production_release_blocker"
+      ],
+      "status": "verified",
+      "remediation_commit_sha": "d268819dfb1d6298a6f7165b091d41bd03ba733f",
+      "verified_by_test": "tests/test_audit_r1_security_and_containment.py::test_aud11c_ssrf_ipv6_zone_and_dns_rebinding_blocked"
+    },
+    {
+      "id": "AUD-12",
+      "severity": "MEDIUM",
+      "category": "test_adequacy_and_fixture_coupling",
+      "subsystem": "Test Suite & Acceptance Harness (`tests/` & `acceptance_harness.py`)",
+      "file_paths": [
+        "app/services/orchestration/acceptance_harness.py",
+        "app/services/orchestration/deliberate_loop.py",
+        "tests/test_increment18_working_memory.py",
+        "tests/test_increment19_general_purpose_coordinator.py"
+      ],
+      "line_numbers": [
+        "acceptance_harness.py:32-120",
+        "deliberate_loop.py:1575, 1718-1874"
+      ],
+      "claim_or_expectation": "Acceptance and regression tests should catch hardcoded template fallbacks, unimplemented tool branches, undeclared tool argument keys, and grant match category eligibility bugs.",
+      "observed_behavior": "While the 23-file regression suite (`385 passed`) has strong negative coverage for Increment 17 KV authority/replay/mutation and Increment 19 public/holdout suite isolation & containment (`F-41`/`F-42`), it missed `AUD-01`, `AUD-02`, `AUD-04`, `AUD-05`, and `AUD-08` because: 1. Production code (`deliberate_loop.py:1575`) imports `SYNTHETIC_SUPPLIER_QUOTES` directly from `acceptance_harness.py`, coupling the coordinator to the test fixture. 2. `run_action_selection_benchmark` (`deliberate_loop.py:1718-1874`) evaluates a static in-memory list of 10 dictionaries via `evaluate_next_action_appropriateness` without invoking `advance_deliberate_project` or a live model. 3. No test exercised `advance_deliberate_project` on a non-supplier, non-repo-bugfix domain (e.g., research or financial reconciliation) to verify it does not fall back to `SYNTHETIC_SUPPLIER_QUOTES`. 4. No test in `test_financial_ledger.py` tested matching a grant with a cost category allowed by the matching fund but disallowed by the target grant.",
+      "reproduction_or_evidence": "Independently reproduced in `comprehensive-audit-20261105.json` (`section12_mutation_and_test_adequacy.mutation_and_gap_probes`).",
+      "impact": "High pass counts (`385 passed`) can mask template coupling (`SYNTHETIC_SUPPLIER_QUOTES`) and unreachable tool branches when tests only exercise the 2 pre-built domain templates.",
+      "recommended_fix": "Move `SYNTHETIC_SUPPLIER_QUOTES` out of production imports into `tests/fixtures/`, add multi-domain end-to-end tests that fail if synthetic quotes are ever injected without explicit fixture input, and add schema-key and grant-match-eligibility negative tests.",
+      "verification_test": "Run the new negative tests in `comprehensive-audit-20261105.json` as permanent pytest regressions.",
+      "blocks": [
+        "merge_review_blocker"
+      ],
+      "assigned_repair_increment": "R3",
+      "status": "verified",
+      "remediation_commit_sha": "acec0e3e3ebc04c6a5d54087c321c26660409075",
+      "verified_by_test": "tests/test_audit_r3_grounding_tools_finance_memory.py::test_aud02_and_aud12_multi_domain_detection_and_decomposition_without_supplier_fallback"
+    }
+  ],
+  "pre_remediation_head_sha": "b89e63ce372726f65fa650fd2ed30aa917b903eb",
+  "previous_tested_implementation_sha": "3c5af4ab81cb386dedf8394c36f85219ec9bc2c9",
+  "previous_rehearsed_merge_sha": "5d6984de602ef543fb7c277cba3c40e6a4fe369b"
+}

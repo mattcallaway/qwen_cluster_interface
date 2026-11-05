@@ -198,6 +198,8 @@ async def api_research_export(project_id: str, request: Request):
 
     fmt = request.query_params.get("format", "markdown")
     if request.method == "POST":
+        if not verify_csrf(request, request.headers.get("X-CSRF-Token")):
+            return _err(403, "Invalid or missing CSRF token.")
         b = await _body(request)
         fmt = b.get("format") or fmt
 

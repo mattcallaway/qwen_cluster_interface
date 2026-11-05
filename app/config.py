@@ -3,6 +3,8 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
+from app.version import __version__
+
 # Automatically load production or user config if present
 _custom_config = os.getenv("QC_CONFIG_FILE")
 if _custom_config and Path(_custom_config).exists():
@@ -15,7 +17,7 @@ load_dotenv()
 
 class Settings(BaseModel):
     app_name: str = "Qwen Collective"
-    app_version: str = "0.1.0"
+    app_version: str = Field(default_factory=lambda: os.getenv("QC_APP_VERSION", __version__))
     host: str = os.getenv("QC_HOST", "127.0.0.1")
     port: int = int(os.getenv("QC_PORT", "8000"))
     
@@ -31,6 +33,7 @@ class Settings(BaseModel):
 
     # Project Orchestrator background engine (opt-in; the UI/API are always available, the engine loop only runs when enabled)
     orchestrator_enabled: bool = os.getenv("QC_ORCHESTRATOR_ENABLED", "0").lower() in ("1", "true", "yes")
+    allowed_workspace_roots: str = Field(default_factory=lambda: os.getenv("QC_ALLOWED_WORKSPACE_ROOTS", ""))
     
     # Paths derived from data_dir
     @property
@@ -44,6 +47,20 @@ class Settings(BaseModel):
     @property
     def evidence_dir(self) -> Path:
         p = self.data_dir / "evidence"
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    @property
+    def artifacts_dir(self) -> Path:
+        p = self.data_dir / "artifacts"
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+        return p
+
+    @property
+    def workspaces_dir(self) -> Path:
+        p = self.data_dir / "workspaces"
         p.mkdir(parents=True, exist_ok=True)
         return p
 

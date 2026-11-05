@@ -48,6 +48,10 @@ class BrowserRenderResult:
     def status(self) -> str:
         return "success" if self.is_success else "error"
 
+    @property
+    def error(self) -> Optional[str]:
+        return self.error_message
+
 
 class HeadlessBrowserService:
     """Manages secure headless Chromium rendering via Playwright."""
@@ -117,14 +121,53 @@ class HeadlessBrowserService:
                 error_message=f"Browser navigation blocked by destination IP check: {dest_reason}",
             )
 
-        # 2. Launch ephemeral Playwright browser session
+        # 2. Launch ephemeral Playwright browser session with outbound filtering proxy (F-14 / ADR-06)
         try:
             from playwright.sync_api import sync_playwright
+        except ImportError:
+            duration_ms = round((time.time() - start_time) * 1000.0, 1)
+            logger.warning("Playwright is not installed. Secure browser fallback unavailable.")
+            return BrowserRenderResult(
+                url=url,
+                canonical_url=canonical,
+                title="",
+                rendered_html="",
+                extracted_text="",
+                status_code=503,
+                duration_ms=duration_ms,
+                content_hash="",
+                is_success=False,
+                error_message="Secure browser egress unavailable: Playwright automation library is not installed.",
+            )
 
+        try:
+            from app.services.research.browser_proxy import OutboundFilteringProxy
+            proxy = OutboundFilteringProxy(policy=self.policy)
+            proxy.start()
+        except Exception as proxy_err:
+            duration_ms = round((time.time() - start_time) * 1000.0, 1)
+            logger.error("Failed to initialize outbound filtering proxy for browser: %s", proxy_err)
+            return BrowserRenderResult(
+                url=url,
+                canonical_url=canonical,
+                title="",
+                rendered_html="",
+                extracted_text="",
+                status_code=503,
+                duration_ms=duration_ms,
+                content_hash="",
+                is_success=False,
+                error_message=f"Secure browser egress unavailable: egress filter proxy initialization failed: {proxy_err}",
+            )
+
+        try:
             with sync_playwright() as p:
                 browser = p.chromium.launch(
                     headless=True,
+                    proxy={"server": proxy.proxy_url, "bypass": ""},
                     args=[
+                        f"--proxy-server={proxy.proxy_url}",
+                        "--proxy-bypass-list=<-loopback>",
                         "--disable-gpu",
                         "--disable-dev-shm-usage",
                         "--no-first-run",
@@ -137,20 +180,28 @@ class HeadlessBrowserService:
                     java_script_enabled=True,
                     bypass_csp=False,
                     ignore_https_errors=False,
+                    accept_downloads=False,
                 )
 
-                # Route-level interceptor: abort any internal or prohibited network requests from page scripts
+                # Route-level interceptor: abort any internal or prohibited network requests from page scripts (F-14)
                 def _route_filter(route, request):
                     req_url = request.url
                     try:
                         p_host = (urlparse(req_url).hostname or "").lower()
                         # Only allow external public requests
                         if p_host:
-                            val_ok, _, _ = self.policy.validate_url(req_url)
+                            val_ok, val_reason, _ = self.policy.validate_url(req_url)
                             if not val_ok:
+                                logger.warning("Browser route filter blocked URL %s: %s", req_url, val_reason)
                                 route.abort()
                                 return
-                    except Exception:
+                            dest_ok, dest_reason, _ = self.policy.resolve_and_verify_destination(p_host)
+                            if not dest_ok:
+                                logger.warning("Browser route filter blocked destination IP for %s: %s", p_host, dest_reason)
+                                route.abort()
+                                return
+                    except Exception as filter_ex:
+                        logger.warning("Browser route filter exception on %s: %s", req_url, filter_ex)
                         route.abort()
                         return
                     route.continue_()
@@ -243,3 +294,5 @@ class HeadlessBrowserService:
                 is_success=False,
                 error_message=f"Headless browser error: {e}",
             )
+        finally:
+            proxy.close()

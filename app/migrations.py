@@ -1562,6 +1562,953 @@ _M11: List[str] = [
     "CREATE INDEX idx_research_budgets_run ON research_budgets(research_run_id)",
 ]
 
+# ---------------------------------------------------------------------------
+# Migration 12 — Continuous research and persistent knowledge integration
+# ---------------------------------------------------------------------------
+_M12: List[str] = [
+    # 1. Canonical structured knowledge records (Project & Collective scopes)
+    """
+    CREATE TABLE knowledge_records (
+        id TEXT PRIMARY KEY,
+        scope TEXT NOT NULL CHECK (scope IN ('project', 'collective')),
+        project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+        source_project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+        subject TEXT NOT NULL,
+        knowledge_type TEXT NOT NULL CHECK (knowledge_type IN (
+            'fact', 'source_observation', 'inference', 'estimate', 'hypothesis',
+            'decision', 'procedure', 'lesson_learned', 'contradiction', 'open_question'
+        )),
+        statement TEXT NOT NULL,
+        summary TEXT NOT NULL DEFAULT '',
+        source_ids_json TEXT NOT NULL DEFAULT '[]',
+        evidence_ids_json TEXT NOT NULL DEFAULT '[]',
+        verification_status TEXT NOT NULL DEFAULT 'unverified' CHECK (verification_status IN (
+            'unverified', 'supported', 'corroborated', 'contradicted', 'insufficient_evidence', 'outdated'
+        )),
+        verification_method TEXT NOT NULL DEFAULT 'deterministic',
+        confidence_assessment TEXT NOT NULL DEFAULT 'moderate' CHECK (confidence_assessment IN (
+            'low', 'moderate', 'high', 'verified'
+        )),
+        created_at TEXT NOT NULL,
+        last_verified_at TEXT,
+        valid_from TEXT,
+        valid_until TEXT,
+        superseded_by TEXT REFERENCES knowledge_records(id) ON DELETE SET NULL,
+        contradicts TEXT REFERENCES knowledge_records(id) ON DELETE SET NULL,
+        related_entities_json TEXT NOT NULL DEFAULT '[]',
+        topics_json TEXT NOT NULL DEFAULT '[]',
+        keywords_json TEXT NOT NULL DEFAULT '[]',
+        embedding_reference TEXT,
+        promoted_by TEXT,
+        promoted_at TEXT,
+        promotion_policy TEXT,
+        access_policy TEXT NOT NULL DEFAULT 'standard',
+        updated_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_knowledge_records_scope ON knowledge_records(scope, project_id)",
+    "CREATE INDEX idx_knowledge_records_type ON knowledge_records(knowledge_type)",
+    "CREATE INDEX idx_knowledge_records_status ON knowledge_records(verification_status)",
+    "CREATE INDEX idx_knowledge_records_created ON knowledge_records(created_at)",
+
+    # 2. Knowledge records FTS5 virtual table for fast multi-field search
+    """
+    CREATE VIRTUAL TABLE knowledge_records_fts USING fts5(
+        record_id UNINDEXED,
+        subject,
+        statement,
+        summary,
+        topics,
+        keywords,
+        tokenize='porter unicode61'
+    )
+    """,
+    """
+    CREATE TRIGGER trg_knowledge_records_ai AFTER INSERT ON knowledge_records BEGIN
+        INSERT INTO knowledge_records_fts(record_id, subject, statement, summary, topics, keywords)
+        VALUES (new.id, new.subject, new.statement, new.summary, new.topics_json, new.keywords_json);
+    END
+    """,
+    """
+    CREATE TRIGGER trg_knowledge_records_ad AFTER DELETE ON knowledge_records BEGIN
+        DELETE FROM knowledge_records_fts WHERE record_id = old.id;
+    END
+    """,
+    """
+    CREATE TRIGGER trg_knowledge_records_au AFTER UPDATE ON knowledge_records BEGIN
+        DELETE FROM knowledge_records_fts WHERE record_id = old.id;
+        INSERT INTO knowledge_records_fts(record_id, subject, statement, summary, topics, keywords)
+        VALUES (new.id, new.subject, new.statement, new.summary, new.topics_json, new.keywords_json);
+    END
+    """,
+
+    # 3. Knowledge impact tracking (records where knowledge was used, flags affected assets if superseded/contradicted)
+    """
+    CREATE TABLE knowledge_impacts (
+        id TEXT PRIMARY KEY,
+        knowledge_id TEXT NOT NULL REFERENCES knowledge_records(id) ON DELETE CASCADE,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        run_id TEXT REFERENCES orchestration_runs(id) ON DELETE CASCADE,
+        stage_id TEXT REFERENCES path_stages(id) ON DELETE SET NULL,
+        task_id TEXT REFERENCES orchestration_tasks(id) ON DELETE SET NULL,
+        deliverable_id TEXT REFERENCES deliverables(id) ON DELETE SET NULL,
+        usage_type TEXT NOT NULL CHECK (usage_type IN (
+            'planning_assumption', 'task_context', 'verification_evidence',
+            'deliverable_claim', 'decision_basis', 'retrospective'
+        )),
+        impact_summary TEXT NOT NULL DEFAULT '',
+        is_affected INTEGER NOT NULL DEFAULT 0 CHECK (is_affected IN (0, 1)),
+        affected_reason TEXT,
+        created_at TEXT NOT NULL,
+        flagged_at TEXT
+    )
+    """,
+    "CREATE INDEX idx_knowledge_impacts_k ON knowledge_impacts(knowledge_id)",
+    "CREATE INDEX idx_knowledge_impacts_proj ON knowledge_impacts(project_id, is_affected)",
+    "CREATE INDEX idx_knowledge_impacts_run ON knowledge_impacts(run_id)",
+    "CREATE INDEX idx_knowledge_impacts_task ON knowledge_impacts(task_id)",
+
+    # 4. Mandatory stage research checkpoints
+    """
+    CREATE TABLE stage_research_checkpoints (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        stage_id TEXT REFERENCES path_stages(id) ON DELETE SET NULL,
+        stage_name TEXT NOT NULL DEFAULT '',
+        run_id TEXT REFERENCES orchestration_runs(id) ON DELETE CASCADE,
+        stage_phase TEXT NOT NULL CHECK (stage_phase IN (
+            'intake', 'planning', 'execution', 'evaluation', 'replanning', 'final_reporting'
+        )),
+        status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN (
+            'pending', 'running', 'completed', 'failed', 'degraded'
+        )),
+        information_needs TEXT NOT NULL DEFAULT '',
+        knowledge_queries_json TEXT NOT NULL DEFAULT '[]',
+        existing_sources_considered_json TEXT NOT NULL DEFAULT '[]',
+        freshness_assessment TEXT NOT NULL DEFAULT '',
+        research_needed INTEGER NOT NULL DEFAULT 0 CHECK (research_needed IN (0, 1)),
+        decision_reason TEXT NOT NULL DEFAULT '',
+        external_queries_json TEXT NOT NULL DEFAULT '[]',
+        sources_retrieved_count INTEGER NOT NULL DEFAULT 0,
+        claims_verified_count INTEGER NOT NULL DEFAULT 0,
+        knowledge_records_created_count INTEGER NOT NULL DEFAULT 0,
+        findings_summary TEXT NOT NULL DEFAULT '',
+        evidence_gaps TEXT NOT NULL DEFAULT '',
+        budget_used_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        completed_at TEXT
+    )
+    """,
+    "CREATE INDEX idx_stage_checkpoints_proj ON stage_research_checkpoints(project_id, stage_phase)",
+    "CREATE INDEX idx_stage_checkpoints_run ON stage_research_checkpoints(run_id)",
+
+    # 5. Knowledge promotion governance (project discovery -> collective knowledge promotion queue)
+    """
+    CREATE TABLE knowledge_promotions (
+        id TEXT PRIMARY KEY,
+        knowledge_id TEXT NOT NULL REFERENCES knowledge_records(id) ON DELETE CASCADE,
+        source_project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        status TEXT NOT NULL DEFAULT 'proposed' CHECK (status IN (
+            'proposed', 'approved', 'rejected', 'superseded'
+        )),
+        promotion_policy TEXT NOT NULL DEFAULT 'public_technical',
+        quality_assessment TEXT NOT NULL DEFAULT '',
+        privacy_check_passed INTEGER NOT NULL DEFAULT 1 CHECK (privacy_check_passed IN (0, 1)),
+        rationale TEXT NOT NULL DEFAULT '',
+        reviewed_by TEXT,
+        reviewed_at TEXT,
+        created_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_knowledge_promotions_status ON knowledge_promotions(status)",
+    "CREATE INDEX idx_knowledge_promotions_kid ON knowledge_promotions(knowledge_id)",
+
+    # 6. Knowledge freshness policies
+    """
+    CREATE TABLE knowledge_freshness_policies (
+        subject_pattern TEXT PRIMARY KEY,
+        max_age_days INTEGER NOT NULL DEFAULT 30,
+        policy_type TEXT NOT NULL DEFAULT 'standard' CHECK (policy_type IN (
+            'breaking_news', 'law_regulation', 'software_api', 'product_pricing',
+            'scientific_research', 'historical_fact', 'internal_decision', 'standard'
+        )),
+        refresh_strategy TEXT NOT NULL DEFAULT 'on_stage_checkpoint' CHECK (refresh_strategy IN (
+            'on_stage_checkpoint', 'periodic', 'on_reference', 'manual'
+        )),
+        description TEXT NOT NULL DEFAULT '',
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    INSERT OR IGNORE INTO knowledge_freshness_policies (subject_pattern, max_age_days, policy_type, refresh_strategy, description, updated_at)
+    VALUES
+        ('breaking_news', 1, 'breaking_news', 'on_stage_checkpoint', 'Frequently refreshing events and fast-breaking news', datetime('now')),
+        ('software_api', 14, 'software_api', 'on_stage_checkpoint', 'Current version documentation and library APIs', datetime('now')),
+        ('product_pricing', 7, 'product_pricing', 'on_stage_checkpoint', 'Product pricing and commercial quotes', datetime('now')),
+        ('law_regulation', 90, 'law_regulation', 'on_stage_checkpoint', 'Official statutory text, regulation, and policies', datetime('now')),
+        ('scientific_research', 180, 'scientific_research', 'on_stage_checkpoint', 'Academic research papers and scientific preprints', datetime('now')),
+        ('historical_fact', 3650, 'historical_fact', 'manual', 'Historical facts; refresh only when disputed', datetime('now')),
+        ('internal_decision', 365, 'internal_decision', 'manual', 'Architecture decisions; preserve until explicitly revised', datetime('now')),
+        ('standard', 30, 'standard', 'on_stage_checkpoint', 'Standard technical and domain knowledge', datetime('now'));
+    """,
+]
+
+# Migration 13: Unified Deliverables & Artifact Management
+_M13 = [
+    # 1. Canonical Artifact Identity & Metadata Table
+    """
+    CREATE TABLE artifacts (
+        id TEXT PRIMARY KEY,
+        display_name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        artifact_type TEXT NOT NULL DEFAULT 'other' CHECK (artifact_type IN (
+            'document', 'dataset', 'report', 'code', 'image', 'chart',
+            'json', 'log', 'research_notes', 'presentation', 'archive', 'other'
+        )),
+        mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+        file_extension TEXT NOT NULL DEFAULT '',
+        size_bytes INTEGER NOT NULL DEFAULT 0,
+        checksum_sha256 TEXT NOT NULL,
+        storage_backend TEXT NOT NULL DEFAULT 'local_filesystem',
+        storage_key TEXT NOT NULL UNIQUE,
+        current_version_number INTEGER NOT NULL DEFAULT 1,
+        status TEXT NOT NULL DEFAULT 'available' CHECK (status IN (
+            'generating', 'uploading', 'validating', 'available',
+            'needs_review', 'accepted', 'failed', 'missing', 'archived'
+        )),
+        validation_status TEXT NOT NULL DEFAULT 'valid' CHECK (validation_status IN (
+            'pending', 'valid', 'invalid', 'unverified'
+        )),
+        validation_detail TEXT NOT NULL DEFAULT '',
+        knowledge_status TEXT NOT NULL DEFAULT 'not_processed' CHECK (knowledge_status IN (
+            'not_processed', 'processing', 'extracted', 'needs_verification',
+            'verified', 'promotion_eligible', 'promoted', 'rejected'
+        )),
+        visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN (
+            'private', 'shared', 'collective'
+        )),
+        retention_policy TEXT NOT NULL DEFAULT 'standard' CHECK (retention_policy IN (
+            'temporary', 'standard', 'indefinite', 'compliance_locked'
+        )),
+        origin_project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+        origin_stage_id TEXT,
+        origin_task_id TEXT,
+        origin_worker_id TEXT,
+        origin_model_id TEXT,
+        parent_artifact_id TEXT REFERENCES artifacts(id) ON DELETE SET NULL,
+        created_by TEXT NOT NULL DEFAULT 'system',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_artifacts_proj ON artifacts(origin_project_id, status)",
+    "CREATE INDEX idx_artifacts_type ON artifacts(artifact_type)",
+    "CREATE INDEX idx_artifacts_sha ON artifacts(checksum_sha256)",
+    "CREATE INDEX idx_artifacts_knowledge_status ON artifacts(knowledge_status)",
+
+    # 2. Immutable Artifact Version History
+    """
+    CREATE TABLE artifact_versions (
+        id TEXT PRIMARY KEY,
+        artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+        version_number INTEGER NOT NULL,
+        storage_backend TEXT NOT NULL DEFAULT 'local_filesystem',
+        storage_key TEXT NOT NULL,
+        size_bytes INTEGER NOT NULL,
+        checksum_sha256 TEXT NOT NULL,
+        change_description TEXT NOT NULL DEFAULT '',
+        producing_task_id TEXT,
+        producing_worker_id TEXT,
+        producing_model_id TEXT,
+        validation_status TEXT NOT NULL DEFAULT 'valid',
+        created_by TEXT NOT NULL DEFAULT 'system',
+        created_at TEXT NOT NULL,
+        UNIQUE(artifact_id, version_number)
+    )
+    """,
+    "CREATE INDEX idx_artifact_versions_art ON artifact_versions(artifact_id, version_number)",
+
+    # 3. Artifact Lineage Graph
+    """
+    CREATE TABLE artifact_lineage (
+        id TEXT PRIMARY KEY,
+        source_artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+        target_artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+        relationship_type TEXT NOT NULL CHECK (relationship_type IN (
+            'derived_from', 'revised_from', 'summarizes', 'transforms',
+            'analyzes', 'compares', 'cites', 'uses_as_input', 'incorporated_into'
+        )),
+        source_version_number INTEGER,
+        target_version_number INTEGER,
+        context_description TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_artifact_lineage_src ON artifact_lineage(source_artifact_id)",
+    "CREATE INDEX idx_artifact_lineage_tgt ON artifact_lineage(target_artifact_id)",
+
+    # 4. Project Associations (Direct, Shared, or Imported)
+    """
+    CREATE TABLE artifact_project_links (
+        id TEXT PRIMARY KEY,
+        artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        role TEXT NOT NULL DEFAULT 'output' CHECK (role IN (
+            'output', 'input', 'shared_reference', 'imported', 'deliverable_backing'
+        )),
+        added_at TEXT NOT NULL,
+        added_by TEXT NOT NULL DEFAULT 'system',
+        UNIQUE(artifact_id, project_id, role)
+    )
+    """,
+    "CREATE INDEX idx_art_proj_links_proj ON artifact_project_links(project_id)",
+
+    # 5. Task Input & Output Linkages
+    """
+    CREATE TABLE artifact_task_links (
+        id TEXT PRIMARY KEY,
+        artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+        version_number INTEGER NOT NULL DEFAULT 1,
+        task_id TEXT,
+        orch_task_id TEXT,
+        direction TEXT NOT NULL CHECK (direction IN ('input', 'output')),
+        role TEXT NOT NULL DEFAULT 'primary',
+        created_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_art_task_links_task ON artifact_task_links(task_id)",
+
+    # 6. Cross-Project Access Grants
+    """
+    CREATE TABLE artifact_access_grants (
+        id TEXT PRIMARY KEY,
+        artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+        source_project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        target_project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        granted_by TEXT NOT NULL,
+        granted_at TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'revoked')),
+        UNIQUE(artifact_id, target_project_id)
+    )
+    """,
+    "CREATE INDEX idx_art_grants_target ON artifact_access_grants(target_project_id, status)",
+
+    # 7. Artifact Knowledge Extraction Linkage
+    """
+    CREATE TABLE artifact_knowledge_links (
+        id TEXT PRIMARY KEY,
+        artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+        artifact_version_number INTEGER NOT NULL DEFAULT 1,
+        knowledge_record_id TEXT NOT NULL REFERENCES knowledge_records(id) ON DELETE CASCADE,
+        extraction_method TEXT NOT NULL DEFAULT 'automated_nlp',
+        extracted_claim TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_art_know_links_art ON artifact_knowledge_links(artifact_id)",
+    "CREATE INDEX idx_art_know_links_know ON artifact_knowledge_links(knowledge_record_id)",
+
+    # 8. Deliverable schema extension: Direct pointer to primary artifact & version
+    "ALTER TABLE deliverables ADD COLUMN primary_artifact_id TEXT REFERENCES artifacts(id) ON DELETE SET NULL",
+    "ALTER TABLE deliverables ADD COLUMN primary_artifact_version INTEGER DEFAULT 1",
+
+    # 9. SQLite FTS5 Full-Text Search Table for Artifacts
+    """
+    CREATE VIRTUAL TABLE artifacts_fts USING fts5(
+        artifact_id UNINDEXED,
+        display_name,
+        description,
+        content_summary,
+        tokenize='porter unicode61'
+    )
+    """,
+
+    # 10. FTS Triggers for Artifacts
+    """
+    CREATE TRIGGER trg_artifacts_fts_insert AFTER INSERT ON artifacts BEGIN
+        INSERT INTO artifacts_fts(artifact_id, display_name, description, content_summary)
+        VALUES (new.id, new.display_name, new.description, new.display_name || ' ' || new.description || ' ' || new.artifact_type);
+    END;
+    """,
+    """
+    CREATE TRIGGER trg_artifacts_fts_delete AFTER DELETE ON artifacts BEGIN
+        DELETE FROM artifacts_fts WHERE artifact_id = old.id;
+    END;
+    """,
+    """
+    CREATE TRIGGER trg_artifacts_fts_update AFTER UPDATE ON artifacts BEGIN
+        DELETE FROM artifacts_fts WHERE artifact_id = old.id;
+        INSERT INTO artifacts_fts(artifact_id, display_name, description, content_summary)
+        VALUES (new.id, new.display_name, new.description, new.display_name || ' ' || new.description || ' ' || new.artifact_type);
+    END;
+    """,
+
+    # 11. Historical Migration of Existing Artifact Metadata
+    """
+    INSERT OR IGNORE INTO artifacts (
+        id, display_name, description, artifact_type, mime_type, file_extension,
+        size_bytes, checksum_sha256, storage_backend, storage_key, current_version_number,
+        status, validation_status, validation_detail, knowledge_status, visibility,
+        retention_policy, origin_project_id, origin_task_id, origin_worker_id,
+        created_by, created_at, updated_at
+    )
+    SELECT
+        id,
+        filename,
+        'Historical artifact registered from prior task execution',
+        CASE
+            WHEN filename LIKE '%.json' THEN 'json'
+            WHEN filename LIKE '%.md' THEN 'document'
+            WHEN filename LIKE '%.txt' THEN 'document'
+            WHEN filename LIKE '%.csv' THEN 'dataset'
+            WHEN filename LIKE '%.py' OR filename LIKE '%.sh' THEN 'code'
+            WHEN filename LIKE '%.png' OR filename LIKE '%.jpg' THEN 'image'
+            ELSE 'other'
+        END,
+        mime_type,
+        CASE WHEN instr(filename, '.') > 0 THEN substr(filename, instr(filename, '.')) ELSE '' END,
+        size_bytes,
+        sha256,
+        'local_filesystem',
+        storage_path,
+        1,
+        'available',
+        validation_state,
+        validation_detail,
+        'not_processed',
+        'private',
+        'standard',
+        project_id,
+        task_id,
+        worker_id,
+        'migration',
+        created_at,
+        created_at
+    FROM artifact_metadata;
+    """,
+    """
+    INSERT OR IGNORE INTO artifact_versions (
+        id, artifact_id, version_number, storage_backend, storage_key,
+        size_bytes, checksum_sha256, change_description,
+        producing_task_id, producing_worker_id, validation_status,
+        created_by, created_at
+    )
+    SELECT
+        'artver-' || substr(id, 5),
+        id,
+        1,
+        'local_filesystem',
+        storage_path,
+        size_bytes,
+        sha256,
+        'Initial historical version from migration',
+        task_id,
+        worker_id,
+        validation_state,
+        'migration',
+        created_at
+    FROM artifact_metadata;
+    """,
+    """
+    INSERT OR IGNORE INTO artifact_project_links (
+        id, artifact_id, project_id, role, added_at, added_by
+    )
+    SELECT
+        'apl-' || substr(id, 5),
+        id,
+        project_id,
+        'output',
+        created_at,
+        'migration'
+    FROM artifact_metadata
+    WHERE project_id IS NOT NULL;
+    """,
+    """
+    UPDATE deliverables
+    SET primary_artifact_id = (
+        SELECT a.id FROM artifacts a
+        WHERE a.origin_project_id = deliverables.project_id
+          AND instr(deliverables.artifact_references, a.id) > 0
+        LIMIT 1
+    )
+    WHERE primary_artifact_id IS NULL AND artifact_references != '';
+    """,
+]
+
+# ---------------------------------------------------------------------------
+# Migration 14 — Research Run Scope Isolation & Source Provenance
+# ---------------------------------------------------------------------------
+_M14: List[str] = [
+    "ALTER TABLE research_sources ADD COLUMN research_run_id TEXT;",
+    "CREATE INDEX IF NOT EXISTS idx_research_sources_run ON research_sources(research_run_id);",
+]
+
+# ---------------------------------------------------------------------------
+# Migration 15 — Research Source Reuse Lineage & Session Evidence Tracking
+# ---------------------------------------------------------------------------
+_M15: List[str] = [
+    "ALTER TABLE research_sources ADD COLUMN session_id TEXT;",
+    "ALTER TABLE research_source_versions ADD COLUMN session_id TEXT;",
+    "ALTER TABLE research_source_versions ADD COLUMN research_run_id TEXT;",
+    "CREATE INDEX IF NOT EXISTS idx_research_source_versions_sess ON research_source_versions(session_id);",
+    "ALTER TABLE research_evidence ADD COLUMN orchestration_run_id TEXT;",
+    "ALTER TABLE research_evidence ADD COLUMN research_session_id TEXT;",
+    "ALTER TABLE research_evidence ADD COLUMN source_version_id TEXT;",
+    "ALTER TABLE research_evidence ADD COLUMN is_heuristic INTEGER NOT NULL DEFAULT 1;",
+    "ALTER TABLE research_evidence ADD COLUMN heuristic_label TEXT NOT NULL DEFAULT 'HEURISTIC_ESTIMATE';",
+    "ALTER TABLE research_evidence ADD COLUMN informed_tasks_json TEXT NOT NULL DEFAULT '[]';",
+    "ALTER TABLE research_evidence ADD COLUMN informed_requirements_json TEXT NOT NULL DEFAULT '[]';",
+    "ALTER TABLE research_evidence ADD COLUMN contradiction_status TEXT NOT NULL DEFAULT 'NONE';",
+    "CREATE INDEX IF NOT EXISTS idx_research_evidence_sess ON research_evidence(research_session_id);",
+    "CREATE INDEX IF NOT EXISTS idx_research_evidence_orch ON research_evidence(orchestration_run_id);",
+    """
+    CREATE TABLE IF NOT EXISTS research_source_reuses (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        orchestration_run_id TEXT REFERENCES orchestration_runs(id) ON DELETE CASCADE,
+        research_session_id TEXT NOT NULL DEFAULT '',
+        source_id TEXT NOT NULL REFERENCES research_sources(id) ON DELETE CASCADE,
+        source_version_id TEXT,
+        target_task_id TEXT,
+        target_stage_phase TEXT,
+        reuse_reason TEXT NOT NULL DEFAULT '',
+        verified_fresh INTEGER NOT NULL DEFAULT 1 CHECK (verified_fresh IN (0, 1)),
+        reused_at TEXT NOT NULL,
+        target_run_id TEXT,
+        origin_run_id TEXT,
+        authorized_by TEXT NOT NULL DEFAULT 'operator',
+        authorization_note TEXT NOT NULL DEFAULT '',
+        authorized_at TEXT
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_research_reuses_proj ON research_source_reuses(project_id);",
+    "CREATE INDEX IF NOT EXISTS idx_research_reuses_run ON research_source_reuses(orchestration_run_id);",
+    "CREATE INDEX IF NOT EXISTS idx_research_reuses_src ON research_source_reuses(source_id);",
+]
+
+# ---------------------------------------------------------------------------
+# Migration 16 — Canonical Content-Addressed Storage & Explicit Artifact Reuse
+# ---------------------------------------------------------------------------
+_M16: List[str] = [
+    # 1. CAS Hash, Producer Attempt, and Run Lineage on artifacts
+    "ALTER TABLE artifacts ADD COLUMN origin_run_id TEXT REFERENCES orchestration_runs(id) ON DELETE SET NULL;",
+    "ALTER TABLE artifacts ADD COLUMN producer_attempt INTEGER NOT NULL DEFAULT 1;",
+    "ALTER TABLE artifacts ADD COLUMN cas_hash TEXT;",
+    "CREATE INDEX IF NOT EXISTS idx_artifacts_cas ON artifacts(cas_hash);",
+    "CREATE INDEX IF NOT EXISTS idx_artifacts_run ON artifacts(origin_run_id);",
+
+    # 2. CAS Hash, Producer Attempt, and Run Lineage on artifact_versions
+    "ALTER TABLE artifact_versions ADD COLUMN producing_run_id TEXT REFERENCES orchestration_runs(id) ON DELETE SET NULL;",
+    "ALTER TABLE artifact_versions ADD COLUMN producer_attempt INTEGER NOT NULL DEFAULT 1;",
+    "ALTER TABLE artifact_versions ADD COLUMN cas_hash TEXT;",
+    "CREATE INDEX IF NOT EXISTS idx_artifact_versions_cas ON artifact_versions(cas_hash);",
+    "CREATE INDEX IF NOT EXISTS idx_artifact_versions_run ON artifact_versions(producing_run_id);",
+
+    # 3. CAS Hash and Producer Attempt on legacy artifact_metadata
+    "ALTER TABLE artifact_metadata ADD COLUMN cas_hash TEXT;",
+    "ALTER TABLE artifact_metadata ADD COLUMN producer_attempt INTEGER NOT NULL DEFAULT 1;",
+    "CREATE INDEX IF NOT EXISTS idx_artifact_metadata_cas ON artifact_metadata(cas_hash);",
+
+    # 4. Canonical Cross-Project Artifact Reuse Ledger
+    """
+    CREATE TABLE IF NOT EXISTS artifact_reuses (
+        id TEXT PRIMARY KEY,
+        artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+        version_number INTEGER NOT NULL DEFAULT 1,
+        source_project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        target_project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        target_run_id TEXT,
+        target_task_id TEXT,
+        authorized_by TEXT NOT NULL,
+        authorization_note TEXT NOT NULL DEFAULT '',
+        authorized_at TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'revoked'))
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_art_reuses_tgt ON artifact_reuses(target_project_id, status);",
+    "CREATE INDEX IF NOT EXISTS idx_art_reuses_art ON artifact_reuses(artifact_id, version_number);",
+]
+
+# ---------------------------------------------------------------------------
+# Migration 17 — Artifact Packages, Lineage Actions, and Link Types
+# ---------------------------------------------------------------------------
+_M17: List[str] = [
+    """
+    CREATE TABLE IF NOT EXISTS artifact_packages (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        package_name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        manifest_json TEXT NOT NULL DEFAULT '{}',
+        created_by TEXT NOT NULL DEFAULT 'system',
+        created_at TEXT NOT NULL
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_art_packages_proj ON artifact_packages(project_id);",
+    """
+    CREATE TABLE IF NOT EXISTS artifact_package_components (
+        id TEXT PRIMARY KEY,
+        package_id TEXT NOT NULL REFERENCES artifact_packages(id) ON DELETE CASCADE,
+        artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+        version_number INTEGER NOT NULL DEFAULT 1,
+        role TEXT NOT NULL DEFAULT 'component',
+        created_at TEXT NOT NULL
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_art_pkg_comps ON artifact_package_components(package_id);",
+    "ALTER TABLE artifact_reuses ADD COLUMN action_type TEXT NOT NULL DEFAULT 'reuse';",
+    "ALTER TABLE artifact_project_links ADD COLUMN link_type TEXT NOT NULL DEFAULT 'shared';",
+    "ALTER TABLE artifacts ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}';",
+]
+
+# ---------------------------------------------------------------------------
+# Migration 18 — Knowledge Vault trust tiers, review governance, and conflict ledger (Stage 7)
+# ---------------------------------------------------------------------------
+_M18: List[str] = [
+    "ALTER TABLE knowledge_records ADD COLUMN trust_tier TEXT NOT NULL DEFAULT 'captured';",
+    "ALTER TABLE knowledge_records ADD COLUMN review_notes TEXT NOT NULL DEFAULT '';",
+    "ALTER TABLE knowledge_records ADD COLUMN reviewed_by TEXT;",
+    "ALTER TABLE knowledge_records ADD COLUMN reviewed_at TEXT;",
+    "ALTER TABLE knowledge_records ADD COLUMN vault_note_path TEXT;",
+    "ALTER TABLE knowledge_records ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'synced';",
+    "CREATE INDEX IF NOT EXISTS idx_knowledge_records_tier ON knowledge_records(trust_tier);",
+    "ALTER TABLE knowledge_promotions ADD COLUMN target_tier TEXT NOT NULL DEFAULT 'reusable';",
+    """
+    CREATE TABLE IF NOT EXISTS knowledge_conflicts (
+        id TEXT PRIMARY KEY,
+        record_a_id TEXT NOT NULL REFERENCES knowledge_records(id) ON DELETE CASCADE,
+        record_b_id TEXT NOT NULL REFERENCES knowledge_records(id) ON DELETE CASCADE,
+        conflict_type TEXT NOT NULL DEFAULT 'direct_contradiction',
+        status TEXT NOT NULL DEFAULT 'unresolved',
+        details TEXT NOT NULL DEFAULT '',
+        resolution_notes TEXT NOT NULL DEFAULT '',
+        resolved_by TEXT,
+        resolved_at TEXT,
+        created_at TEXT NOT NULL
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_knowledge_conflicts_status ON knowledge_conflicts(status);",
+    "CREATE INDEX IF NOT EXISTS idx_knowledge_conflicts_records ON knowledge_conflicts(record_a_id, record_b_id);",
+]
+
+# ---------------------------------------------------------------------------
+# Migration 19 — Paged KV Cache Storage and Pipeline Cluster Topology (Increment 17)
+# ---------------------------------------------------------------------------
+_M19: List[str] = [
+    """
+    CREATE TABLE IF NOT EXISTS kv_cache_pages (
+        page_hash TEXT PRIMARY KEY,
+        parent_page_hash TEXT,
+        model_name TEXT NOT NULL,
+        layer_start INTEGER NOT NULL,
+        layer_end INTEGER NOT NULL,
+        token_count INTEGER NOT NULL CHECK (token_count BETWEEN 1 AND 128),
+        tokens_json TEXT NOT NULL,
+        storage_path TEXT NOT NULL,
+        byte_size INTEGER NOT NULL,
+        tensor_dtype TEXT NOT NULL DEFAULT 'float16',
+        compression TEXT NOT NULL DEFAULT 'none',
+        access_count INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        last_accessed_at TEXT NOT NULL
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_kv_parent_hash ON kv_cache_pages(parent_page_hash);",
+    "CREATE INDEX IF NOT EXISTS idx_kv_model_layers ON kv_cache_pages(model_name, layer_start, layer_end);",
+    "CREATE INDEX IF NOT EXISTS idx_kv_last_accessed ON kv_cache_pages(last_accessed_at);",
+    """
+    CREATE TABLE IF NOT EXISTS pipeline_cluster_stages (
+        stage_id TEXT PRIMARY KEY,
+        pipeline_name TEXT NOT NULL,
+        stage_index INTEGER NOT NULL,
+        node_id TEXT NOT NULL REFERENCES machines(id),
+        model_name TEXT NOT NULL,
+        layer_start INTEGER NOT NULL,
+        layer_end INTEGER NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+        endpoint_url TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(pipeline_name, stage_index)
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_pipeline_active ON pipeline_cluster_stages(is_active);",
+]
+
+# ---------------------------------------------------------------------------
+# Migration 20 — Deliberate Task-Solving Loop, Durable Requirement Ledger & Project Memory (Increment 18)
+# ---------------------------------------------------------------------------
+_M20: List[str] = [
+    """
+    CREATE TABLE IF NOT EXISTS project_requirement_items (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        run_id TEXT REFERENCES orchestration_runs(id) ON DELETE SET NULL,
+        req_code TEXT NOT NULL,
+        version_number INTEGER NOT NULL DEFAULT 1,
+        kind TEXT NOT NULL CHECK (kind IN (
+            'objective', 'deliverable', 'acceptance_criterion', 'constraint',
+            'exclusion', 'assumption', 'missing_info', 'user_decision', 'dependency'
+        )),
+        hardness TEXT NOT NULL DEFAULT 'hard' CHECK (hardness IN ('hard', 'soft', 'preference')),
+        statement TEXT NOT NULL,
+        rationale TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN (
+            'active', 'superseded', 'resolved', 'cancelled', 'conflicted'
+        )),
+        verification_method TEXT NOT NULL DEFAULT 'deterministic_check',
+        verification_status TEXT NOT NULL DEFAULT 'proposed' CHECK (verification_status IN (
+            'proposed', 'observed', 'supported', 'verified_for_scope', 'partial', 'blocked', 'failed', 'unknown'
+        )),
+        verification_detail TEXT NOT NULL DEFAULT '',
+        depends_on_json TEXT NOT NULL DEFAULT '[]',
+        affected_artifacts_json TEXT NOT NULL DEFAULT '[]',
+        superseded_by_id TEXT,
+        source_turn_id TEXT,
+        created_by TEXT NOT NULL DEFAULT 'user',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_proj_req_items_project ON project_requirement_items(project_id, status);",
+    "CREATE INDEX IF NOT EXISTS idx_proj_req_items_run ON project_requirement_items(run_id, status);",
+    "CREATE INDEX IF NOT EXISTS idx_proj_req_items_code ON project_requirement_items(project_id, req_code, version_number);",
+    """
+    CREATE TABLE IF NOT EXISTS project_requirement_revisions (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        run_id TEXT REFERENCES orchestration_runs(id) ON DELETE SET NULL,
+        revision_number INTEGER NOT NULL,
+        change_type TEXT NOT NULL CHECK (change_type IN (
+            'initial_intake', 'scope_addition', 'constraint_change', 'clarification_answer',
+            'conflict_resolution', 'steering_update', 'cancellation', 'resumption'
+        )),
+        summary TEXT NOT NULL,
+        diff_json TEXT NOT NULL DEFAULT '{}',
+        invalidated_tasks_json TEXT NOT NULL DEFAULT '[]',
+        invalidated_artifacts_json TEXT NOT NULL DEFAULT '[]',
+        preserved_artifacts_json TEXT NOT NULL DEFAULT '[]',
+        actor TEXT NOT NULL DEFAULT 'user',
+        created_at TEXT NOT NULL,
+        UNIQUE(project_id, revision_number)
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_proj_req_rev_project ON project_requirement_revisions(project_id, revision_number);",
+    """
+    CREATE TABLE IF NOT EXISTS project_memory_state (
+        project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+        run_id TEXT REFERENCES orchestration_runs(id) ON DELETE SET NULL,
+        current_cycle_phase TEXT NOT NULL DEFAULT 'understand' CHECK (current_cycle_phase IN (
+            'understand', 'clarify', 'plan', 'select_action', 'retrieve_context',
+            'execute', 'inspect', 'verify', 'revise', 'deliver', 'blocked', 'cancelled', 'completed'
+        )),
+        escalation_step INTEGER NOT NULL DEFAULT 1 CHECK (escalation_step BETWEEN 1 AND 7),
+        next_action_json TEXT NOT NULL DEFAULT '{}',
+        subproblems_json TEXT NOT NULL DEFAULT '[]',
+        candidate_options_json TEXT NOT NULL DEFAULT '[]',
+        completed_work_json TEXT NOT NULL DEFAULT '[]',
+        evidence_summary_json TEXT NOT NULL DEFAULT '[]',
+        assumptions_json TEXT NOT NULL DEFAULT '[]',
+        unresolved_questions_json TEXT NOT NULL DEFAULT '[]',
+        contradictions_json TEXT NOT NULL DEFAULT '[]',
+        decision_summaries_json TEXT NOT NULL DEFAULT '[]',
+        failed_approaches_json TEXT NOT NULL DEFAULT '[]',
+        verification_results_json TEXT NOT NULL DEFAULT '{}',
+        invalidated_items_json TEXT NOT NULL DEFAULT '[]',
+        budget_snapshot_json TEXT NOT NULL DEFAULT '{}',
+        checkpoint_version INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS procedure_outcome_registry (
+        id TEXT PRIMARY KEY,
+        scope_type TEXT NOT NULL DEFAULT 'project' CHECK (scope_type IN ('project', 'task_category', 'collective')),
+        project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+        task_category TEXT NOT NULL,
+        procedure_key TEXT NOT NULL,
+        model_id TEXT,
+        outcome_status TEXT NOT NULL CHECK (outcome_status IN (
+            'verified_success', 'partial', 'failed', 'revoked'
+        )),
+        procedure_summary TEXT NOT NULL,
+        failure_pattern TEXT NOT NULL DEFAULT '',
+        evidence_run_id TEXT,
+        evidence_task_id TEXT,
+        verification_digest TEXT NOT NULL DEFAULT '',
+        latency_seconds REAL,
+        tokens_used INTEGER,
+        revoked INTEGER NOT NULL DEFAULT 0 CHECK (revoked IN (0, 1)),
+        revoked_reason TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_proc_outcome_cat ON procedure_outcome_registry(task_category, outcome_status, revoked);",
+]
+
+_M21: List[str] = [
+    """
+    CREATE TABLE IF NOT EXISTS project_task_contracts (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        run_id TEXT REFERENCES orchestration_runs(id) ON DELETE SET NULL,
+        task_key TEXT NOT NULL,
+        orch_task_id TEXT,
+        worker_task_id TEXT,
+        bound_objective TEXT NOT NULL DEFAULT '',
+        bound_requirement_revision INTEGER NOT NULL DEFAULT 1,
+        bound_requirement_ids_json TEXT NOT NULL DEFAULT '[]',
+        purpose TEXT NOT NULL DEFAULT '',
+        expected_output TEXT NOT NULL DEFAULT '',
+        input_artifact_versions_json TEXT NOT NULL DEFAULT '[]',
+        input_evidence_ids_json TEXT NOT NULL DEFAULT '[]',
+        constraints_json TEXT NOT NULL DEFAULT '[]',
+        exclusions_json TEXT NOT NULL DEFAULT '[]',
+        depends_on_task_keys_json TEXT NOT NULL DEFAULT '[]',
+        interfaces_json TEXT NOT NULL DEFAULT '{}',
+        acceptance_checks_json TEXT NOT NULL DEFAULT '[]',
+        resource_budget_json TEXT NOT NULL DEFAULT '{}',
+        max_retries INTEGER NOT NULL DEFAULT 2,
+        attempts_used INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+            'pending', 'ready', 'running', 'completed', 'verified', 'partial',
+            'blocked', 'stale', 'cancelled', 'cancel_pending_cleanup_unknown',
+            'park_draining', 'cancel_draining', 'failed'
+        )),
+        next_action TEXT NOT NULL DEFAULT '',
+        partial_result_definition TEXT NOT NULL DEFAULT '',
+        blocker_conditions_json TEXT NOT NULL DEFAULT '[]',
+        output_summary_json TEXT NOT NULL DEFAULT '{}',
+        output_artifact_ids_json TEXT NOT NULL DEFAULT '[]',
+        owned_fields_json TEXT NOT NULL DEFAULT '[]',
+        stale_reason TEXT NOT NULL DEFAULT '',
+        contract_revision INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (project_id, task_key)
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_proj_task_contracts_proj ON project_task_contracts(project_id, status);",
+    """
+    CREATE TABLE IF NOT EXISTS project_epistemic_items (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        run_id TEXT REFERENCES orchestration_runs(id) ON DELETE SET NULL,
+        task_key TEXT,
+        epistemic_category TEXT NOT NULL CHECK (epistemic_category IN (
+            'user_instruction_or_decision',
+            'source_observation',
+            'supported_claim',
+            'derived_result',
+            'hypothesis_or_estimate',
+            'model_proposal',
+            'verified_artifact',
+            'verification_failure'
+        )),
+        statement TEXT NOT NULL,
+        verification_status TEXT NOT NULL DEFAULT 'unknown' CHECK (verification_status IN (
+            'unknown', 'proposed', 'observed', 'supported', 'verified_for_scope',
+            'partial', 'blocked', 'failed', 'stale', 'superseded'
+        )),
+        requirement_ids_json TEXT NOT NULL DEFAULT '[]',
+        source_refs_json TEXT NOT NULL DEFAULT '[]',
+        artifact_refs_json TEXT NOT NULL DEFAULT '[]',
+        depends_on_item_ids_json TEXT NOT NULL DEFAULT '[]',
+        qualifiers_json TEXT NOT NULL DEFAULT '{}',
+        revision_number INTEGER NOT NULL DEFAULT 1,
+        superseded_by_id TEXT,
+        stale_reason TEXT NOT NULL DEFAULT '',
+        idempotency_key TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_proj_epistemic_proj_cat ON project_epistemic_items(project_id, epistemic_category, verification_status);",
+    "CREATE INDEX IF NOT EXISTS idx_proj_epistemic_task ON project_epistemic_items(project_id, task_key);",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_proj_epistemic_idem ON project_epistemic_items(project_id, idempotency_key) WHERE idempotency_key IS NOT NULL;",
+    """
+    CREATE VIRTUAL TABLE IF NOT EXISTS project_epistemic_fts USING fts5(
+        item_id UNINDEXED,
+        project_id UNINDEXED,
+        epistemic_category UNINDEXED,
+        statement,
+        qualifiers_text
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS project_working_checkpoints (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        run_id TEXT REFERENCES orchestration_runs(id) ON DELETE SET NULL,
+        checkpoint_seq INTEGER NOT NULL,
+        boundary_type TEXT NOT NULL CHECK (boundary_type IN (
+            'task_boundary', 'park', 'resume', 'requirement_change', 'cancel', 'delivery', 'manual'
+        )),
+        requirement_revision INTEGER NOT NULL DEFAULT 1,
+        state_revision INTEGER NOT NULL DEFAULT 1,
+        active_task_key TEXT,
+        completed_task_keys_json TEXT NOT NULL DEFAULT '[]',
+        verified_artifact_versions_json TEXT NOT NULL DEFAULT '[]',
+        decisions_snapshot_json TEXT NOT NULL DEFAULT '[]',
+        open_questions_json TEXT NOT NULL DEFAULT '[]',
+        blockers_json TEXT NOT NULL DEFAULT '[]',
+        next_action_json TEXT NOT NULL DEFAULT '{}',
+        remaining_budget_json TEXT NOT NULL DEFAULT '{}',
+        delta_summary_json TEXT NOT NULL DEFAULT '{}',
+        created_by TEXT NOT NULL DEFAULT 'orchestrator',
+        created_at TEXT NOT NULL,
+        UNIQUE (project_id, checkpoint_seq)
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_proj_working_ckpt_proj ON project_working_checkpoints(project_id, checkpoint_seq DESC);",
+    """
+    CREATE TABLE IF NOT EXISTS project_artifact_publication_journal (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        run_id TEXT REFERENCES orchestration_runs(id) ON DELETE SET NULL,
+        task_key TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL UNIQUE,
+        intended_filename TEXT NOT NULL,
+        expected_sha256 TEXT NOT NULL,
+        artifact_id TEXT,
+        artifact_version INTEGER,
+        journal_state TEXT NOT NULL CHECK (journal_state IN (
+            'intent_logged', 'artifact_written', 'state_committed', 'reconciled_after_crash', 'rolled_back',
+            'rejected_stale_revision', 'rejected_unverified'
+        )),
+        state_revision_before INTEGER NOT NULL DEFAULT 1,
+        state_revision_after INTEGER,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_proj_art_pub_journal_proj ON project_artifact_publication_journal(project_id, journal_state);",
+    ]
+_M22: List[str] = [
+    "ALTER TABLE project_memory_state ADD COLUMN dispatch_stopped INTEGER NOT NULL DEFAULT 0;",
+    "ALTER TABLE project_memory_state ADD COLUMN cleanup_lifecycle_state TEXT NOT NULL DEFAULT 'none';",
+    "ALTER TABLE project_task_contracts ADD COLUMN cleanup_lifecycle_state TEXT NOT NULL DEFAULT 'none';",
+    "ALTER TABLE project_task_contracts ADD COLUMN verification_receipt_json TEXT NOT NULL DEFAULT '{}';",
+    "ALTER TABLE project_artifact_publication_journal ADD COLUMN requirement_revision_before INTEGER NOT NULL DEFAULT 1;",
+    "ALTER TABLE project_artifact_publication_journal ADD COLUMN contract_revision_before INTEGER NOT NULL DEFAULT 1;",
+    "ALTER TABLE project_artifact_publication_journal ADD COLUMN bound_requirements_snapshot_json TEXT NOT NULL DEFAULT '{}';",
+    "ALTER TABLE project_artifact_publication_journal ADD COLUMN input_artifacts_snapshot_json TEXT NOT NULL DEFAULT '[]';",
+    "ALTER TABLE project_artifact_publication_journal ADD COLUMN verification_receipt_json TEXT NOT NULL DEFAULT '{}';",
+    "ALTER TABLE project_artifact_publication_journal ADD COLUMN lease_id TEXT;",
+]
+
+_M23: List[str] = [
+    "ALTER TABLE project_task_contracts ADD COLUMN selected_tool TEXT NOT NULL DEFAULT '';",
+    "ALTER TABLE project_task_contracts ADD COLUMN validated_arguments_json TEXT NOT NULL DEFAULT '{}';",
+    "ALTER TABLE project_task_contracts ADD COLUMN expected_observation TEXT NOT NULL DEFAULT '';",
+    "ALTER TABLE project_task_contracts ADD COLUMN verification_method TEXT NOT NULL DEFAULT '';",
+    "ALTER TABLE project_task_contracts ADD COLUMN verifier_id TEXT NOT NULL DEFAULT '';",
+    "ALTER TABLE project_task_contracts ADD COLUMN authority_scope TEXT NOT NULL DEFAULT 'controller_validated';",
+    "ALTER TABLE project_task_contracts ADD COLUMN permitted_effects_json TEXT NOT NULL DEFAULT '[\"read_only\"]';",
+    "ALTER TABLE project_task_contracts ADD COLUMN checkpoint_refs_json TEXT NOT NULL DEFAULT '[]';",
+]
+
 MIGRATIONS: List[Migration] = [
     (1, "project intelligence foundation", _M1),
     (2, "execution and evidence", _M2),
@@ -1574,7 +2521,43 @@ MIGRATIONS: List[Migration] = [
     (9, "autonomous project orchestrator", _M9),
     (10, "system observatory telemetry, rollups, inference accounting, and alerting", _M10),
     (11, "autonomous web research and browsing engine", _M11),
+    (12, "continuous research and persistent knowledge integration", _M12),
+    (13, "unified deliverables and artifact management refactor", _M13),
+    (14, "research run scope isolation and source provenance", _M14),
+    (15, "research source reuse lineage and session evidence tracking", _M15),
+    (16, "canonical content-addressed storage and explicit artifact reuse", _M16),
+    (17, "artifact packaging, lineage actions, and link typing", _M17),
+    (18, "knowledge vault trust tiers, review governance, and conflict ledger", _M18),
+    (19, "paged kv cache storage and pipeline cluster topology", _M19),
+    (20, "deliberate task-solving loop, durable requirement ledger, and project memory", _M20),
+    (21, "live operational working memory, task contracts, epistemic items, checkpoints, and publication journal", _M21),
+    (22, "authoritative cleanup lifecycle, verification receipts, and atomic publication fencing", _M22),
+    (23, "generalized coordinator persisted action contract fields and checkpoint references", _M23),
+    (24, "append-only software review items and triggers", [
+        """
+        CREATE TABLE IF NOT EXISTS software_review_items (
+            project_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            item_id TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY(project_id, run_id, kind, item_id)
+        );
+        """,
+        """
+        CREATE TRIGGER IF NOT EXISTS software_review_no_update
+        BEFORE UPDATE ON software_review_items
+        BEGIN SELECT RAISE(ABORT, 'software reviews are append-only'); END;
+        """,
+        """
+        CREATE TRIGGER IF NOT EXISTS software_review_no_delete
+        BEFORE DELETE ON software_review_items
+        BEGIN SELECT RAISE(ABORT, 'software reviews are append-only'); END;
+        """,
+    ]),
 ]
+
 
 
 

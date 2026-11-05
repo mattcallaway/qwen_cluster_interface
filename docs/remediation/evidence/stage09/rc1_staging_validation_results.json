@@ -1,0 +1,82 @@
+{
+  "release_candidate_version": "1.0.0-rc.1",
+  "timestamp_utc": "2026-10-21T22:50:42.161757+00:00",
+  "staging_environment": {
+    "os_name": "nt",
+    "python_version": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
+    "staging_dir": "C:\\Users\\Matt C\\.gemini\\antigravity-ide\\scratch\\qwen-collective\\tmp_rc1_staging",
+    "ephemeral_port": 64280
+  },
+  "steps": {
+    "step1_package_extraction": {
+      "status": "PASS",
+      "verified_files": 221,
+      "mismatches": 0
+    },
+    "step2_database_initialization": {
+      "status": "PASS",
+      "output": "MIGRATION_SUCCESS tables=102 version=18"
+    },
+    "step3_controller_startup": {
+      "status": "PASS",
+      "health_status": {
+        "status": "healthy",
+        "app": "Qwen Collective",
+        "version": "0.1.0",
+        "timestamp": "2026-10-21T22:50:50.522138+00:00"
+      }
+    },
+    "step4_lifecycle_and_governance": {
+      "status": "PASS",
+      "project_id": "prj-6825edd872c3433f894be5057110f37f",
+      "artifact_id": "art-ae3d700beb384047",
+      "artifact_sha256": "5837dc5ed716f457d19e328ac91f9263529a8182e48f2d47553fe77a52df97d3",
+      "csp_header": "default-src 'none'; sandbox",
+      "reused_in_project": "prj-fe844b9c120c492eb73bac0686618613",
+      "knowledge_record_id": "kn-532f487ca4084b40",
+      "knowledge_verification_status": "unverified"
+    },
+    "step6_regression_tests": {
+      "status": "PASS",
+      "output": "============================= test session starts =============================\nplatform win32 -- Python 3.12.10, pytest-9.1.1, pluggy-1.6.0 -- C:\\Users\\Matt C\\AppData\\Local\\Programs\\Python\\Python312\\python.exe\ncachedir: .pytest_cache\nrootdir: C:\\Users\\Matt C\\.gemini\\antigravity-ide\\scratch\\qwen-collective\\tmp_rc1_staging\\qwen-collective-1.0.0-rc.1\nplugins: anyio-4.15.1\ncollecting ... collected 3 items\n\ntests/test_matrix_consistency.py::test_canonical_manifest_provenance_and_hash PASSED [ 33%]\ntests/test_matrix_consistency.py::test_canonical_manifest_integrity PASSED [ 66%]\ntests/test_matrix_consistency.py::test_reconciled_ledger_consistency PASSED [100%]\n\n============================== 3 passed in 0.67s =============================="
+    }
+  },
+  "backup_rpo_evaluation": {
+    "configured_cadence_seconds": 240.0,
+    "snapshot_duration_ms": 24.83,
+    "verification_delay_ms": 52.62,
+    "total_backup_process_seconds": 0.077,
+    "nominal_rpo_seconds": 240.05,
+    "worst_case_rpo_on_single_missed_backup_seconds": 480.05,
+    "pre_completion_failure_loss_window_seconds": 240.08,
+    "target_rpo_threshold_seconds": 300.0,
+    "sub_5min_target_met_nominally": true,
+    "sub_5min_target_met_worst_case_failure": false,
+    "isolated_restore_verification": {
+      "status": "PASS",
+      "sqlite_integrity": "ok",
+      "foreign_key_violations": 0,
+      "restored_tables": 102,
+      "restored_cas_blobs": 1
+    }
+  },
+  "security_verifications": {
+    "untrusted_code_execution_blocked": {
+      "status": "PASS",
+      "result": "BLOCKED",
+      "error_message": "SECURE_EXECUTION_UNAVAILABLE: OS-enforced execution containment is unavailable. Automatic execution of untrusted generated code and test fixtures is disabled by default. Subprocess execution with monkey-patching does not constitute OS-enforced isolation."
+    },
+    "browser_ssrf_filtering": {
+      "status": "PASS",
+      "loopback_blocked": true,
+      "cloud_metadata_blocked": true,
+      "lan_blocked": true,
+      "public_allowed": true
+    },
+    "worker_revocation_enforced": {
+      "status": "PASS",
+      "response_code": 401
+    }
+  },
+  "overall_status": "PASSED"
+}

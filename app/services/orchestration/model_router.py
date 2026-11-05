@@ -27,7 +27,9 @@ def node_inventory() -> List[Dict[str, Any]]:
     """Derive per-node capabilities from persisted facts (see docs: declared capabilities are not stored)."""
     conn = get_db_connection()
     try:
-        nodes = [dict(r) for r in conn.execute("SELECT * FROM infrastructure_nodes").fetchall()]
+        nodes = [dict(r) for r in conn.execute(
+            "SELECT * FROM infrastructure_nodes WHERE health_status != 'retired' AND notes NOT LIKE '[RETIRED%'"
+        ).fetchall()]
         tokens = {r["node_id"] for r in conn.execute(
             "SELECT DISTINCT node_id FROM worker_auth_tokens WHERE revoked = 0").fetchall()}
         load: Dict[str, int] = {}
@@ -70,7 +72,8 @@ def _model_matches(requested: str, available: List[str]) -> Optional[str]:
 
 
 def eligible_nodes(task: Dict[str, Any], nodes: List[Dict[str, Any]],
-                   require_fresh: bool = True) -> Dict[str, Any]:
+                   require_fresh: bool = True,
+                   enforce_verified: bool = True) -> Dict[str, Any]:
     """Return ``{"eligible": [(node, model|None)...], "reasons": [...]}`` for a plan/orchestration task."""
     action = task.get("action") if "action" in task else jload(task.get("action_json"))
     typ = action.get("type")
@@ -102,6 +105,8 @@ def eligible_nodes(task: Dict[str, Any], nodes: List[Dict[str, Any]],
             why = "no active worker credential"
         elif require_fresh and n["health"] != "online":
             why = f"health={n['health']} (stale/unavailable)"
+        elif (n.get("restrictions") or {}).get("operational_hold", False):
+            why = "operational hold active on this node"
         elif typ in (n.get("restrictions") or {}).get("blocked_task_types", []):
             why = "task type restricted on this node"
         model = None
@@ -109,6 +114,12 @@ def eligible_nodes(task: Dict[str, Any], nodes: List[Dict[str, Any]],
             if typ == "library_script":
                 if "python_execution" not in n["capabilities"]:
                     why = "no python runtime"
+            elif typ=='research_fetch':
+                restrictions=n.get('restrictions') or {}
+                if (restrictions.get('allow_web_fetch') is not True
+                        or typ not in restrictions.get('allowed_task_types',[])
+                        or restrictions.get('operational_hold',False)):
+                    why='web retrieval not explicitly authorized'
             elif typ == "inference":
                 if "inference" not in n["capabilities"]:
                     why = "no local inference runtime/models"
@@ -120,8 +131,24 @@ def eligible_nodes(task: Dict[str, Any], nodes: List[Dict[str, Any]],
                             break
                     if not model:
                         why = f"model not available (wants {cands}, has {n['models']})"
-                    elif n["available_ram_mb"] is not None and n["available_ram_mb"] < MIN_FREE_RAM_FOR_INFERENCE_MB:
-                        why = f"insufficient free RAM ({n['available_ram_mb']} MiB)"
+                    elif n.get("available_ram_mb") is not None and n.get("available_ram_mb") < MIN_FREE_RAM_FOR_INFERENCE_MB:
+                        why = f"insufficient free RAM ({n.get('available_ram_mb')} MiB)"
+                    elif enforce_verified:
+                        # Finding F-18: Verify persistent capability probe in database
+                        conn = get_db_connection()
+                        try:
+                            verif = conn.execute(
+                                """SELECT result_status FROM infrastructure_verifications
+                                   WHERE node_id = ? AND verification_test = 'model_inference_probe'
+                                   ORDER BY verified_at DESC LIMIT 1""",
+                                (n["id"],)
+                            ).fetchone()
+                            if not verif or verif["result_status"] != "passed":
+                                status_str = verif["result_status"] if verif else "probe_missing"
+                                why = (f"unverified model capability on node '{n['id']}' for model '{model}': "
+                                       f"status={status_str} (run verify_node_model_capability to verify)")
+                        finally:
+                            conn.close()
             else:
                 why = "unsupported action type"
         if why:
@@ -131,10 +158,71 @@ def eligible_nodes(task: Dict[str, Any], nodes: List[Dict[str, Any]],
     return {"eligible": eligible, "reasons": reasons}
 
 
+def verify_node_model_capability(
+    node_id: str,
+    model: str,
+    verified_by: str = "cluster_health_probe",
+    passed: bool = True,
+    details: str = "",
+) -> Dict[str, Any]:
+    """Verify and audit a node's model inference capability in persistent storage (Finding F-18)."""
+    conn = get_db_connection()
+    try:
+        node = conn.execute("SELECT * FROM infrastructure_nodes WHERE id = ?", (node_id,)).fetchone()
+        if not node:
+            raise ValueError(f"Node '{node_id}' not found.")
+    finally:
+        conn.close()
+
+    now = now_iso()
+    cap_id = f"cap-{node_id}-inference"
+    verif_id = new_id("ver")
+
+    with db_transaction() as conn:
+        conn.execute(
+            """INSERT INTO infrastructure_capabilities (
+                id, node_id, name, category, required_software, discovery_status,
+                discovery_method, verification_status, verification_method, last_verified_at,
+                verification_error, created_at, updated_at
+            ) VALUES (?, ?, 'model_inference', 'ai_inference', 'ollama', 'discovered', 'agent_probe',
+                      ?, 'health_check', ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                verification_status = excluded.verification_status,
+                last_verified_at = excluded.last_verified_at,
+                verification_error = excluded.verification_error,
+                updated_at = excluded.updated_at""",
+            (
+                cap_id, node_id, "verified" if passed else "failed", now,
+                details if not passed else "", now, now
+            )
+        )
+        conn.execute(
+            """INSERT INTO infrastructure_verifications (
+                id, capability_id, node_id, verification_test, result_status, details, verified_at, verified_by
+            ) VALUES (?, ?, ?, 'model_inference_probe', ?, ?, ?, ?)""",
+            (
+                verif_id, cap_id, node_id, "passed" if passed else "failed",
+                f"Model '{model}': {details or ('Probe passed successfully' if passed else 'Probe failed')}",
+                now, verified_by
+            )
+        )
+
+    logger.info("Node %s model inference capability probe for %s recorded: passed=%s", node_id, model, passed)
+    return {
+        "verification_id": verif_id,
+        "node_id": node_id,
+        "model": model,
+        "verified": passed,
+        "verified_at": now,
+        "verified_by": verified_by,
+        "details": details
+    }
+
+
 def select_node(task: Dict[str, Any], nodes: List[Dict[str, Any]],
                 busy: Optional[Dict[str, int]] = None) -> Tuple[Optional[Dict[str, Any]], Optional[str], List[str]]:
     """Choose the least-loaded eligible node (one in-flight work item per node to protect small hosts)."""
-    res = eligible_nodes(task, nodes)
+    res = eligible_nodes(task, nodes, enforce_verified=True)
     busy = busy or {}
     free = [(n, m) for n, m in res["eligible"] if busy.get(n["id"], 0) + n.get("load", 0) < 1
             or n.get("role") == "controller"]
@@ -190,7 +278,8 @@ class WorkerOllamaProvider(InferenceProvider):
 
     def submit(self, *, run_id: Optional[str], orch_task_id: Optional[str], purpose: str, node_id: str,
                model: str, prompt: str, max_tokens: int = 200, timeout_seconds: int = 300,
-               project_ctx: Optional[Dict[str, Any]] = None, attempt_key: Optional[str] = None) -> str:
+               project_ctx: Optional[Dict[str, Any]] = None, attempt_key: Optional[str] = None,
+               project_id: Optional[str] = None, approval_required: bool = False) -> str:
         from app.services import tasks as T
         if len(prompt) > MAX_PROMPT_CHARS:
             prompt = prompt[:MAX_PROMPT_CHARS]
@@ -204,11 +293,14 @@ class WorkerOllamaProvider(InferenceProvider):
                               stage_id=project_ctx["stage_id"], purpose=project_ctx["purpose"],
                               expected_output=project_ctx["expected_output"],
                               completion_criteria=project_ctx["completion_criteria"])
-            if t["status"] == "awaiting_approval":
+            if t["status"] == "awaiting_approval" and not approval_required:
                 T.approve_task(t["id"])
         else:
             t = T.create_task(title=title, description=title, task_type="inference", assigned_worker=node_id,
-                              input_data=inp, idempotency_key=attempt_key)
+                              approval_required=approval_required, input_data=inp, idempotency_key=attempt_key)
+            if project_id:
+                with db_transaction() as c:
+                    c.execute("UPDATE tasks SET project_id = ?, purpose = ? WHERE id = ?", (project_id, purpose, t["id"]))
         rid = new_id("inf")
         with db_transaction() as c:
             c.execute("""INSERT INTO model_inference_requests (id, run_id, orch_task_id, purpose, node_id, model,
@@ -216,7 +308,7 @@ class WorkerOllamaProvider(InferenceProvider):
                       (rid, run_id, orch_task_id, purpose, node_id, model, t["id"], len(prompt), now_iso()))
         return rid
 
-    def poll(self, request_id: str, timeout_seconds: int = 300) -> Dict[str, Any]:
+    def poll(self, request_id: str, timeout_seconds: int = 300, queue_timeout_seconds: int = 120) -> Dict[str, Any]:
         from app.services import tasks as T
         conn = get_db_connection()
         try:
@@ -235,6 +327,21 @@ class WorkerOllamaProvider(InferenceProvider):
             return self._finish(req, "failed", error_class="network_interruption")
         st = t["status"]
         if st == "completed":
+            # AUD-04: Verify worker lease and execution provenance before trusting completed inference output
+            conn_prov = get_db_connection()
+            try:
+                has_lease = conn_prov.execute(
+                    "SELECT id FROM worker_task_leases WHERE task_id = ? AND status = 'completed' LIMIT 1",
+                    (req["task_id"],),
+                ).fetchone()
+                has_exec = conn_prov.execute(
+                    "SELECT id FROM worker_executions WHERE task_id = ? AND status = 'success' AND exit_code = 0 LIMIT 1",
+                    (req["task_id"],),
+                ).fetchone()
+            finally:
+                conn_prov.close()
+            if not has_lease or not has_exec:
+                return self._finish(req, "failed", error_class="unverified_worker_provenance")
             r = t.get("result_data") or {}
             text = r.get("response")
             if not isinstance(text, str) or not text.strip():
@@ -246,10 +353,17 @@ class WorkerOllamaProvider(InferenceProvider):
             from app.services.orchestration.recovery import classify_task_failure
             return self._finish(req, "cancelled" if st == "cancelled" else "failed",
                                 error_class=classify_task_failure(t))
+        now = now_dt()
         created = parse_ts(req["created_at"])
-        if created and (now_dt() - created).total_seconds() > timeout_seconds:
-            self.cancel(request_id)
-            return self._finish(req, "timeout", error_class="model_timeout")
+        updated = parse_ts(t.get("updated_at")) or created
+        if st in ("running", "in_progress"):
+            if updated and (now - updated).total_seconds() > timeout_seconds:
+                self.cancel(request_id)
+                return self._finish(req, "timeout", error_class="model_timeout", timeout_type="execution_timeout")
+        else:
+            if created and (now - created).total_seconds() > queue_timeout_seconds:
+                self.cancel(request_id)
+                return self._finish(req, "timeout", error_class="model_timeout", timeout_type="queue_timeout")
         return {"status": "submitted", "task_status": st, "node_id": req["node_id"], "model": req["model"],
                 "task_id": req["task_id"]}
 
@@ -261,15 +375,20 @@ class WorkerOllamaProvider(InferenceProvider):
                                (request_id,)).fetchone()
         finally:
             conn.close()
-        if req and req["status"] == "submitted" and req["task_id"]:
-            try:
-                T.cancel_task(req["task_id"])
-            except Exception as e:  # task may already be finished/leased
-                logger.info("cancel_task(%s) not applied: %s", req["task_id"], e)
+        if req and req["status"] == "submitted":
+            if req["task_id"]:
+                try:
+                    T.cancel_task(req["task_id"])
+                except Exception as e:  # task may already be finished/leased
+                    logger.info("cancel_task(%s) not applied: %s", req["task_id"], e)
+            with db_transaction() as c:
+                c.execute("UPDATE model_inference_requests SET status = 'cancelled', completed_at = ? WHERE id = ? AND status = 'submitted'",
+                          (now_iso(), request_id))
 
     def _finish(self, req: Dict[str, Any], status: str, response: Optional[str] = None, error_class: Optional[str] = None,
                 gen_tokens: Optional[int] = None, prompt_tokens: Optional[int] = None,
-                latency_s: Optional[float] = None, model_returned: Optional[str] = None) -> Dict[str, Any]:
+                latency_s: Optional[float] = None, model_returned: Optional[str] = None,
+                timeout_type: Optional[str] = None) -> Dict[str, Any]:
         with db_transaction() as c:
             cur = c.execute("""UPDATE model_inference_requests SET status=?, response_text=?, error_class=?, gen_tokens=?,
                        prompt_tokens=?, latency_s=?, completed_at=? WHERE id=? AND status='submitted'""",
@@ -279,9 +398,9 @@ class WorkerOllamaProvider(InferenceProvider):
             from app.services.orchestration.telemetry import record_usage
             if req.get("run_id"):
                 record_usage(req["run_id"], inference_requests=1, tokens=(gen_tokens or 0) + (prompt_tokens or 0))
-        return {"status": status, "response": response, "error_class": error_class, "gen_tokens": gen_tokens,
-                "prompt_tokens": prompt_tokens, "latency_s": latency_s, "node_id": req["node_id"],
-                "model": model_returned or req["model"], "task_id": req["task_id"]}
+        return {"status": status, "response": response, "error_class": error_class, "timeout_type": timeout_type,
+                "gen_tokens": gen_tokens, "prompt_tokens": prompt_tokens, "latency_s": latency_s,
+                "node_id": req["node_id"], "model": model_returned or req["model"], "task_id": req["task_id"]}
 
 
 _provider = WorkerOllamaProvider()

@@ -54,6 +54,30 @@ def _setup_project_and_worker(client, db_conn, node_id="vps-metric-test-worker")
     return pid, metric_id, node_id, worker_token
 
 
+def _insert_leased_task(db_conn, task_id: str, title: str, node_id: str, pid: str, now: str, deliv_id=None) -> str:
+    lease_id = f"lease-{task_id}"
+    idem = f"idem-lease-{task_id}"
+    if deliv_id:
+        db_conn.execute(
+            "INSERT INTO tasks (id, title, task_type, status, assigned_worker, project_id, deliverable_id, created_at, updated_at) VALUES (?, ?, 'test_task', 'in_progress', ?, ?, ?, ?, ?)",
+            (task_id, title, node_id, pid, deliv_id, now, now),
+        )
+    else:
+        db_conn.execute(
+            "INSERT INTO tasks (id, title, task_type, status, assigned_worker, project_id, created_at, updated_at) VALUES (?, ?, 'test_task', 'in_progress', ?, ?, ?, ?)",
+            (task_id, title, node_id, pid, now, now),
+        )
+    db_conn.execute(
+        """INSERT INTO worker_task_leases (
+               id, task_id, worker_id, idempotency_key, status,
+               leased_at, lease_expires_at, heartbeat_at, created_at, updated_at
+           ) VALUES (?, ?, ?, ?, 'active', ?, '2099-12-31T23:59:59Z', ?, ?, ?)""",
+        (lease_id, task_id, node_id, idem, now, now, now, now),
+    )
+    db_conn.commit()
+    return lease_id
+
+
 def test_worker_cannot_self_verify_arbitrary_metric(client, db_conn):
     """Worker attempting to set verification_status = 'verified' is overridden to 'unverified'."""
     pid, metric_id, node_id, worker_token = _setup_project_and_worker(client, db_conn, "vps-self-verify-01")
@@ -61,14 +85,7 @@ def test_worker_cannot_self_verify_arbitrary_metric(client, db_conn):
     now = datetime.now(timezone.utc).isoformat()
     task_id = f"task-metric-self-verify-{uuid.uuid4().hex[:6]}"
     idem_key = f"idem-metric-self-verify-{uuid.uuid4().hex[:6]}"
-    db_conn.execute(
-        """
-        INSERT INTO tasks (id, title, task_type, status, project_id, created_at, updated_at)
-        VALUES (?, 'Self Verify Task', 'test_task', 'in_progress', ?, ?, ?)
-        """,
-        (task_id, pid, now, now),
-    )
-    db_conn.commit()
+    _insert_leased_task(db_conn, task_id, "Self Verify Task", node_id, pid, now)
 
     sub_payload = {
         "task_id": task_id,
@@ -108,14 +125,7 @@ def test_metric_observation_invalid_checksum_rejected(client, db_conn):
     now = datetime.now(timezone.utc).isoformat()
     task_id = f"task-invalid-cs-{uuid.uuid4().hex[:6]}"
     idem_key = f"idem-invalid-cs-{uuid.uuid4().hex[:6]}"
-    db_conn.execute(
-        """
-        INSERT INTO tasks (id, title, task_type, status, project_id, created_at, updated_at)
-        VALUES (?, 'Invalid CS Task', 'test_task', 'in_progress', ?, ?, ?)
-        """,
-        (task_id, pid, now, now),
-    )
-    db_conn.commit()
+    _insert_leased_task(db_conn, task_id, "Invalid CS Task", node_id, pid, now)
 
     sub_payload = {
         "task_id": task_id,
@@ -156,14 +166,7 @@ def test_metric_observation_checksum_mismatch_on_file_rejected(client, db_conn, 
     now = datetime.now(timezone.utc).isoformat()
     task_id = f"task-mismatch-cs-{uuid.uuid4().hex[:6]}"
     idem_key = f"idem-mismatch-cs-{uuid.uuid4().hex[:6]}"
-    db_conn.execute(
-        """
-        INSERT INTO tasks (id, title, task_type, status, project_id, created_at, updated_at)
-        VALUES (?, 'Mismatch CS Task', 'test_task', 'in_progress', ?, ?, ?)
-        """,
-        (task_id, pid, now, now),
-    )
-    db_conn.commit()
+    _insert_leased_task(db_conn, task_id, "Mismatch CS Task", node_id, pid, now)
 
     # Supply an invalid SHA256 that does not match the file
     wrong_checksum = "0000000000000000000000000000000000000000000000000000000000000000"
@@ -209,14 +212,7 @@ def test_metric_observation_valid_evidence_and_checksum_verified(client, db_conn
     now = datetime.now(timezone.utc).isoformat()
     task_id = f"task-valid-cs-{uuid.uuid4().hex[:6]}"
     idem_key = f"idem-valid-cs-{uuid.uuid4().hex[:6]}"
-    db_conn.execute(
-        """
-        INSERT INTO tasks (id, title, task_type, status, project_id, created_at, updated_at)
-        VALUES (?, 'Valid CS Task', 'test_task', 'in_progress', ?, ?, ?)
-        """,
-        (task_id, pid, now, now),
-    )
-    db_conn.commit()
+    _insert_leased_task(db_conn, task_id, "Valid CS Task", node_id, pid, now)
 
     sub_payload = {
         "task_id": task_id,
@@ -254,15 +250,8 @@ def test_metric_observation_deduplication(client, db_conn):
     now = datetime.now(timezone.utc).isoformat()
     task_id_1 = f"task-dedup-1-{uuid.uuid4().hex[:6]}"
     task_id_2 = f"task-dedup-2-{uuid.uuid4().hex[:6]}"
-    db_conn.execute(
-        """
-        INSERT INTO tasks (id, title, task_type, status, project_id, created_at, updated_at)
-        VALUES (?, 'Dedup Task 1', 'test_task', 'in_progress', ?, ?, ?),
-               (?, 'Dedup Task 2', 'test_task', 'in_progress', ?, ?, ?)
-        """,
-        (task_id_1, pid, now, now, task_id_2, pid, now, now),
-    )
-    db_conn.commit()
+    _insert_leased_task(db_conn, task_id_1, "Dedup Task 1", node_id, pid, now)
+    _insert_leased_task(db_conn, task_id_2, "Dedup Task 2", node_id, pid, now)
 
     checksum = "a" * 64
     payload = {
@@ -369,11 +358,7 @@ def test_shortcut_a_valid_checksum_without_retrievable_evidence_is_unverified(cl
     now = datetime.now(timezone.utc).isoformat()
     task_id = f"task-shortcut-a-{uuid.uuid4().hex[:6]}"
     idem_key = f"idem-shortcut-a-{uuid.uuid4().hex[:6]}"
-    db_conn.execute(
-        "INSERT INTO tasks (id, title, task_type, status, project_id, created_at, updated_at) VALUES (?, 'Shortcut A Task', 'test_task', 'in_progress', ?, ?, ?)",
-        (task_id, pid, now, now),
-    )
-    db_conn.commit()
+    _insert_leased_task(db_conn, task_id, "Shortcut A Task", node_id, pid, now)
 
     # Valid hex SHA256 format, but no bytes on controller
     phantom_checksum = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
@@ -412,11 +397,7 @@ def test_shortcut_b_deliverable_association_without_evidence_is_unverified(clien
     )
     task_id = f"task-shortcut-b-{uuid.uuid4().hex[:6]}"
     idem_key = f"idem-shortcut-b-{uuid.uuid4().hex[:6]}"
-    db_conn.execute(
-        "INSERT INTO tasks (id, title, task_type, status, project_id, deliverable_id, created_at, updated_at) VALUES (?, 'Shortcut B Task', 'test_task', 'in_progress', ?, ?, ?, ?)",
-        (task_id, pid, deliv_id, now, now),
-    )
-    db_conn.commit()
+    _insert_leased_task(db_conn, task_id, "Shortcut B Task", node_id, pid, now, deliv_id=deliv_id)
 
     sub_payload = {
         "task_id": task_id,
@@ -454,11 +435,7 @@ def test_real_artifact_upload_and_verification_lifecycle(client, db_conn):
     )
     task_id = f"task-art-cycle-{uuid.uuid4().hex[:6]}"
     idem_key = f"idem-art-cycle-{uuid.uuid4().hex[:6]}"
-    db_conn.execute(
-        "INSERT INTO tasks (id, title, task_type, status, project_id, deliverable_id, created_at, updated_at) VALUES (?, 'Artifact Task', 'test_task', 'in_progress', ?, ?, ?, ?)",
-        (task_id, pid, deliv_id, now, now),
-    )
-    db_conn.commit()
+    _insert_leased_task(db_conn, task_id, "Artifact Task", node_id, pid, now, deliv_id=deliv_id)
 
     # Create real test artifact bytes
     raw_content = b'{"diagnostic": "ok", "nonce": "real-12345"}'

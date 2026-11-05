@@ -122,6 +122,164 @@
       </div>
     </div>
 
+    <!-- Increment 17: Pipeline Parallelism & Searchable Paged KV Virtual Memory Card -->
+    <div class="card" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:18px; margin-bottom:20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:12px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:1.2rem;">⚡</span>
+          <div>
+            <span style="font-weight:700; font-size:1.05rem;">Distributed Pipeline Parallelism & Searchable Paged KV Cache</span>
+            <span class="badge" style="background:#1e293b; color:#38bdf8; margin-left:8px; font-size:0.7rem; font-weight:600;">PROTOTYPE / DEFAULT OFF</span>
+          </div>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <a href="/inference" class="btn btn-sm btn-secondary" style="font-size:0.75rem;">
+            Open Topology Visualizer &rarr;
+          </a>
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; font-size:0.85rem;">
+        <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border-color); border-radius:6px; padding:10px;">
+          <div style="color:var(--text-muted); font-size:0.75rem; text-transform:uppercase;">Tailscale WireGuard RTT</div>
+          <div style="font-size:1.2rem; font-weight:700; color:#38bdf8; font-family:var(--font-mono); margin-top:2px;">
+            3.5 ms <span style="font-size:0.7rem; color:var(--text-muted); font-weight:normal;">LAN / 14.2 ms WAN</span>
+          </div>
+        </div>
+        <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border-color); border-radius:6px; padding:10px;">
+          <div style="color:var(--text-muted); font-size:0.75rem; text-transform:uppercase;">Synthetic Frame Rate</div>
+          <div style="font-size:1.2rem; font-weight:700; color:#22c55e; font-family:var(--font-mono); margin-top:2px;">
+            95.1 <span style="font-size:0.7rem; color:var(--text-muted); font-weight:normal;">steps/s (Synthetic QCACT1)</span>
+          </div>
+        </div>
+        <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border-color); border-radius:6px; padding:10px;">
+          <div style="color:var(--text-muted); font-size:0.75rem; text-transform:uppercase;">Edge RAM Preservation</div>
+          <div style="font-size:1.2rem; font-weight:700; color:#a855f7; font-family:var(--font-mono); margin-top:2px;">
+            -50% <span style="font-size:0.7rem; color:var(--text-muted); font-weight:normal;">KV Memory Footprint</span>
+          </div>
+        </div>
+        <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border-color); border-radius:6px; padding:10px;">
+          <div style="color:var(--text-muted); font-size:0.75rem; text-transform:uppercase;">Wire Protocol Framing</div>
+          <div style="font-size:1.2rem; font-weight:700; color:#f59e0b; font-family:var(--font-mono); margin-top:2px;">
+            QCACT1 <span style="font-size:0.7rem; color:var(--text-muted); font-weight:normal;">HMAC-SHA256</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Continuous Research & Knowledge Telemetry Cards -->
+    {% if overview.research_and_knowledge %}
+    <div class="grid-cols-4" style="gap:16px; margin-bottom:20px;">
+      <div class="stat-widget" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="stat-label" style="font-size:0.8rem; color:var(--text-muted); text-transform:uppercase;">Research Checkpoints</div>
+          <span style="font-size:1.1rem;">🔬</span>
+        </div>
+        <div class="stat-value" style="font-size:1.8rem; font-weight:700; margin:8px 0 4px 0;">
+          {{ overview.research_and_knowledge.checkpoints.total }}
+        </div>
+        <div class="stat-sub" style="font-size:0.75rem; color:var(--text-muted);">
+          {{ overview.research_and_knowledge.checkpoints.searches_executed }} web searches · {{ overview.research_and_knowledge.checkpoints.searches_skipped }} KB reused
+        </div>
+      </div>
+
+      <div class="stat-widget" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="stat-label" style="font-size:0.8rem; color:var(--text-muted); text-transform:uppercase;">KB Reuse Rate</div>
+          <span style="font-size:1.1rem;">♻️</span>
+        </div>
+        <div class="stat-value" style="font-size:1.8rem; font-weight:700; margin:8px 0 4px 0; color:var(--color-primary, #10b981);">
+          {{ overview.research_and_knowledge.checkpoints.reuse_rate_percent }}%
+        </div>
+        <div class="stat-sub" style="font-size:0.75rem; color:var(--text-muted);">
+          Reused existing verified knowledge before searching
+        </div>
+      </div>
+
+      <div class="stat-widget" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="stat-label" style="font-size:0.8rem; color:var(--text-muted); text-transform:uppercase;">Knowledge Records</div>
+          <span style="font-size:1.1rem;">📚</span>
+        </div>
+        <div class="stat-value" style="font-size:1.8rem; font-weight:700; margin:8px 0 4px 0;">
+          {{ overview.research_and_knowledge.knowledge_base.total_records }}
+        </div>
+        <div class="stat-sub" style="font-size:0.75rem; color:var(--text-muted);">
+          {{ overview.research_and_knowledge.knowledge_base.collective_records }} collective · {{ overview.research_and_knowledge.knowledge_base.evidence_coverage_percent }}% evidence coverage
+        </div>
+      </div>
+
+      <div class="stat-widget" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="stat-label" style="font-size:0.8rem; color:var(--text-muted); text-transform:uppercase;">Contradictions &amp; Impacts</div>
+          <span style="font-size:1.1rem;">⚠️</span>
+        </div>
+        <div class="stat-value" style="font-size:1.8rem; font-weight:700; margin:8px 0 4px 0; {% if overview.research_and_knowledge.impacts.affected > 0 %}color:var(--color-warning, #f59e0b);{% endif %}">
+          {{ overview.research_and_knowledge.knowledge_base.contradictions_detected }} / {{ overview.research_and_knowledge.impacts.affected }}
+        </div>
+        <div class="stat-sub" style="font-size:0.75rem; color:var(--text-muted);">
+          {{ overview.research_and_knowledge.knowledge_base.contradictions_detected }} contradictions · {{ overview.research_and_knowledge.impacts.affected }} affected impacts
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Unified Deliverables & Artifacts Telemetry Cards -->
+    {% if overview.artifacts_and_deliverables %}
+    <div class="grid-cols-4" style="gap:16px; margin-bottom:20px;">
+      <div class="stat-widget" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="stat-label" style="font-size:0.8rem; color:var(--text-muted); text-transform:uppercase;">Managed Artifacts</div>
+          <span style="font-size:1.1rem;">📦</span>
+        </div>
+        <div class="stat-value" style="font-size:1.8rem; font-weight:700; margin:8px 0 4px 0; color:var(--color-primary, #4f46e5);">
+          {{ overview.artifacts_and_deliverables.artifacts.total }}
+        </div>
+        <div class="stat-sub" style="font-size:0.75rem; color:var(--text-muted);">
+          {{ overview.artifacts_and_deliverables.artifacts.total_versions }} immutable versions · {{ (overview.artifacts_and_deliverables.artifacts.total_storage_bytes / 1024)|round(1) }} KB
+        </div>
+      </div>
+
+      <div class="stat-widget" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="stat-label" style="font-size:0.8rem; color:var(--text-muted); text-transform:uppercase;">Accepted Deliverables</div>
+          <span style="font-size:1.1rem;">🏆</span>
+        </div>
+        <div class="stat-value" style="font-size:1.8rem; font-weight:700; margin:8px 0 4px 0; color:#059669;">
+          {{ overview.artifacts_and_deliverables.deliverables.accepted }} / {{ overview.artifacts_and_deliverables.deliverables.total }}
+        </div>
+        <div class="stat-sub" style="font-size:0.75rem; color:var(--text-muted);">
+          {{ overview.artifacts_and_deliverables.deliverables.linked_to_artifact }} backed by canonical artifacts
+        </div>
+      </div>
+
+      <div class="stat-widget" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="stat-label" style="font-size:0.8rem; color:var(--text-muted); text-transform:uppercase;">Reuses &amp; Lineage</div>
+          <span style="font-size:1.1rem;">🔄</span>
+        </div>
+        <div class="stat-value" style="font-size:1.8rem; font-weight:700; margin:8px 0 4px 0; color:#7c3aed;">
+          {{ overview.artifacts_and_deliverables.reuse_and_lineage.total_links }}
+        </div>
+        <div class="stat-sub" style="font-size:0.75rem; color:var(--text-muted);">
+          {{ overview.artifacts_and_deliverables.reuse_and_lineage.input_reuses }} input reuses · {{ overview.artifacts_and_deliverables.reuse_and_lineage.active_grants }} cross-project grants
+        </div>
+      </div>
+
+      <div class="stat-widget" style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="stat-label" style="font-size:0.8rem; color:var(--text-muted); text-transform:uppercase;">Knowledge Integration</div>
+          <span style="font-size:1.1rem;">🧠</span>
+        </div>
+        <div class="stat-value" style="font-size:1.8rem; font-weight:700; margin:8px 0 4px 0; color:#0284c7;">
+          {{ overview.artifacts_and_deliverables.knowledge_integration.findings_extracted }}
+        </div>
+        <div class="stat-sub" style="font-size:0.75rem; color:var(--text-muted);">
+          Findings extracted into verified knowledge
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
     <!-- Cluster Utilization & Online Nodes -->
     <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:20px; margin-bottom:24px;">
       <!-- Machine Health Bars -->

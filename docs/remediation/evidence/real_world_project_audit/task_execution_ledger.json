@@ -1,0 +1,1164 @@
+{
+  "generated_utc": "2026-10-22T01:31:48.913724+00:00",
+  "projects": {
+    "original_user_project": {
+      "project_id": "prj-c3e69205a8e0466ab54b609801694796",
+      "runs": [
+        {
+          "id": "run-08de085e97e84130",
+          "state": "COMPLETED",
+          "autonomy_level": 3,
+          "created_at": "2026-10-22T00:53:09.207912+00:00",
+          "started_at": "2026-10-22T00:54:27.453347+00:00",
+          "completed_at": "2026-10-22T00:55:02.416753+00:00"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "ot-16699287017d4168",
+          "plan_key": "search_sources",
+          "title": "Search public web for relevant sources",
+          "agent_role": "research",
+          "action_json": "{\"inputs\": [], \"step\": \"research_search\", \"type\": \"controller_step\"}",
+          "required_capabilities_json": "[\"controller\"]",
+          "preferred_models_json": "[]",
+          "state": "accepted",
+          "attempts": 1,
+          "dispatched_node": "controller-local",
+          "dispatched_model": null,
+          "dispatched_at": "2026-10-22T00:54:28.170881+00:00",
+          "updated_at": "2026-10-22T00:54:40.349260+00:00",
+          "failure_class": null,
+          "last_error": ""
+        },
+        {
+          "id": "ot-079aa5919d374e1e",
+          "plan_key": "retrieve_content",
+          "title": "Securely retrieve and extract source documents",
+          "agent_role": "execution",
+          "action_json": "{\"inputs\": [\"search_sources\"], \"step\": \"research_fetch\", \"type\": \"controller_step\"}",
+          "required_capabilities_json": "[\"controller\"]",
+          "preferred_models_json": "[]",
+          "state": "accepted",
+          "attempts": 1,
+          "dispatched_node": "controller-local",
+          "dispatched_model": null,
+          "dispatched_at": "2026-10-22T00:54:43.488354+00:00",
+          "updated_at": "2026-10-22T00:54:54.223757+00:00",
+          "failure_class": null,
+          "last_error": ""
+        },
+        {
+          "id": "ot-6195d9fefdc04e68",
+          "plan_key": "verify_claims",
+          "title": "Extract and verify evidence claims",
+          "agent_role": "analysis",
+          "action_json": "{\"inputs\": [\"retrieve_content\"], \"step\": \"research_verify\", \"type\": \"controller_step\"}",
+          "required_capabilities_json": "[\"controller\"]",
+          "preferred_models_json": "[]",
+          "state": "accepted",
+          "attempts": 1,
+          "dispatched_node": "controller-local",
+          "dispatched_model": null,
+          "dispatched_at": "2026-10-22T00:54:57.346816+00:00",
+          "updated_at": "2026-10-22T00:54:58.222120+00:00",
+          "failure_class": null,
+          "last_error": ""
+        },
+        {
+          "id": "ot-53cb213ba7ef46fa",
+          "plan_key": "synthesize_report",
+          "title": "Synthesize cited research report",
+          "agent_role": "integration",
+          "action_json": "{\"inputs\": [\"verify_claims\"], \"step\": \"research_synthesize\", \"type\": \"controller_step\"}",
+          "required_capabilities_json": "[\"controller\"]",
+          "preferred_models_json": "[]",
+          "state": "accepted",
+          "attempts": 1,
+          "dispatched_node": "controller-local",
+          "dispatched_model": null,
+          "dispatched_at": "2026-10-22T00:55:01.365041+00:00",
+          "updated_at": "2026-10-22T00:55:01.561343+00:00",
+          "failure_class": null,
+          "last_error": ""
+        }
+      ],
+      "attempts": [
+        {
+          "id": "att-da2ee4767f3c45cc",
+          "orch_task_id": "ot-16699287017d4168",
+          "attempt_number": 1,
+          "node_id": "controller-local",
+          "model": null,
+          "started_at": "2026-10-22T00:54:28.170881+00:00",
+          "finished_at": "2026-10-22T00:54:40.333630+00:00",
+          "outcome": "accepted",
+          "failure_class": null,
+          "evaluation_json": "{\"checks\": [{\"detail\": \"status=success\", \"name\": \"execution_success\", \"passed\": true}, {\"detail\": \"results_count=25\", \"name\": \"search_results_found\", \"passed\": true}]}"
+        },
+        {
+          "id": "att-e059d1e535ca4a4e",
+          "orch_task_id": "ot-079aa5919d374e1e",
+          "attempt_number": 1,
+          "node_id": "controller-local",
+          "model": null,
+          "started_at": "2026-10-22T00:54:43.488354+00:00",
+          "finished_at": "2026-10-22T00:54:54.214723+00:00",
+          "outcome": "accepted",
+          "failure_class": null,
+          "evaluation_json": "{\"checks\": [{\"detail\": \"status=success\", \"name\": \"execution_success\", \"passed\": true}, {\"detail\": \"sources_count=7\", \"name\": \"sources_retrieved\", \"passed\": true}]}"
+        },
+        {
+          "id": "att-3d76f1c20afc480e",
+          "orch_task_id": "ot-6195d9fefdc04e68",
+          "attempt_number": 1,
+          "node_id": "controller-local",
+          "model": null,
+          "started_at": "2026-10-22T00:54:57.346816+00:00",
+          "finished_at": "2026-10-22T00:54:58.221050+00:00",
+          "outcome": "accepted",
+          "failure_class": null,
+          "evaluation_json": "{\"checks\": [{\"detail\": \"status=success\", \"name\": \"execution_success\", \"passed\": true}, {\"detail\": \"claims_count=10\", \"name\": \"claims_verified\", \"passed\": true}]}"
+        },
+        {
+          "id": "att-ee5d7beea7194836",
+          "orch_task_id": "ot-53cb213ba7ef46fa",
+          "attempt_number": 1,
+          "node_id": "controller-local",
+          "model": null,
+          "started_at": "2026-10-22T00:55:01.365041+00:00",
+          "finished_at": "2026-10-22T00:55:01.551350+00:00",
+          "outcome": "accepted",
+          "failure_class": null,
+          "evaluation_json": "{\"checks\": [{\"detail\": \"status=success\", \"name\": \"execution_success\", \"passed\": true}, {\"detail\": \"report markdown generated\", \"name\": \"report_generated\", \"passed\": true}, {\"detail\": \"audit_valid=True\", \"name\": \"citations_valid\", \"passed\": true}]}"
+        }
+      ],
+      "events": [
+        {
+          "ts": "2026-10-22T00:53:09.207912+00:00",
+          "event_type": "run_created",
+          "previous_state": null,
+          "new_state": "DRAFT",
+          "actor": "admin",
+          "reason": "autonomy level 3"
+        },
+        {
+          "ts": "2026-10-22T00:53:09.312165+00:00",
+          "event_type": "analysis_started",
+          "previous_state": "DRAFT",
+          "new_state": "ANALYZING",
+          "actor": "admin",
+          "reason": "analysing objective"
+        },
+        {
+          "ts": "2026-10-22T00:53:09.321388+00:00",
+          "event_type": "planning_started",
+          "previous_state": "ANALYZING",
+          "new_state": "PLANNING",
+          "actor": "admin",
+          "reason": "mode=auto"
+        },
+        {
+          "ts": "2026-10-22T00:53:09.364121+00:00",
+          "event_type": "research_check_started",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Research checkpoint started for phase 'intake'"
+        },
+        {
+          "ts": "2026-10-22T00:53:09.404562+00:00",
+          "event_type": "knowledge_search_completed",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Searched knowledge base: found 0 records (0 fresh)"
+        },
+        {
+          "ts": "2026-10-22T00:53:09.415760+00:00",
+          "event_type": "research_required",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "No prior verified project or collective knowledge found for this objective."
+        },
+        {
+          "ts": "2026-10-22T00:53:09.427753+00:00",
+          "event_type": "external_search_started",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Executing queries: ['Conduct a comprehensive, evidence-based investigation into the current status of']"
+        },
+        {
+          "ts": "2026-10-22T00:53:10.906520+00:00",
+          "event_type": "external_search_completed",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Retrieved 5 candidate search results"
+        },
+        {
+          "ts": "2026-10-22T00:53:12.239127+00:00",
+          "event_type": "planning_failed",
+          "previous_state": "PLANNING",
+          "new_state": "DRAFT",
+          "actor": "system",
+          "reason": "Planning state has no in-flight request (controller restarted?)."
+        },
+        {
+          "ts": "2026-10-22T00:53:15.723149+00:00",
+          "event_type": "source_retrieved",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Retrieved and extracted 3 authorized web sources"
+        },
+        {
+          "ts": "2026-10-22T00:53:15.999300+00:00",
+          "event_type": "knowledge_integrated",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Integrated 6 verified knowledge record(s) into project knowledge base"
+        },
+        {
+          "ts": "2026-10-22T00:53:16.010293+00:00",
+          "event_type": "research_check_completed",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Checkpoint chk-8f5aa0ddc5da4bdc completed successfully"
+        },
+        {
+          "ts": "2026-10-22T00:53:16.153371+00:00",
+          "event_type": "plan_revision_created",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "revision 1 (template); valid=True"
+        },
+        {
+          "ts": "2026-10-22T00:54:09.145479+00:00",
+          "event_type": "analysis_started",
+          "previous_state": "DRAFT",
+          "new_state": "ANALYZING",
+          "actor": "admin",
+          "reason": "analysing objective"
+        },
+        {
+          "ts": "2026-10-22T00:54:09.158271+00:00",
+          "event_type": "planning_started",
+          "previous_state": "ANALYZING",
+          "new_state": "PLANNING",
+          "actor": "admin",
+          "reason": "mode=auto"
+        },
+        {
+          "ts": "2026-10-22T00:54:09.175260+00:00",
+          "event_type": "research_check_started",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Research checkpoint started for phase 'intake'"
+        },
+        {
+          "ts": "2026-10-22T00:54:09.331508+00:00",
+          "event_type": "knowledge_search_completed",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Searched knowledge base: found 6 records (6 fresh)"
+        },
+        {
+          "ts": "2026-10-22T00:54:09.348167+00:00",
+          "event_type": "research_not_required",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Existing verified knowledge (6 fresh record(s)) is sufficient for intake."
+        },
+        {
+          "ts": "2026-10-22T00:54:09.359366+00:00",
+          "event_type": "research_check_completed",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Checkpoint chk-ccc8e814ebe94862 completed successfully"
+        },
+        {
+          "ts": "2026-10-22T00:54:09.511547+00:00",
+          "event_type": "plan_revision_created",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "revision 2 (template); valid=True"
+        },
+        {
+          "ts": "2026-10-22T00:54:09.524552+00:00",
+          "event_type": "plan_proposed",
+          "previous_state": "PLANNING",
+          "new_state": "AWAITING_PLAN_APPROVAL",
+          "actor": "admin",
+          "reason": "revision 2 awaiting approval"
+        },
+        {
+          "ts": "2026-10-22T00:54:22.583541+00:00",
+          "event_type": "plan_materialized",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "4 tasks, 1 deliverables"
+        },
+        {
+          "ts": "2026-10-22T00:54:22.608952+00:00",
+          "event_type": "plan_approved",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "revision 2: "
+        },
+        {
+          "ts": "2026-10-22T00:54:22.621063+00:00",
+          "event_type": "plan_approved",
+          "previous_state": "AWAITING_PLAN_APPROVAL",
+          "new_state": "READY",
+          "actor": "admin",
+          "reason": "revision 2 approved"
+        },
+        {
+          "ts": "2026-10-22T00:54:27.453347+00:00",
+          "event_type": "execution_started",
+          "previous_state": "READY",
+          "new_state": "RUNNING",
+          "actor": "admin",
+          "reason": "user started execution"
+        },
+        {
+          "ts": "2026-10-22T00:54:28.018995+00:00",
+          "event_type": "research_check_started",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-checkpoint",
+          "reason": "Research checkpoint started for phase 'execution'"
+        },
+        {
+          "ts": "2026-10-22T00:54:28.090723+00:00",
+          "event_type": "knowledge_search_completed",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-checkpoint",
+          "reason": "Searched knowledge base: found 6 records (6 fresh)"
+        },
+        {
+          "ts": "2026-10-22T00:54:28.106320+00:00",
+          "event_type": "research_not_required",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-checkpoint",
+          "reason": "Execution proceeds with available project context and verified local capabilities."
+        },
+        {
+          "ts": "2026-10-22T00:54:28.106320+00:00",
+          "event_type": "research_check_completed",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-checkpoint",
+          "reason": "Checkpoint chk-5200ef507a0d4e1b completed successfully"
+        },
+        {
+          "ts": "2026-10-22T00:54:40.349260+00:00",
+          "event_type": "task_accepted",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-evaluator",
+          "reason": "search_sources on controller-local"
+        },
+        {
+          "ts": "2026-10-22T00:54:54.223757+00:00",
+          "event_type": "task_accepted",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-evaluator",
+          "reason": "retrieve_content on controller-local"
+        },
+        {
+          "ts": "2026-10-22T00:54:58.222120+00:00",
+          "event_type": "task_accepted",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-evaluator",
+          "reason": "verify_claims on controller-local"
+        },
+        {
+          "ts": "2026-10-22T00:55:01.561343+00:00",
+          "event_type": "task_accepted",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-evaluator",
+          "reason": "synthesize_report on controller-local"
+        },
+        {
+          "ts": "2026-10-22T00:55:01.585343+00:00",
+          "event_type": "all_tasks_accepted",
+          "previous_state": "RUNNING",
+          "new_state": "EVALUATING",
+          "actor": "orchestrator",
+          "reason": "all tasks passed acceptance checks; validating deliverables"
+        },
+        {
+          "ts": "2026-10-22T00:55:01.604393+00:00",
+          "event_type": "research_check_started",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-checkpoint",
+          "reason": "Research checkpoint started for phase 'evaluation'"
+        },
+        {
+          "ts": "2026-10-22T00:55:01.680255+00:00",
+          "event_type": "knowledge_search_completed",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-checkpoint",
+          "reason": "Searched knowledge base: found 6 records (6 fresh)"
+        },
+        {
+          "ts": "2026-10-22T00:55:01.692246+00:00",
+          "event_type": "research_not_required",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-checkpoint",
+          "reason": "Evaluation operates against objective acceptance criteria and existing source evidence ledger."
+        },
+        {
+          "ts": "2026-10-22T00:55:01.703857+00:00",
+          "event_type": "research_check_completed",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-checkpoint",
+          "reason": "Checkpoint chk-fa35cd3576b1433f completed successfully"
+        },
+        {
+          "ts": "2026-10-22T00:55:01.882512+00:00",
+          "event_type": "deliverable_accepted",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator (auto)",
+          "reason": "Autonomous Research Report"
+        },
+        {
+          "ts": "2026-10-22T00:55:01.910201+00:00",
+          "event_type": "research_check_started",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-checkpoint",
+          "reason": "Research checkpoint started for phase 'final_reporting'"
+        },
+        {
+          "ts": "2026-10-22T00:55:02.042764+00:00",
+          "event_type": "knowledge_search_completed",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-checkpoint",
+          "reason": "Searched knowledge base: found 11 records (11 fresh)"
+        },
+        {
+          "ts": "2026-10-22T00:55:02.059094+00:00",
+          "event_type": "research_not_required",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-checkpoint",
+          "reason": "Final reporting synthesizes and audits existing accepted deliverables and verified evidence."
+        },
+        {
+          "ts": "2026-10-22T00:55:02.075272+00:00",
+          "event_type": "research_check_completed",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-checkpoint",
+          "reason": "Checkpoint chk-eb0a6bd5d7f84545 completed successfully"
+        },
+        {
+          "ts": "2026-10-22T00:55:02.416753+00:00",
+          "event_type": "completed",
+          "previous_state": "EVALUATING",
+          "new_state": "COMPLETED",
+          "actor": "orchestrator",
+          "reason": "all deliverables accepted"
+        }
+      ]
+    },
+    "audit_rerun_project": {
+      "project_id": "prj-c74dd685c2b145e5b32ab347253dbc77",
+      "runs": [
+        {
+          "id": "run-ee1166ebb5eb4558",
+          "state": "COMPLETED",
+          "autonomy_level": 2,
+          "created_at": "2026-10-22T01:10:20.892506+00:00",
+          "started_at": "2026-10-22T01:12:11.624069+00:00",
+          "completed_at": "2026-10-22T01:12:48.232203+00:00"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "ot-d334328ab4f34738",
+          "plan_key": "search_sources",
+          "title": "Search public web for relevant sources",
+          "agent_role": "research",
+          "action_json": "{\"inputs\": [], \"step\": \"research_search\", \"type\": \"controller_step\"}",
+          "required_capabilities_json": "[\"controller\"]",
+          "preferred_models_json": "[]",
+          "state": "accepted",
+          "attempts": 1,
+          "dispatched_node": "controller-local",
+          "dispatched_model": null,
+          "dispatched_at": "2026-10-22T01:12:12.253174+00:00",
+          "updated_at": "2026-10-22T01:12:27.755374+00:00",
+          "failure_class": null,
+          "last_error": ""
+        },
+        {
+          "id": "ot-7e3f2b14fb854aec",
+          "plan_key": "retrieve_content",
+          "title": "Securely retrieve and extract source documents",
+          "agent_role": "execution",
+          "action_json": "{\"inputs\": [\"search_sources\"], \"step\": \"research_fetch\", \"type\": \"controller_step\"}",
+          "required_capabilities_json": "[\"controller\"]",
+          "preferred_models_json": "[]",
+          "state": "accepted",
+          "attempts": 1,
+          "dispatched_node": "controller-local",
+          "dispatched_model": null,
+          "dispatched_at": "2026-10-22T01:12:30.967991+00:00",
+          "updated_at": "2026-10-22T01:12:39.702513+00:00",
+          "failure_class": null,
+          "last_error": ""
+        },
+        {
+          "id": "ot-ec34af375e1d4c7c",
+          "plan_key": "verify_claims",
+          "title": "Extract and verify evidence claims",
+          "agent_role": "analysis",
+          "action_json": "{\"inputs\": [\"retrieve_content\"], \"step\": \"research_verify\", \"type\": \"controller_step\"}",
+          "required_capabilities_json": "[\"controller\"]",
+          "preferred_models_json": "[]",
+          "state": "accepted",
+          "attempts": 1,
+          "dispatched_node": "controller-local",
+          "dispatched_model": null,
+          "dispatched_at": "2026-10-22T01:12:42.911050+00:00",
+          "updated_at": "2026-10-22T01:12:43.781838+00:00",
+          "failure_class": null,
+          "last_error": ""
+        },
+        {
+          "id": "ot-8b0612d4b40e4999",
+          "plan_key": "synthesize_report",
+          "title": "Synthesize cited research report",
+          "agent_role": "integration",
+          "action_json": "{\"inputs\": [\"verify_claims\"], \"step\": \"research_synthesize\", \"type\": \"controller_step\"}",
+          "required_capabilities_json": "[\"controller\"]",
+          "preferred_models_json": "[]",
+          "state": "accepted",
+          "attempts": 1,
+          "dispatched_node": "controller-local",
+          "dispatched_model": null,
+          "dispatched_at": "2026-10-22T01:12:46.927640+00:00",
+          "updated_at": "2026-10-22T01:12:47.198375+00:00",
+          "failure_class": null,
+          "last_error": ""
+        }
+      ],
+      "attempts": [
+        {
+          "id": "att-6e0b667696614357",
+          "orch_task_id": "ot-d334328ab4f34738",
+          "attempt_number": 1,
+          "node_id": "controller-local",
+          "model": null,
+          "started_at": "2026-10-22T01:12:12.253174+00:00",
+          "finished_at": "2026-10-22T01:12:27.749304+00:00",
+          "outcome": "accepted",
+          "failure_class": null,
+          "evaluation_json": "{\"checks\": [{\"detail\": \"status=success\", \"name\": \"execution_success\", \"passed\": true}, {\"detail\": \"results_count=20\", \"name\": \"search_results_found\", \"passed\": true}]}"
+        },
+        {
+          "id": "att-d70befaeae04403a",
+          "orch_task_id": "ot-7e3f2b14fb854aec",
+          "attempt_number": 1,
+          "node_id": "controller-local",
+          "model": null,
+          "started_at": "2026-10-22T01:12:30.967991+00:00",
+          "finished_at": "2026-10-22T01:12:39.675762+00:00",
+          "outcome": "accepted",
+          "failure_class": null,
+          "evaluation_json": "{\"checks\": [{\"detail\": \"status=success\", \"name\": \"execution_success\", \"passed\": true}, {\"detail\": \"sources_count=6\", \"name\": \"sources_retrieved\", \"passed\": true}]}"
+        },
+        {
+          "id": "att-72dc543d127849f2",
+          "orch_task_id": "ot-ec34af375e1d4c7c",
+          "attempt_number": 1,
+          "node_id": "controller-local",
+          "model": null,
+          "started_at": "2026-10-22T01:12:42.911050+00:00",
+          "finished_at": "2026-10-22T01:12:43.770021+00:00",
+          "outcome": "accepted",
+          "failure_class": null,
+          "evaluation_json": "{\"checks\": [{\"detail\": \"status=success\", \"name\": \"execution_success\", \"passed\": true}, {\"detail\": \"claims_count=10\", \"name\": \"claims_verified\", \"passed\": true}]}"
+        },
+        {
+          "id": "att-200e681fc353487d",
+          "orch_task_id": "ot-8b0612d4b40e4999",
+          "attempt_number": 1,
+          "node_id": "controller-local",
+          "model": null,
+          "started_at": "2026-10-22T01:12:46.927640+00:00",
+          "finished_at": "2026-10-22T01:12:47.180971+00:00",
+          "outcome": "accepted",
+          "failure_class": null,
+          "evaluation_json": "{\"checks\": [{\"detail\": \"status=success\", \"name\": \"execution_success\", \"passed\": true}, {\"detail\": \"report markdown generated\", \"name\": \"report_generated\", \"passed\": true}, {\"detail\": \"audit_valid=True\", \"name\": \"citations_valid\", \"passed\": true}]}"
+        }
+      ],
+      "events": [
+        {
+          "ts": "2026-10-22T01:10:20.893505+00:00",
+          "event_type": "run_created",
+          "previous_state": null,
+          "new_state": "DRAFT",
+          "actor": "admin",
+          "reason": "autonomy level 2"
+        },
+        {
+          "ts": "2026-10-22T01:10:20.948630+00:00",
+          "event_type": "analysis_started",
+          "previous_state": "DRAFT",
+          "new_state": "ANALYZING",
+          "actor": "admin",
+          "reason": "analysing objective"
+        },
+        {
+          "ts": "2026-10-22T01:10:20.949208+00:00",
+          "event_type": "planning_started",
+          "previous_state": "ANALYZING",
+          "new_state": "PLANNING",
+          "actor": "admin",
+          "reason": "mode=auto"
+        },
+        {
+          "ts": "2026-10-22T01:10:20.968214+00:00",
+          "event_type": "research_check_started",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Research checkpoint started for phase 'intake'"
+        },
+        {
+          "ts": "2026-10-22T01:10:21.018626+00:00",
+          "event_type": "knowledge_search_completed",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Searched knowledge base: found 0 records (0 fresh)"
+        },
+        {
+          "ts": "2026-10-22T01:10:21.018626+00:00",
+          "event_type": "research_required",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "No prior verified project or collective knowledge found for this objective."
+        },
+        {
+          "ts": "2026-10-22T01:10:21.040961+00:00",
+          "event_type": "external_search_started",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Executing queries: ['Conduct a comprehensive, evidence-based investigation into the current status of']"
+        },
+        {
+          "ts": "2026-10-22T01:10:22.670511+00:00",
+          "event_type": "planning_failed",
+          "previous_state": "PLANNING",
+          "new_state": "DRAFT",
+          "actor": "system",
+          "reason": "Planning state has no in-flight request (controller restarted?)."
+        },
+        {
+          "ts": "2026-10-22T01:10:23.799962+00:00",
+          "event_type": "external_search_completed",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Retrieved 5 candidate search results"
+        },
+        {
+          "ts": "2026-10-22T01:10:32.524846+00:00",
+          "event_type": "source_retrieved",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Retrieved and extracted 4 authorized web sources"
+        },
+        {
+          "ts": "2026-10-22T01:10:32.880323+00:00",
+          "event_type": "knowledge_integrated",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Integrated 8 verified knowledge record(s) into project knowledge base"
+        },
+        {
+          "ts": "2026-10-22T01:10:32.890673+00:00",
+          "event_type": "research_check_completed",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Checkpoint chk-5a813ea0eb3a4dd8 completed successfully"
+        },
+        {
+          "ts": "2026-10-22T01:10:33.057038+00:00",
+          "event_type": "plan_revision_created",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "revision 1 (template); valid=True"
+        },
+        {
+          "ts": "2026-10-22T01:10:42.724923+00:00",
+          "event_type": "analysis_started",
+          "previous_state": "DRAFT",
+          "new_state": "ANALYZING",
+          "actor": "admin",
+          "reason": "analysing objective"
+        },
+        {
+          "ts": "2026-10-22T01:10:42.732897+00:00",
+          "event_type": "planning_started",
+          "previous_state": "ANALYZING",
+          "new_state": "PLANNING",
+          "actor": "admin",
+          "reason": "mode=auto"
+        },
+        {
+          "ts": "2026-10-22T01:10:42.759500+00:00",
+          "event_type": "research_check_started",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Research checkpoint started for phase 'intake'"
+        },
+        {
+          "ts": "2026-10-22T01:10:42.952079+00:00",
+          "event_type": "knowledge_search_completed",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Searched knowledge base: found 8 records (8 fresh)"
+        },
+        {
+          "ts": "2026-10-22T01:10:42.964071+00:00",
+          "event_type": "research_not_required",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Existing verified knowledge (8 fresh record(s)) is sufficient for intake."
+        },
+        {
+          "ts": "2026-10-22T01:10:42.974682+00:00",
+          "event_type": "research_check_completed",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Checkpoint chk-6dcae101b4814efd completed successfully"
+        },
+        {
+          "ts": "2026-10-22T01:10:43.152285+00:00",
+          "event_type": "plan_revision_created",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "revision 2 (template); valid=True"
+        },
+        {
+          "ts": "2026-10-22T01:10:43.152285+00:00",
+          "event_type": "plan_proposed",
+          "previous_state": "PLANNING",
+          "new_state": "AWAITING_PLAN_APPROVAL",
+          "actor": "admin",
+          "reason": "revision 2 awaiting approval"
+        },
+        {
+          "ts": "2026-10-22T01:12:05.309652+00:00",
+          "event_type": "plan_materialized",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "4 tasks, 1 deliverables"
+        },
+        {
+          "ts": "2026-10-22T01:12:05.324247+00:00",
+          "event_type": "plan_approved",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "revision 2: Operator approval for authorized non-destructive audit research test"
+        },
+        {
+          "ts": "2026-10-22T01:12:05.335368+00:00",
+          "event_type": "plan_approved",
+          "previous_state": "AWAITING_PLAN_APPROVAL",
+          "new_state": "READY",
+          "actor": "admin",
+          "reason": "revision 2 approved"
+        },
+        {
+          "ts": "2026-10-22T01:12:11.624069+00:00",
+          "event_type": "execution_started",
+          "previous_state": "READY",
+          "new_state": "RUNNING",
+          "actor": "admin",
+          "reason": "user started execution"
+        },
+        {
+          "ts": "2026-10-22T01:12:12.075733+00:00",
+          "event_type": "research_check_started",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-checkpoint",
+          "reason": "Research checkpoint started for phase 'execution'"
+        },
+        {
+          "ts": "2026-10-22T01:12:12.169525+00:00",
+          "event_type": "knowledge_search_completed",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-checkpoint",
+          "reason": "Searched knowledge base: found 8 records (8 fresh)"
+        },
+        {
+          "ts": "2026-10-22T01:12:12.186035+00:00",
+          "event_type": "research_not_required",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-checkpoint",
+          "reason": "Execution proceeds with available project context and verified local capabilities."
+        },
+        {
+          "ts": "2026-10-22T01:12:12.203042+00:00",
+          "event_type": "research_check_completed",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-checkpoint",
+          "reason": "Checkpoint chk-1639a5e22cde461e completed successfully"
+        },
+        {
+          "ts": "2026-10-22T01:12:27.755374+00:00",
+          "event_type": "task_accepted",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-evaluator",
+          "reason": "search_sources on controller-local"
+        },
+        {
+          "ts": "2026-10-22T01:12:39.703511+00:00",
+          "event_type": "task_accepted",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-evaluator",
+          "reason": "retrieve_content on controller-local"
+        },
+        {
+          "ts": "2026-10-22T01:12:43.781838+00:00",
+          "event_type": "task_accepted",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-evaluator",
+          "reason": "verify_claims on controller-local"
+        },
+        {
+          "ts": "2026-10-22T01:12:47.198375+00:00",
+          "event_type": "task_accepted",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-evaluator",
+          "reason": "synthesize_report on controller-local"
+        },
+        {
+          "ts": "2026-10-22T01:12:47.216043+00:00",
+          "event_type": "all_tasks_accepted",
+          "previous_state": "RUNNING",
+          "new_state": "EVALUATING",
+          "actor": "orchestrator",
+          "reason": "all tasks passed acceptance checks; validating deliverables"
+        },
+        {
+          "ts": "2026-10-22T01:12:47.247806+00:00",
+          "event_type": "research_check_started",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-checkpoint",
+          "reason": "Research checkpoint started for phase 'evaluation'"
+        },
+        {
+          "ts": "2026-10-22T01:12:47.351021+00:00",
+          "event_type": "knowledge_search_completed",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-checkpoint",
+          "reason": "Searched knowledge base: found 8 records (8 fresh)"
+        },
+        {
+          "ts": "2026-10-22T01:12:47.368621+00:00",
+          "event_type": "research_not_required",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-checkpoint",
+          "reason": "Evaluation operates against objective acceptance criteria and existing source evidence ledger."
+        },
+        {
+          "ts": "2026-10-22T01:12:47.380920+00:00",
+          "event_type": "research_check_completed",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-checkpoint",
+          "reason": "Checkpoint chk-b65a1226f5024ae1 completed successfully"
+        },
+        {
+          "ts": "2026-10-22T01:12:47.589833+00:00",
+          "event_type": "deliverable_accepted",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator (auto)",
+          "reason": "Autonomous Research Report"
+        },
+        {
+          "ts": "2026-10-22T01:12:47.630987+00:00",
+          "event_type": "research_check_started",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-checkpoint",
+          "reason": "Research checkpoint started for phase 'final_reporting'"
+        },
+        {
+          "ts": "2026-10-22T01:12:47.787514+00:00",
+          "event_type": "knowledge_search_completed",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-checkpoint",
+          "reason": "Searched knowledge base: found 13 records (13 fresh)"
+        },
+        {
+          "ts": "2026-10-22T01:12:47.800920+00:00",
+          "event_type": "research_not_required",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-checkpoint",
+          "reason": "Final reporting synthesizes and audits existing accepted deliverables and verified evidence."
+        },
+        {
+          "ts": "2026-10-22T01:12:47.808925+00:00",
+          "event_type": "research_check_completed",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "orchestrator-checkpoint",
+          "reason": "Checkpoint chk-37c107536fb647b0 completed successfully"
+        },
+        {
+          "ts": "2026-10-22T01:12:48.232203+00:00",
+          "event_type": "completed",
+          "previous_state": "EVALUATING",
+          "new_state": "COMPLETED",
+          "actor": "orchestrator",
+          "reason": "all deliverables accepted"
+        }
+      ]
+    },
+    "routing_probe_project": {
+      "project_id": "prj-bc2bca9d593744c88306d05734c02b5a",
+      "runs": [
+        {
+          "id": "run-3ed0a2b98ea94cba",
+          "state": "AWAITING_PLAN_APPROVAL",
+          "autonomy_level": 2,
+          "created_at": "2026-10-22T01:16:48.734372+00:00",
+          "started_at": null,
+          "completed_at": null
+        }
+      ],
+      "tasks": [],
+      "attempts": [],
+      "events": [
+        {
+          "ts": "2026-10-22T01:16:48.735384+00:00",
+          "event_type": "run_created",
+          "previous_state": null,
+          "new_state": "DRAFT",
+          "actor": "admin",
+          "reason": "autonomy level 2"
+        },
+        {
+          "ts": "2026-10-22T01:16:48.785444+00:00",
+          "event_type": "analysis_started",
+          "previous_state": "DRAFT",
+          "new_state": "ANALYZING",
+          "actor": "admin",
+          "reason": "analysing objective"
+        },
+        {
+          "ts": "2026-10-22T01:16:48.797898+00:00",
+          "event_type": "planning_started",
+          "previous_state": "ANALYZING",
+          "new_state": "PLANNING",
+          "actor": "admin",
+          "reason": "mode=model"
+        },
+        {
+          "ts": "2026-10-22T01:16:48.816009+00:00",
+          "event_type": "research_check_started",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Research checkpoint started for phase 'intake'"
+        },
+        {
+          "ts": "2026-10-22T01:16:48.857791+00:00",
+          "event_type": "knowledge_search_completed",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Searched knowledge base: found 0 records (0 fresh)"
+        },
+        {
+          "ts": "2026-10-22T01:16:48.868463+00:00",
+          "event_type": "research_required",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "No prior verified project or collective knowledge found for this objective."
+        },
+        {
+          "ts": "2026-10-22T01:16:48.879064+00:00",
+          "event_type": "external_search_started",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Executing queries: ['Write a short plain-language explanation (under 150 words) of how drought affect']"
+        },
+        {
+          "ts": "2026-10-22T01:16:50.365007+00:00",
+          "event_type": "external_search_completed",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Retrieved 5 candidate search results"
+        },
+        {
+          "ts": "2026-10-22T01:16:50.460861+00:00",
+          "event_type": "planning_failed",
+          "previous_state": "PLANNING",
+          "new_state": "DRAFT",
+          "actor": "system",
+          "reason": "Planning state has no in-flight request (controller restarted?)."
+        },
+        {
+          "ts": "2026-10-22T01:16:56.162798+00:00",
+          "event_type": "source_retrieved",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Retrieved and extracted 3 authorized web sources"
+        },
+        {
+          "ts": "2026-10-22T01:16:56.429995+00:00",
+          "event_type": "knowledge_integrated",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Integrated 6 verified knowledge record(s) into project knowledge base"
+        },
+        {
+          "ts": "2026-10-22T01:16:56.446500+00:00",
+          "event_type": "research_check_completed",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Checkpoint chk-ef0f6f50c334442e completed successfully"
+        },
+        {
+          "ts": "2026-10-22T01:17:54.997980+00:00",
+          "event_type": "analysis_started",
+          "previous_state": "DRAFT",
+          "new_state": "ANALYZING",
+          "actor": "admin",
+          "reason": "analysing objective"
+        },
+        {
+          "ts": "2026-10-22T01:17:55.017969+00:00",
+          "event_type": "planning_started",
+          "previous_state": "ANALYZING",
+          "new_state": "PLANNING",
+          "actor": "admin",
+          "reason": "mode=model"
+        },
+        {
+          "ts": "2026-10-22T01:17:55.039924+00:00",
+          "event_type": "research_check_started",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Research checkpoint started for phase 'intake'"
+        },
+        {
+          "ts": "2026-10-22T01:17:55.182370+00:00",
+          "event_type": "knowledge_search_completed",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Searched knowledge base: found 6 records (6 fresh)"
+        },
+        {
+          "ts": "2026-10-22T01:17:55.194612+00:00",
+          "event_type": "research_not_required",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Existing verified knowledge (6 fresh record(s)) is sufficient for intake."
+        },
+        {
+          "ts": "2026-10-22T01:17:55.204624+00:00",
+          "event_type": "research_check_completed",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "admin",
+          "reason": "Checkpoint chk-97eb7547f14446c4 completed successfully"
+        },
+        {
+          "ts": "2026-10-22T01:22:45.518249+00:00",
+          "event_type": "plan_repair_requested",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "system",
+          "reason": "repair attempt 1/2"
+        },
+        {
+          "ts": "2026-10-22T01:25:59.143190+00:00",
+          "event_type": "plan_revision_created",
+          "previous_state": null,
+          "new_state": null,
+          "actor": "planner-agent",
+          "reason": "revision 1 (model); valid=True"
+        },
+        {
+          "ts": "2026-10-22T01:25:59.150991+00:00",
+          "event_type": "plan_proposed",
+          "previous_state": "PLANNING",
+          "new_state": "AWAITING_PLAN_APPROVAL",
+          "actor": "planner-agent",
+          "reason": "revision 1 awaiting approval"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "schema": "qc.increment19.public_holdout_containment_live_evidence.v1",
+  "host": "100.101.187.115",
+  "image_sha256": "43b057aa6a7133de2bbed57a8caaeecd07aea9228fa7cb6bec1608286b967b61",
+  "case_a_holdouts_pass_public_fails_rejected": {
+    "accepted": false,
+    "status": "failed",
+    "public_tests": {
+      "suite_id": "tests/test_public.py",
+      "suite_sha256": "135df73cf9bf192222d03c29787ed216eed0f474a6bab515feba98f124ee064a",
+      "candidate_source_sha256": "a81ef2a5614d61317f19f0f9096c52c0924f44881edda34251afc1181908e3cb",
+      "passed": false,
+      "tests_run": 2,
+      "expected_test_count": 2,
+      "failures": 1,
+      "grant_nonce": "2625c0f8e367459a9e1369152de4d1da",
+      "filesystem_and_network_containment": true,
+      "cleanup_confirmed": true
+    },
+    "holdout_tests": {
+      "suite_id": "holdout_h-c72dff75cfcf4f4e",
+      "suite_sha256": "2bfd0181a858a1d35e3de406c2159b8809f17863f89c85d2027281887486a938",
+      "candidate_source_sha256": "4a1cfef6884f6456ce080a5974cf18a01382fba7ebacfa1e7d844b9259a55d25",
+      "passed": true,
+      "tests_run": 2,
+      "failures": 0,
+      "grant_nonce": "1ceb9e6916664166b92065bfea66c2b3",
+      "filesystem_and_network_containment": true,
+      "cleanup_confirmed": true
+    }
+  },
+  "case_b_both_suites_pass_inside_linux_containment": {
+    "accepted": true,
+    "status": "verified_for_scope",
+    "protected_verification": true,
+    "containment": {
+      "backend_kind": "linux_systemd_root_image_sandbox",
+      "is_uncontained_test_double": false,
+      "process_lifetime_and_output_control": true,
+      "filesystem_and_network_containment": true,
+      "cleanup_confirmed": true,
+      "public_cleanup_confirmed": true,
+      "holdout_cleanup_confirmed": true,
+      "public_grant_nonce": "19d469fe53b245bbbe5ac813c0a55358",
+      "holdout_grant_nonce": "24cabbac3dff4110adbe3745073b02f4"
+    },
+    "public_tests": {
+      "suite_id": "tests/test_public.py",
+      "suite_sha256": "9a36392394cf6373c164ff86b05772b6fd759977e13c939bf33289d651a83a75",
+      "candidate_source_sha256": "cfe7b3e9658cf51f6d24c2ad9e53d5b1d416943b0d10feb809a38dea264b9470",
+      "passed": true,
+      "tests_run": 3,
+      "grant_nonce": "19d469fe53b245bbbe5ac813c0a55358"
+    },
+    "holdout_tests": {
+      "suite_id": "holdout_h-9e1b797deddc4f91",
+      "suite_sha256": "2bfd0181a858a1d35e3de406c2159b8809f17863f89c85d2027281887486a938",
+      "candidate_source_sha256": "4a1cfef6884f6456ce080a5974cf18a01382fba7ebacfa1e7d844b9259a55d25",
+      "passed": true,
+      "tests_run": 2,
+      "grant_nonce": "24cabbac3dff4110adbe3745073b02f4"
+    }
+  },
+  "case_c_direct_public_suite_contained": {
+    "passed": true,
+    "tests_run": 3,
+    "containment_backend": "linux_systemd_root_image_sandbox",
+    "filesystem_and_network_containment": true,
+    "cleanup_confirmed": true,
+    "grant_nonce": "f4d01b9c67ff48788c048a7e9555abf4"
+  },
+  "total_ssh_sandbox_grants_executed": 5,
+  "all_nonce_replays_denied": true
+}

@@ -3,6 +3,7 @@
 Task completion does not automatically mean Deliverable acceptance. Acceptance requires
 defined criteria, verification results, and recorded human decision.
 """
+import logging
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -10,6 +11,8 @@ from typing import Any, Dict, List, Optional
 
 from app.database import db_transaction, get_db_connection
 from app.services.projects import NotFound, ValidationError, NAME_MAX, TEXT_MAX, record_decision
+
+logger = logging.getLogger("qwen_collective.deliverables")
 
 DELIVERABLE_TYPES = [
     "document", "dataset", "report", "software_artifact", "configuration",
@@ -171,7 +174,8 @@ def submit_deliverable(
     deliverable_id: str,
     user: str,
     artifact_references: str,
-    verification_results: str = ""
+    verification_results: str = "",
+    primary_artifact_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """Submit a deliverable for formal review with artifact evidence."""
     clean_artifacts = _clean(artifact_references, "Artifact references", required=True)
@@ -182,12 +186,37 @@ def submit_deliverable(
         if cur["status"] not in ("planned", "in_progress", "changes_requested"):
             raise ValidationError(f"Cannot submit deliverable from '{cur['status']}' state.")
 
+        # Resolve primary artifact ID if not explicitly passed
+        target_art_id = primary_artifact_id or cur.get("primary_artifact_id")
+        if not target_art_id and "art-" in clean_artifacts:
+            import re
+            m = re.search(r"(art-[a-f0-9]{8,32})", clean_artifacts)
+            if m:
+                target_art_id = m.group(1)
+
         now = _now()
         conn.execute("""
-            UPDATE deliverables SET status = 'submitted', artifact_references = ?,
-                   verification_results = ?, updated_at = ?
+            UPDATE deliverables
+            SET status = 'submitted',
+                artifact_references = ?,
+                verification_results = ?,
+                primary_artifact_id = COALESCE(?, primary_artifact_id),
+                updated_at = ?
             WHERE id = ?
-        """, (clean_artifacts, clean_verif, now, deliverable_id))
+        """, (clean_artifacts, clean_verif, target_art_id, now, deliverable_id))
+
+        if target_art_id:
+            conn.execute(
+                "UPDATE artifacts SET status = 'needs_review', updated_at = ? WHERE id = ?",
+                (now, target_art_id)
+            )
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO artifact_project_links (id, artifact_id, project_id, role, added_at, added_by)
+                VALUES (?, ?, ?, 'deliverable_backing', ?, ?)
+                """,
+                (f"apl-{uuid.uuid4().hex[:12]}", target_art_id, cur["project_id"], now, user)
+            )
 
         # Record revision history
         rev_count = conn.execute(
@@ -209,11 +238,18 @@ def submit_deliverable(
 def review_deliverable(
     deliverable_id: str,
     new_status: str,
-    reviewer: str,
-    rationale: str,
-    verification_results: Optional[str] = None
+    reviewer: str = "operator",
+    rationale: str = "",
+    verification_results: Optional[str] = None,
+    *,
+    actor: Optional[str] = None,
+    review_notes: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Human review decision for a submitted or in-review deliverable."""
+    if actor and reviewer == "operator":
+        reviewer = actor
+    if review_notes and not rationale:
+        rationale = review_notes
     if new_status not in DELIVERABLE_STATUSES:
         raise ValidationError(f"Invalid deliverable status: '{new_status}'.")
     clean_rat = _clean(rationale, "Decision rationale", required=True)
@@ -222,6 +258,39 @@ def review_deliverable(
         cur = _load_deliverable(conn, deliverable_id)
         if new_status not in DELIVERABLE_TRANSITIONS.get(cur["status"], set()):
             raise ValidationError(f"Cannot transition deliverable from '{cur['status']}' to '{new_status}'.")
+
+        # AUD-04: Deliverable acceptance requires verified artifact provenance or evaluated orchestration approval
+        if new_status == "accepted" and reviewer != "orchestrator (auto)":
+            target_art_id = cur.get("primary_artifact_id")
+            has_valid_art = False
+            if target_art_id:
+                art_row = conn.execute(
+                    "SELECT id, validation_status FROM artifacts WHERE id = ?",
+                    (target_art_id,),
+                ).fetchone()
+                if art_row and art_row["validation_status"] in ("valid", "verified"):
+                    has_valid_art = True
+            if not has_valid_art:
+                try:
+                    orch_art = conn.execute(
+                        "SELECT id FROM orchestration_artifacts WHERE project_id = ? AND validation_state = 'valid' LIMIT 1",
+                        (cur["project_id"],),
+                    ).fetchone()
+                except sqlite3.OperationalError:
+                    orch_art = None
+                try:
+                    ver_tc = conn.execute(
+                        "SELECT id FROM project_task_contracts WHERE project_id = ? AND status = 'verified' LIMIT 1",
+                        (cur["project_id"],),
+                    ).fetchone()
+                except sqlite3.OperationalError:
+                    ver_tc = None
+                if orch_art or ver_tc:
+                    has_valid_art = True
+            if not has_valid_art:
+                raise ValidationError(
+                    f"Cannot mark deliverable '{deliverable_id}' as 'accepted' without a verified backing artifact or completed verification contract."
+                )
 
         now = _now()
         verif = _clean(verification_results, "Verification results") if verification_results is not None else cur["verification_results"]
@@ -234,6 +303,14 @@ def review_deliverable(
                    accepted_by = ?, accepted_at = ?, updated_at = ?
             WHERE id = ?
         """, (new_status, verif, clean_rat, accepted_by, accepted_at, now, deliverable_id))
+
+        target_art_id = cur.get("primary_artifact_id")
+        if target_art_id:
+            art_status = "accepted" if new_status == "accepted" else ("failed" if new_status == "rejected" else "needs_review")
+            conn.execute(
+                "UPDATE artifacts SET status = ?, updated_at = ? WHERE id = ?",
+                (art_status, now, target_art_id)
+            )
 
         # Snapshot into revision history
         rev_count = conn.execute(
@@ -259,6 +336,14 @@ def review_deliverable(
             to_value=new_status
         )
         conn.execute("UPDATE projects SET last_activity_at = ? WHERE id = ?", (now, cur["project_id"]))
+
+    # Automatic knowledge extraction upon acceptance
+    if new_status == "accepted" and target_art_id:
+        try:
+            from app.services.artifacts import artifact_service
+            artifact_service.extract_knowledge_from_artifact(target_art_id, actor=reviewer)
+        except Exception as ex:
+            logger.warning("Automatic knowledge extraction for accepted deliverable %s failed: %s", deliverable_id, ex)
 
     return get_deliverable(deliverable_id)  # type: ignore[return-value]
 

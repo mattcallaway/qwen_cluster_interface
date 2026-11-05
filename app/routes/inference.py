@@ -8,13 +8,16 @@ from app.services.inference import (
     register_inference_backend,
     test_inference_endpoint,
     update_backend_status,
+    update_backend_tier_priority,
     get_all_distributed_groups,
     get_distributed_group_by_id,
     create_distributed_group,
     generate_distributed_launch_command,
     get_benchmarks,
-    add_benchmark_result
+    add_benchmark_result,
+    get_paged_kv_metrics,
 )
+from app.services.pipeline_parallel.topology import get_active_pipeline_topologies
 from app.services.machine_registry import get_all_machines, get_machine_by_id
 
 router = APIRouter(tags=["inference"])
@@ -30,6 +33,8 @@ def inference_index(request: Request):
     groups = get_all_distributed_groups()
     benchmarks = get_benchmarks()
     machines = get_all_machines()
+    paged_kv_metrics = get_paged_kv_metrics()
+    pipeline_topologies = get_active_pipeline_topologies()
 
     return templates.TemplateResponse(request=request, name="inference/index.html", context={
         "active_nav": "inference",
@@ -38,7 +43,9 @@ def inference_index(request: Request):
         "backends": backends,
         "distributed_groups": groups,
         "benchmarks": benchmarks,
-        "machines": machines
+        "machines": machines,
+        "paged_kv_metrics": paged_kv_metrics,
+        "pipeline_topologies": pipeline_topologies,
     })
 
 @router.post("/inference/backends/add")
@@ -89,6 +96,31 @@ async def test_backend(request: Request, backend_id: str, csrf_token: str = Form
 
     return RedirectResponse(url="/inference", status_code=status.HTTP_302_FOUND)
 
+@router.post("/inference/backends/{backend_id}/configure")
+def configure_backend(
+    request: Request,
+    backend_id: str,
+    csrf_token: str = Form(...),
+    tier: str = Form(...),
+    priority: int = Form(...),
+    is_active: int = Form(1),
+    timeout_seconds: float = Form(30.0),
+    description: Optional[str] = Form("")
+):
+    user = get_current_user(request)
+    if not user or not verify_csrf(request, csrf_token):
+        return RedirectResponse(url="/inference", status_code=status.HTTP_302_FOUND)
+
+    update_backend_tier_priority(
+        backend_id=backend_id,
+        tier=tier,
+        priority=priority,
+        is_active=is_active,
+        timeout_seconds=timeout_seconds,
+        description=description or ""
+    )
+    return RedirectResponse(url="/inference", status_code=status.HTTP_302_FOUND)
+
 @router.post("/inference/groups/create")
 def create_group(
     request: Request,
@@ -97,6 +129,7 @@ def create_group(
     coordinator_machine_id: str = Form(...),
     model_file: str = Form(...),
     rpc_endpoints_raw: str = Form(...),
+    backend_type: str = Form("llama_cpp_rpc"),
     context_window: int = Form(4096),
     runtime_parameters: Optional[str] = Form(""),
     notes: Optional[str] = Form("")
@@ -113,7 +146,8 @@ def create_group(
         rpc_endpoints=rpc_list,
         context_window=context_window,
         runtime_parameters=runtime_parameters or "",
-        notes=notes or ""
+        notes=notes or "",
+        backend_type=backend_type,
     )
     return RedirectResponse(url=f"/inference/groups/{group_id}", status_code=status.HTTP_302_FOUND)
 
@@ -167,3 +201,58 @@ def record_benchmark(
         notes=notes or ""
     )
     return RedirectResponse(url="/inference", status_code=status.HTTP_302_FOUND)
+
+
+# ---------------------------------------------------------------------------
+# Increment 17: Paged KV & Pipeline Parallelism API & Widget Endpoints
+# ---------------------------------------------------------------------------
+
+def _require_inference_api_auth(request: Request) -> str:
+    auth_hdr = request.headers.get("Authorization", "")
+    if auth_hdr.startswith("Bearer "):
+        from app.auth import verify_session_token
+        from app.config import settings
+        tok = auth_hdr[7:].strip()
+        user = verify_session_token(tok) or ("admin" if tok == settings.admin_password else None)
+        if user:
+            return user if isinstance(user, str) else user.get("username", "user")
+    user = get_current_user(request)
+    if not user:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
+    return user if isinstance(user, str) else user.get("username", "user")
+
+
+@router.get("/api/v1/inference/paged-kv/metrics")
+def api_paged_kv_metrics(request: Request):
+    """Returns real-time Paged KV virtual memory statistics and prefix hit rates."""
+    _require_inference_api_auth(request)
+    return get_paged_kv_metrics()
+
+
+@router.get("/api/v1/inference/pipeline/stages")
+def api_pipeline_stages(request: Request):
+    """Returns active cluster pipeline topologies, stage slices, and latency baselines."""
+    _require_inference_api_auth(request)
+    return get_active_pipeline_topologies()
+
+
+@router.get("/inference/paged-kv/widget", response_class=HTMLResponse)
+def paged_kv_widget(request: Request):
+    """HTML partial for live-updating Paged KV metrics widget via HTMX."""
+    _require_inference_api_auth(request)
+    metrics = get_paged_kv_metrics()
+    return templates.TemplateResponse(request=request, name="inference/paged_kv_widget.html", context={
+        "paged_kv_metrics": metrics
+    })
+
+
+@router.get("/inference/pipeline/widget", response_class=HTMLResponse)
+def pipeline_widget(request: Request):
+    """HTML partial for live-updating Pipeline Parallelism Topology widget via HTMX."""
+    _require_inference_api_auth(request)
+    topologies = get_active_pipeline_topologies()
+    return templates.TemplateResponse(request=request, name="inference/pipeline_widget.html", context={
+        "pipeline_topologies": topologies
+    })
+

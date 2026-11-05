@@ -1,0 +1,17 @@
+{
+  "migration_duration_ms": 15.0,
+  "concurrent_writes": 34,
+  "concurrent_reads": 35,
+  "long_running_transaction_overlap": true,
+  "mean_write_latency_ms": 1.38,
+  "errors": 0,
+  "pre_backup_file_sha256": "396288a05c34f829799ac9163777c40e50af2e4e3366797b124d875aa6b13195",
+  "restored_backup_file_sha256": "396288a05c34f829799ac9163777c40e50af2e4e3366797b124d875aa6b13195",
+  "pre_migration_data_sha256": "407b8376a53b484b3ba04fd272a0f8de6f70cebc13a309d4eaffa0c5ecaeb818",
+  "restored_data_sha256": "407b8376a53b484b3ba04fd272a0f8de6f70cebc13a309d4eaffa0c5ecaeb818",
+  "post_migration_integrity": "ok",
+  "restoration_integrity": "ok",
+  "trigger_immutability_update_blocked": true,
+  "trigger_immutability_delete_blocked": true,
+  "reimported_audit_records_after_restore": 1
+}

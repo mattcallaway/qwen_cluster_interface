@@ -1,0 +1,208 @@
+{
+  "schema": "qc.audit_r1_r4_live_interruption_evidence.v1",
+  "recorded_at_utc": "2026-11-05T22:38:02.513128+00:00",
+  "remote_host": "100.101.187.115",
+  "pinned_root_image_sha256": "43b057aa6a7133de2bbed57a8caaeecd07aea9228fa7cb6bec1608286b967b61",
+  "baseline_host_snapshot": {
+    "services": {
+      "ollama.service": {
+        "MainPID": "1432",
+        "ActiveState": "active",
+        "SubState": "running"
+      },
+      "qwen-worker.service": {
+        "MainPID": "1561866",
+        "ActiveState": "active",
+        "SubState": "running"
+      },
+      "qc-ollama-ts.service": {
+        "MainPID": "519545",
+        "ActiveState": "active",
+        "SubState": "running"
+      }
+    },
+    "sandbox_or_cleanup_units": [],
+    "staged_inputs": [],
+    "staged_requests_count": 205,
+    "test_host_policy_exists": false,
+    "ollama_loopback_tcp_connections": 0
+  },
+  "checks": {
+    "check1_live_leased_model_cancelled_during_generation": {
+      "check_kind": "live_model_on_qwen_laptop",
+      "model": "qwen2.5:1.5b",
+      "project_id": "prj-8e943d8209ff473593e8c9276a6ebb29",
+      "task_id": "task_live_ollama_cancel_1",
+      "request_id": "req-live-ollama-cancel-1",
+      "started_at_utc": "2026-11-05T22:38:03.312816+00:00",
+      "finished_at_utc": "2026-11-05T22:38:04.099853+00:00",
+      "total_duration_s": 0.781,
+      "abort_latency_after_cancel_s": 0.484,
+      "streamed_bytes_received_before_abort": 937,
+      "cancellation_outcomes": {
+        "cancellation_acknowledged": true,
+        "client_request_terminated": true,
+        "owned_threads_or_processes_stopped": true,
+        "backend_generation_stopped": "unconfirmed",
+        "late_output_rejected": true,
+        "cleanup_completed": true,
+        "client_termination_confirmed": true,
+        "termination_confirmed": "unconfirmed_backend",
+        "stage": "during_streaming",
+        "request_id": "req-live-ollama-cancel-1"
+      },
+      "ollama_service_pid_unchanged": true,
+      "worker_service_pid_unchanged": true
+    },
+    "check2_controlled_endpoint_cancelled_before_headers": {
+      "check_kind": "controlled_local_http_server",
+      "task_id": "task_check2_before_headers",
+      "request_id": "req-check2-before-headers",
+      "started_at_utc": "2026-11-05T22:38:04.546827+00:00",
+      "finished_at_utc": "2026-11-05T22:38:04.664246+00:00",
+      "total_duration_s": 0.125,
+      "abort_latency_after_cancel_s": 0.031,
+      "server_observed_disconnect": true,
+      "active_handlers_after_cleanup": 0,
+      "cancellation_outcomes": {
+        "cancellation_acknowledged": true,
+        "client_request_terminated": true,
+        "owned_threads_or_processes_stopped": true,
+        "backend_generation_stopped": true,
+        "late_output_rejected": true,
+        "cleanup_completed": true,
+        "client_termination_confirmed": true,
+        "termination_confirmed": true,
+        "stage": "before_headers",
+        "request_id": "req-check2-before-headers"
+      }
+    },
+    "check3_controller_termination_during_protected_execution": {
+      "check_kind": "live_remote_linux_sandbox_controller_kill",
+      "grant_nonce": "a3e9e4b0011f40119a53212b24ece2b7",
+      "proposal_sha256": "08a62aef013cdccb6a3fb9fcde524c3547be222ad48b7966c94e47c18ff983c5",
+      "observed_running_unit_before_kill": "qc-sandbox-de0e43abd64e4d5390ce07d87c5557a3.service",
+      "started_at_utc": "2026-11-05T22:38:05.348405+00:00",
+      "finished_at_utc": "2026-11-05T22:38:07.226266+00:00",
+      "remote_cleanup_latency_after_controller_kill_s": 0.688,
+      "after_snapshot": {
+        "services": {
+          "ollama.service": {
+            "MainPID": "1432",
+            "ActiveState": "active",
+            "SubState": "running"
+          },
+          "qwen-worker.service": {
+            "MainPID": "1561866",
+            "ActiveState": "active",
+            "SubState": "running"
+          },
+          "qc-ollama-ts.service": {
+            "MainPID": "519545",
+            "ActiveState": "active",
+            "SubState": "running"
+          }
+        },
+        "sandbox_or_cleanup_units": [],
+        "staged_inputs": [],
+        "staged_requests_count": 205,
+        "test_host_policy_exists": false,
+        "ollama_loopback_tcp_connections": 0
+      }
+    },
+    "check4_ssh_disconnection_during_remote_execution": {
+      "check_kind": "live_remote_linux_sandbox_ssh_disconnect",
+      "proposal_sha256": "d52a9d2a85caa997c6feb5ed960808751f7ff6149d15acd3c5728bc347ed900e",
+      "observed_running_unit_before_ssh_drop": "qc-sandbox-79b863cdbbf242808074312753675f5f.service",
+      "started_at_utc": "2026-11-05T22:38:07.425648+00:00",
+      "finished_at_utc": "2026-11-05T22:38:08.791426+00:00",
+      "remote_cleanup_latency_after_ssh_drop_s": 0.719,
+      "controller_decision": "BLOCKED",
+      "accepted": false,
+      "after_snapshot": {
+        "services": {
+          "ollama.service": {
+            "MainPID": "1432",
+            "ActiveState": "active",
+            "SubState": "running"
+          },
+          "qwen-worker.service": {
+            "MainPID": "1561866",
+            "ActiveState": "active",
+            "SubState": "running"
+          },
+          "qc-ollama-ts.service": {
+            "MainPID": "519545",
+            "ActiveState": "active",
+            "SubState": "running"
+          }
+        },
+        "sandbox_or_cleanup_units": [],
+        "staged_inputs": [],
+        "staged_requests_count": 205,
+        "test_host_policy_exists": false,
+        "ollama_loopback_tcp_connections": 0
+      }
+    },
+    "check5_timeout_partial_startup_and_non_accumulation": {
+      "timeout_case_5a": {
+        "grant_nonce": "cd0298a3bbbb44bcbd56f64123c152b8",
+        "nonce_replay_denied": true,
+        "elapsed_s": 5.016,
+        "decision": "CASES_FAILED",
+        "accepted": false,
+        "observations": [
+          {
+            "case_id": "c1",
+            "cleanup_confirmed": true,
+            "executed": true,
+            "exit_code": null,
+            "reason": "timeout",
+            "stdout": "",
+            "unit": "qc-sandbox-dd08158ad59e40938f37fecfc41ff7b8.service"
+          },
+          {
+            "case_id": "c2",
+            "cleanup_confirmed": true,
+            "executed": true,
+            "exit_code": null,
+            "reason": "timeout",
+            "stdout": "",
+            "unit": "qc-sandbox-6a223d2272c949488d08b8e769c6b89b.service"
+          }
+        ]
+      },
+      "partial_startup_case_5b": {
+        "decision": "BLOCKED",
+        "accepted": false,
+        "behavior_verified": false
+      },
+      "final_host_snapshot": {
+        "services": {
+          "ollama.service": {
+            "MainPID": "1432",
+            "ActiveState": "active",
+            "SubState": "running"
+          },
+          "qwen-worker.service": {
+            "MainPID": "1561866",
+            "ActiveState": "active",
+            "SubState": "running"
+          },
+          "qc-ollama-ts.service": {
+            "MainPID": "519545",
+            "ActiveState": "active",
+            "SubState": "running"
+          }
+        },
+        "sandbox_or_cleanup_units": [],
+        "staged_inputs": [],
+        "staged_requests_count": 205,
+        "test_host_policy_exists": false,
+        "ollama_loopback_tcp_connections": 0
+      },
+      "all_unrelated_service_pids_unchanged": true,
+      "zero_accumulated_units_or_staging": true
+    }
+  }
+}

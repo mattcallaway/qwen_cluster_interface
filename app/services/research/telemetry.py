@@ -181,16 +181,17 @@ class ResearchTelemetryService:
             cursor.execute("SELECT COUNT(*) FROM research_claims")
             total_claims = cursor.fetchone()[0] or 0
 
-            cursor.execute("SELECT provider, is_available, response_time_ms, failure_count, rate_limited, last_check FROM research_provider_status")
+            cursor.execute("SELECT provider_name, is_available, consecutive_failures, last_error, last_success_at, total_queries, updated_at FROM research_provider_status")
             providers = []
             for r in cursor.fetchall():
                 providers.append({
                     "provider": r[0],
                     "is_available": bool(r[1]),
-                    "response_time_ms": r[2],
-                    "failure_count": r[3],
-                    "rate_limited": bool(r[4]),
-                    "last_check": r[5],
+                    "consecutive_failures": r[2],
+                    "last_error": r[3],
+                    "last_success_at": r[4],
+                    "total_queries": r[5],
+                    "updated_at": r[6],
                 })
 
             return {

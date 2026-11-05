@@ -1,0 +1,52 @@
+{
+  "schema": "qc.linux_canary.v1",
+  "started_at": "2026-10-28T04:39:09.090625+00:00",
+  "mode": "reviewed laptop fixtures only",
+  "generated_code_executed": false,
+  "production_approved": false,
+  "services_before": {
+    "qwen-worker.service": "MainPID=554427\nActiveState=active\nSubState=running",
+    "ollama.service": "MainPID=1432\nActiveState=active\nSubState=running",
+    "qc-ollama-ts.service": "MainPID=519545\nActiveState=active\nSubState=running"
+  },
+  "tests": [
+    {
+      "name": "smoke",
+      "result": {
+        "reason": "cleanup_unverified",
+        "executed": true,
+        "exit_code": null,
+        "cleanup_confirmed": false,
+        "unit": "qc-sandbox-4216ef41bd2f49fa8da715afdd5095ce.service",
+        "source_sha256": "2528ab7b5e7a359c76b928df5bfdc5736e5adcb92da111273dc952bb7ddbca70",
+        "image_sha256": "1c33097649e7835f774fa890b6f5e38e9c8f1e472507d7d384ac1b01708b0aa7",
+        "stdout": "",
+        "stderr": "",
+        "captured_bytes": 0,
+        "output_bytes_seen": 0,
+        "backend_verified": false,
+        "accepted": false,
+        "certification_eligible": false
+      }
+    }
+  ],
+  "created_paths": [
+    "/var/lib/qwen-sandbox",
+    "/etc/qwen-sandbox/test-host.json"
+  ],
+  "image_sha256": "1c33097649e7835f774fa890b6f5e38e9c8f1e472507d7d384ac1b01708b0aa7",
+  "image_size_bytes": 12591104,
+  "image_recipe": "Installed /usr/bin/python3.12, stdlib, ldd-resolved shared libraries; no host credentials/configuration",
+  "backend_source_sha256": "861c8505055a86da3a9ed25f7d3277813dc224af0b74bc536a5ce7c5b5246f80",
+  "smoke_passed": false,
+  "host_policy_removed": true,
+  "services_after": {
+    "qwen-worker.service": "MainPID=554427\nActiveState=active\nSubState=running",
+    "ollama.service": "MainPID=1432\nActiveState=active\nSubState=running",
+    "qc-ollama-ts.service": "MainPID=519545\nActiveState=active\nSubState=running"
+  },
+  "existing_service_pids_unchanged": true,
+  "audit_directory": "/var/lib/qwen-sandbox/audit/f75e576ff19344479a419e2883a8393d",
+  "finished_at": "2026-10-28T04:39:21.689804+00:00",
+  "backend_verified": false
+}

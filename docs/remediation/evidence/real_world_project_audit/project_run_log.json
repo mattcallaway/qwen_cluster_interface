@@ -1,0 +1,2083 @@
+{
+  "name": "AUDIT-RW Sonoma Water Security Brief 20261021-1810",
+  "started_utc": "2026-10-22T01:10:18.135398+00:00",
+  "timeline": [
+    {
+      "event": "login",
+      "t": "2026-10-22T01:10:19.966516+00:00"
+    },
+    {
+      "project_id": "prj-c74dd685c2b145e5b32ab347253dbc77",
+      "seconds": 12.3,
+      "event": "project_created_and_plan_requested",
+      "t": "2026-10-22T01:10:33.118006+00:00"
+    },
+    {
+      "state": "DRAFT",
+      "seconds": 18.67,
+      "block_reason": "",
+      "planning_error": "Planning state has no in-flight request (controller restarted?).",
+      "event": "planning_finished",
+      "t": "2026-10-22T01:10:39.485992+00:00"
+    },
+    {
+      "event": "replan_via_ui_after_draft",
+      "t": "2026-10-22T01:10:42.652149+00:00"
+    },
+    {
+      "state": "AWAITING_PLAN_APPROVAL",
+      "event": "replanning_finished",
+      "t": "2026-10-22T01:10:45.770730+00:00"
+    },
+    {
+      "task_count": 0,
+      "unsafe": [],
+      "tasks": [],
+      "event": "operator_plan_review",
+      "t": "2026-10-22T01:10:48.817334+00:00"
+    },
+    {
+      "reason": "plan contains unexpected privileged/execution actions or could not be read",
+      "event": "operator_refused_approval",
+      "t": "2026-10-22T01:10:48.817334+00:00"
+    },
+    {
+      "revision": "rev-fbf5e13b14f94f40",
+      "source": "template",
+      "tasks": [
+        {
+          "key": "search_sources",
+          "risk": "low",
+          "action": {
+            "inputs": [],
+            "step": "research_search",
+            "type": "controller_step"
+          },
+          "caps": [
+            "controller"
+          ],
+          "approval": "auto"
+        },
+        {
+          "key": "retrieve_content",
+          "risk": "low",
+          "action": {
+            "inputs": [
+              "search_sources"
+            ],
+            "step": "research_fetch",
+            "type": "controller_step"
+          },
+          "caps": [
+            "controller"
+          ],
+          "approval": "auto"
+        },
+        {
+          "key": "verify_claims",
+          "risk": "low",
+          "action": {
+            "inputs": [
+              "retrieve_content"
+            ],
+            "step": "research_verify",
+            "type": "controller_step"
+          },
+          "caps": [
+            "controller"
+          ],
+          "approval": "auto"
+        },
+        {
+          "key": "synthesize_report",
+          "risk": "low",
+          "action": {
+            "inputs": [
+              "verify_claims"
+            ],
+            "step": "research_synthesize",
+            "type": "controller_step"
+          },
+          "caps": [
+            "controller"
+          ],
+          "approval": "auto"
+        }
+      ],
+      "deliverables": [
+        "research_report"
+      ],
+      "unsafe": [],
+      "event": "operator_plan_review",
+      "t": "2026-10-22T01:12:02.195169+00:00"
+    },
+    {
+      "state": "READY",
+      "event": "plan_approved_via_ui",
+      "t": "2026-10-22T01:12:08.139274+00:00"
+    },
+    {
+      "approval_to_start_s": 6.58,
+      "event": "execution_started_via_ui",
+      "t": "2026-10-22T01:12:11.508266+00:00"
+    },
+    {
+      "state": "COMPLETED",
+      "execution_seconds": 37.7,
+      "event": "execution_terminal",
+      "t": "2026-10-22T01:12:49.205075+00:00"
+    },
+    {
+      "count": 1,
+      "hrefs": [
+        "/deliverables/art-ea7a176ffa6f46c7"
+      ],
+      "event": "deliverable_preview_buttons",
+      "t": "2026-10-22T01:12:53.380822+00:00"
+    },
+    {
+      "href": "/deliverables/art-ea7a176ffa6f46c7",
+      "status": 500,
+      "visible": "Internal Server Error",
+      "event": "ui_preview_click",
+      "t": "2026-10-22T01:12:54.884950+00:00"
+    }
+  ],
+  "status_polls": [
+    {
+      "t": "2026-10-22T01:12:11.657083+00:00",
+      "state": "READY",
+      "tasks": [
+        [
+          null,
+          "pending",
+          null,
+          null
+        ],
+        [
+          null,
+          "pending",
+          null,
+          null
+        ],
+        [
+          null,
+          "pending",
+          null,
+          null
+        ],
+        [
+          null,
+          "pending",
+          null,
+          null
+        ]
+      ]
+    },
+    {
+      "t": "2026-10-22T01:12:13.760655+00:00",
+      "state": "RUNNING",
+      "tasks": [
+        [
+          null,
+          "pending",
+          null,
+          null
+        ],
+        [
+          null,
+          "dispatched",
+          null,
+          null
+        ],
+        [
+          null,
+          "pending",
+          null,
+          null
+        ],
+        [
+          null,
+          "pending",
+          null,
+          null
+        ]
+      ]
+    },
+    {
+      "t": "2026-10-22T01:12:29.477954+00:00",
+      "state": "RUNNING",
+      "tasks": [
+        [
+          null,
+          "pending",
+          null,
+          null
+        ],
+        [
+          null,
+          "accepted",
+          null,
+          null
+        ],
+        [
+          null,
+          "pending",
+          null,
+          null
+        ],
+        [
+          null,
+          "pending",
+          null,
+          null
+        ]
+      ]
+    },
+    {
+      "t": "2026-10-22T01:12:31.554400+00:00",
+      "state": "RUNNING",
+      "tasks": [
+        [
+          null,
+          "dispatched",
+          null,
+          null
+        ],
+        [
+          null,
+          "accepted",
+          null,
+          null
+        ],
+        [
+          null,
+          "pending",
+          null,
+          null
+        ],
+        [
+          null,
+          "pending",
+          null,
+          null
+        ]
+      ]
+    },
+    {
+      "t": "2026-10-22T01:12:40.712548+00:00",
+      "state": "RUNNING",
+      "tasks": [
+        [
+          null,
+          "accepted",
+          null,
+          null
+        ],
+        [
+          null,
+          "accepted",
+          null,
+          null
+        ],
+        [
+          null,
+          "pending",
+          null,
+          null
+        ],
+        [
+          null,
+          "pending",
+          null,
+          null
+        ]
+      ]
+    },
+    {
+      "t": "2026-10-22T01:12:44.969416+00:00",
+      "state": "RUNNING",
+      "tasks": [
+        [
+          null,
+          "accepted",
+          null,
+          null
+        ],
+        [
+          null,
+          "accepted",
+          null,
+          null
+        ],
+        [
+          null,
+          "pending",
+          null,
+          null
+        ],
+        [
+          null,
+          "accepted",
+          null,
+          null
+        ]
+      ]
+    },
+    {
+      "t": "2026-10-22T01:12:47.081708+00:00",
+      "state": "RUNNING",
+      "tasks": [
+        [
+          null,
+          "accepted",
+          null,
+          null
+        ],
+        [
+          null,
+          "accepted",
+          null,
+          null
+        ],
+        [
+          null,
+          "dispatched",
+          null,
+          null
+        ],
+        [
+          null,
+          "accepted",
+          null,
+          null
+        ]
+      ]
+    },
+    {
+      "t": "2026-10-22T01:12:49.205075+00:00",
+      "state": "COMPLETED",
+      "tasks": [
+        [
+          null,
+          "accepted",
+          null,
+          null
+        ],
+        [
+          null,
+          "accepted",
+          null,
+          null
+        ],
+        [
+          null,
+          "accepted",
+          null,
+          null
+        ],
+        [
+          null,
+          "accepted",
+          null,
+          null
+        ]
+      ]
+    }
+  ],
+  "project_id": "prj-c74dd685c2b145e5b32ab347253dbc77",
+  "plan": {
+    "ok": true,
+    "result": {
+      "state": "AWAITING_PLAN_APPROVAL",
+      "current": {
+        "id": "rev-fbf5e13b14f94f40",
+        "revision_number": 2,
+        "status": "proposed",
+        "source": "template",
+        "plan": {
+          "approval_gates": [
+            {
+              "action": "Execute plan",
+              "reason": "Initial research execution requires approval."
+            }
+          ],
+          "deliverables": [
+            {
+              "acceptance_criteria": "All claims are supported by verified evidence and all citations resolve to retrieved sources.",
+              "description": "Synthesized research report with deterministic source citations and evidence ledger.",
+              "key": "research_report",
+              "name": "Autonomous Research Report",
+              "produced_by": "synthesize_report",
+              "stage": "report",
+              "terminal": true,
+              "type": "report"
+            }
+          ],
+          "overview": {
+            "assumptions": [
+              "All external retrieval is conducted through the secure controller runner.",
+              "Worker sandbox isolation is preserved with zero public network exposure.",
+              "Every citation resolves to a real retrieved source and supporting excerpt."
+            ],
+            "constraints": [
+              "Strict SSRF and private IP blocking on all outbound requests.",
+              "Per-project resource and retrieval budgets enforced.",
+              "Retrieved content is treated strictly as untrusted evidence."
+            ],
+            "expected_outcome": "A comprehensive, evidence-linked research report with verified sources and citations.",
+            "objective": "Conduct a comprehensive, evidence-based investigation into the current status of the Potter Valley Project and its implications for Sonoma County's long-term water security. Investigate the project's current status, proposed infrastructure changes, water supply implications, drought resilience, environmental considerations, agricultural and municipal demand, and regional coordination. Evaluate the roles of Sonoma Water, affected municipalities, state and federal agencies, and other stakeholders. Use current authoritative information and independently verify significant claims.",
+            "scope": "Public internet research, evidence verification, and cited deliverable assembly."
+          },
+          "paths": [
+            {
+              "key": "main",
+              "name": "Search, Retrieve, Verify, Synthesize",
+              "rationale": "Direct multi-phase pipeline with deterministic citation validation.",
+              "stages": [
+                {
+                  "key": "search",
+                  "name": "Web Search",
+                  "objective": "Discover authoritative public sources."
+                },
+                {
+                  "key": "retrieve",
+                  "name": "Document Retrieval",
+                  "objective": "Fetch pages safely and extract clean text and tables."
+                },
+                {
+                  "key": "verify",
+                  "name": "Fact Verification",
+                  "objective": "Corroborate claims against retrieved evidence in the ledger."
+                },
+                {
+                  "key": "report",
+                  "name": "Report & Citation Audit",
+                  "objective": "Synthesize final deliverable with verifiable citations."
+                }
+              ]
+            }
+          ],
+          "risks": [
+            {
+              "description": "A target domain blocks requests or returns anti-bot challenges.",
+              "mitigation": "Graceful fallback to alternative discovered sources."
+            },
+            {
+              "description": "A claim cannot be corroborated across multiple independent sources.",
+              "mitigation": "Flag claim as INSUFFICIENT_EVIDENCE in the evidence ledger."
+            }
+          ],
+          "schema": "qc.plan.v1",
+          "tasks": [
+            {
+              "acceptance": {
+                "kind": "json_fields"
+              },
+              "action": {
+                "inputs": [],
+                "step": "research_search",
+                "type": "controller_step"
+              },
+              "agent_role": "research",
+              "allowed_nodes": [],
+              "approval": "auto",
+              "depends_on": [],
+              "description": "Execute targeted search queries across public internet sources for: Conduct a comprehensive, evidence-based investigation into the current status of the Potter Valley Project and its impli.",
+              "expected_outputs": [
+                "search_results.json"
+              ],
+              "key": "search_sources",
+              "max_attempts": 2,
+              "preferred_models": [],
+              "priority": 2,
+              "required_capabilities": [
+                "controller"
+              ],
+              "risk": "low",
+              "stage": "search",
+              "timeout_seconds": 120,
+              "title": "Search public web for relevant sources"
+            },
+            {
+              "acceptance": {
+                "kind": "json_fields"
+              },
+              "action": {
+                "inputs": [
+                  "search_sources"
+                ],
+                "step": "research_fetch",
+                "type": "controller_step"
+              },
+              "agent_role": "execution",
+              "allowed_nodes": [],
+              "approval": "auto",
+              "depends_on": [
+                "search_sources"
+              ],
+              "description": "Fetch public documents, stream bytes under limits, extract clean text and tables, with headless browser fallback.",
+              "expected_outputs": [
+                "retrieved_sources.json"
+              ],
+              "key": "retrieve_content",
+              "max_attempts": 2,
+              "preferred_models": [],
+              "priority": 2,
+              "required_capabilities": [
+                "controller"
+              ],
+              "risk": "low",
+              "stage": "retrieve",
+              "timeout_seconds": 180,
+              "title": "Securely retrieve and extract source documents"
+            },
+            {
+              "acceptance": {
+                "kind": "research_evidence"
+              },
+              "action": {
+                "inputs": [
+                  "retrieve_content"
+                ],
+                "step": "research_verify",
+                "type": "controller_step"
+              },
+              "agent_role": "analysis",
+              "allowed_nodes": [],
+              "approval": "auto",
+              "depends_on": [
+                "retrieve_content"
+              ],
+              "description": "Track factual claims in the Evidence Ledger, corroborate with independent sources, and identify contradictions.",
+              "expected_outputs": [
+                "evidence_ledger.json"
+              ],
+              "key": "verify_claims",
+              "max_attempts": 2,
+              "preferred_models": [],
+              "priority": 3,
+              "required_capabilities": [
+                "controller"
+              ],
+              "risk": "low",
+              "stage": "verify",
+              "timeout_seconds": 120,
+              "title": "Extract and verify evidence claims"
+            },
+            {
+              "acceptance": {
+                "kind": "citation_audit"
+              },
+              "action": {
+                "inputs": [
+                  "verify_claims"
+                ],
+                "step": "research_synthesize",
+                "type": "controller_step"
+              },
+              "agent_role": "integration",
+              "allowed_nodes": [],
+              "approval": "auto",
+              "depends_on": [
+                "verify_claims"
+              ],
+              "description": "Synthesize findings into an evidence-linked markdown report with deterministic citations.",
+              "expected_outputs": [
+                "research_report.md",
+                "citation_audit.json"
+              ],
+              "key": "synthesize_report",
+              "max_attempts": 1,
+              "preferred_models": [],
+              "priority": 3,
+              "required_capabilities": [
+                "controller"
+              ],
+              "risk": "low",
+              "stage": "report",
+              "timeout_seconds": 120,
+              "title": "Synthesize cited research report"
+            }
+          ]
+        },
+        "validation": {
+          "capability_issues": [],
+          "errors": [],
+          "estimate": {
+            "approx_tokens": 0,
+            "inference_requests": 0,
+            "max_timeout_seconds_total": 540,
+            "needs_nodes": [],
+            "stage_count": 4,
+            "task_count": 4
+          },
+          "high_risk_tasks": [],
+          "valid": true,
+          "warnings": []
+        },
+        "model_info": {
+          "note": "autonomous research plan template; controller-orchestrated"
+        },
+        "created_at": "2026-10-22T01:10:43.152285+00:00",
+        "approved_by": null,
+        "approved_at": null,
+        "graph": {
+          "nodes": [
+            {
+              "key": "search_sources",
+              "title": "Search public web for relevant sources",
+              "stage": "search",
+              "action": "controller_step",
+              "allowed_nodes": []
+            },
+            {
+              "key": "retrieve_content",
+              "title": "Securely retrieve and extract source documents",
+              "stage": "retrieve",
+              "action": "controller_step",
+              "allowed_nodes": []
+            },
+            {
+              "key": "verify_claims",
+              "title": "Extract and verify evidence claims",
+              "stage": "verify",
+              "action": "controller_step",
+              "allowed_nodes": []
+            },
+            {
+              "key": "synthesize_report",
+              "title": "Synthesize cited research report",
+              "stage": "report",
+              "action": "controller_step",
+              "allowed_nodes": []
+            }
+          ],
+          "edges": [
+            {
+              "from": "search_sources",
+              "to": "retrieve_content"
+            },
+            {
+              "from": "retrieve_content",
+              "to": "verify_claims"
+            },
+            {
+              "from": "verify_claims",
+              "to": "synthesize_report"
+            }
+          ]
+        }
+      },
+      "revisions": [
+        {
+          "id": "rev-3fb2df378929475e",
+          "revision_number": 1,
+          "status": "superseded",
+          "source": "template",
+          "created_by": "admin",
+          "created_at": "2026-10-22T01:10:33.057038+00:00",
+          "approved_by": null,
+          "approved_at": null
+        },
+        {
+          "id": "rev-fbf5e13b14f94f40",
+          "revision_number": 2,
+          "status": "proposed",
+          "source": "template",
+          "created_by": "admin",
+          "created_at": "2026-10-22T01:10:43.152285+00:00",
+          "approved_by": null,
+          "approved_at": null
+        }
+      ],
+      "planning_error": "",
+      "analysis": {
+        "assumptions": [
+          "No deadline given; no schedule pressure assumed.",
+          "External research required: orchestrator will execute search, secure retrieval, claim-level evidence verification, and citation audits on the controller."
+        ],
+        "critical_missing": [],
+        "discoverable": [
+          "Available workers/models are read from the live node registry: node-d35568f5(python_execution), qwen-vps(python_execution), qwen-laptop(inference,python_execution), desktop-worker-01(inference,python_execution), worker-A(python_execution), worker-B(python_execution), t-vps(python_execution), t-laptop(inference,python_execution), pi-brain(inference,python_execution), worker-10c8a595(python_execution), worker-fee2b5bd(python_execution), worker-38ad13b9(python_execution), worker-3c4fa7e4(python_execution), worker-f610a93d(python_execution), phase3-demo-vps-1792617484(python_execution), phase3-demo-vps-1792617513(python_execution), phase3-demo-vps-1792617545(python_execution), phase3-demo-vps-1792617560(python_execution), worker-rc1-staging(python_execution)"
+        ],
+        "research_match": true,
+        "template_match": false
+      }
+    }
+  },
+  "plan_guard": {
+    "task_count": 0,
+    "unsafe": [],
+    "tasks": []
+  },
+  "api_log": [
+    {
+      "t": "2026-10-22T01:10:18.967339+00:00",
+      "m": "GET",
+      "url": "/auth/login",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:19.372439+00:00",
+      "m": "POST",
+      "url": "/auth/login",
+      "status": 302
+    },
+    {
+      "t": "2026-10-22T01:10:19.430946+00:00",
+      "m": "GET",
+      "url": "/",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:19.984234+00:00",
+      "m": "GET",
+      "url": "/projects/orchestrate/new",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:20.910562+00:00",
+      "m": "POST",
+      "url": "/api/v1/orchestration/projects",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:33.072709+00:00",
+      "m": "POST",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 409
+    },
+    {
+      "t": "2026-10-22T01:10:33.093022+00:00",
+      "m": "GET",
+      "url": "/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestrator",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:33.217179+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:35.241294+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:35.242413+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:35.242413+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=0&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:37.322455+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:37.322455+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:37.322455+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:37.322455+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=520&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:39.405080+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:39.405080+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:39.406096+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:39.406096+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=520&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:39.523275+00:00",
+      "m": "GET",
+      "url": "/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestrator",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:39.618723+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:39.641813+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:39.665522+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:39.683981+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=0&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:42.264818+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:42.292765+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:42.304866+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:42.333892+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=520&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:45.697000+00:00",
+      "m": "POST",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:45.697000+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:45.697000+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:45.701463+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:45.702652+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=520&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:45.702652+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:45.702652+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:45.702652+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:45.705735+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=528&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:45.808423+00:00",
+      "m": "GET",
+      "url": "/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestrator",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:45.897892+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:45.922399+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:45.941021+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:45.960560+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=0&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:48.578585+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:48.768888+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:48.774228+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:10:48.790645+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=528&limit=200",
+      "status": 200
+    }
+  ],
+  "finished_utc": "2026-10-22T01:12:55.516991+00:00",
+  "final_status": {
+    "run": {
+      "id": "run-ee1166ebb5eb4558",
+      "project_id": "prj-c74dd685c2b145e5b32ab347253dbc77",
+      "state": "COMPLETED",
+      "autonomy_level": 2,
+      "block_reason": "",
+      "planning_error": "",
+      "created_at": "2026-10-22T01:10:20.892506+00:00",
+      "updated_at": "2026-10-22T01:12:48.232203+00:00",
+      "started_at": "2026-10-22T01:12:11.624069+00:00",
+      "completed_at": "2026-10-22T01:12:48.232203+00:00",
+      "current_revision_id": "rev-fbf5e13b14f94f40",
+      "resume_state": null
+    },
+    "intake": {
+      "constraints": "Public sources only. Report any unavailable capability truthfully instead of filling gaps.",
+      "deliverables": "1. Executive Research Brief: a concise two-page briefing covering current developments, principal risks, potential water supply impacts, and major findings for Sonoma County.\n2. Comprehensive Source Inventory: structured inventory with source titles, organizations, publication dates, retrieval dates, URLs, reliability assessments, and associated claims.\n3. Evidence and Uncertainty Matrix: table separating verified facts, disputed claims, preliminary findings, and unresolved questions, each linked to supporting evidence.\n4. Policy Options Analysis: assessment of conservation, infrastructure, drought planning, environmental protection, and interagency coordination strategies with advantages, disadvantages, dependencies, and implementation challenges.\n5. Follow-Up Research Agenda: five priority questions for further investigation, why they matter, and where additional evidence may be found.",
+      "objective": "Conduct a comprehensive, evidence-based investigation into the current status of the Potter Valley Project and its implications for Sonoma County's long-term water security. Investigate the project's current status, proposed infrastructure changes, water supply implications, drought resilience, environmental considerations, agricultural and municipal demand, and regional coordination. Evaluate the roles of Sonoma Water, affected municipalities, state and federal agencies, and other stakeholders. Use current authoritative information and independently verify significant claims.",
+      "success_criteria": "All five deliverables are produced with substantive, relevant content; current public information is retrieved; significant claims have traceable citations whose sources genuinely support them; conflicting evidence and uncertainty are identified; nothing is fabricated; limitations are reported truthfully."
+    },
+    "analysis": {
+      "assumptions": [
+        "No deadline given; no schedule pressure assumed.",
+        "External research required: orchestrator will execute search, secure retrieval, claim-level evidence verification, and citation audits on the controller."
+      ],
+      "critical_missing": [],
+      "deliverable_map": {
+        "research_report": "del-fd884f666b6342bebd1b1dc343baee12"
+      },
+      "discoverable": [
+        "Available workers/models are read from the live node registry: node-d35568f5(python_execution), qwen-vps(python_execution), qwen-laptop(inference,python_execution), desktop-worker-01(inference,python_execution), worker-A(python_execution), worker-B(python_execution), t-vps(python_execution), t-laptop(inference,python_execution), pi-brain(inference,python_execution), worker-10c8a595(python_execution), worker-fee2b5bd(python_execution), worker-38ad13b9(python_execution), worker-3c4fa7e4(python_execution), worker-f610a93d(python_execution), phase3-demo-vps-1792617484(python_execution), phase3-demo-vps-1792617513(python_execution), phase3-demo-vps-1792617545(python_execution), phase3-demo-vps-1792617560(python_execution), worker-rc1-staging(python_execution)"
+      ],
+      "path_id": "pth-eadf08062cb3498e9369c9a63cd3a005",
+      "research_match": true,
+      "stage_map": {
+        "report": "stg-1a235202abe648629e7362e238dc2f75",
+        "retrieve": "stg-be73e844e6314ee690e45bdd8b8bee8f",
+        "search": "stg-bd79d0e56fa544e5a41fa3642316a261",
+        "verify": "stg-d272f7f4704a413ca3eb781c70b5ee7f"
+      },
+      "template_match": false
+    },
+    "progress": {
+      "total": 4,
+      "accepted": 4,
+      "percent": 100,
+      "active": 0,
+      "remaining": 0
+    },
+    "tasks": [
+      {
+        "id": "ot-7e3f2b14fb854aec",
+        "key": "retrieve_content",
+        "title": "Securely retrieve and extract source documents",
+        "state": "accepted",
+        "agent_role": "execution",
+        "action_type": "controller_step",
+        "node": "controller-local",
+        "model": null,
+        "attempts": 1,
+        "max_attempts": 2,
+        "failure_class": null,
+        "last_error": "",
+        "risk": "low",
+        "backoff_until": null,
+        "dispatched_at": null,
+        "depends_on": [
+          "search_sources"
+        ],
+        "stage_id": "stg-be73e844e6314ee690e45bdd8b8bee8f",
+        "underlying_task_id": null
+      },
+      {
+        "id": "ot-d334328ab4f34738",
+        "key": "search_sources",
+        "title": "Search public web for relevant sources",
+        "state": "accepted",
+        "agent_role": "research",
+        "action_type": "controller_step",
+        "node": "controller-local",
+        "model": null,
+        "attempts": 1,
+        "max_attempts": 2,
+        "failure_class": null,
+        "last_error": "",
+        "risk": "low",
+        "backoff_until": null,
+        "dispatched_at": null,
+        "depends_on": [],
+        "stage_id": "stg-bd79d0e56fa544e5a41fa3642316a261",
+        "underlying_task_id": null
+      },
+      {
+        "id": "ot-8b0612d4b40e4999",
+        "key": "synthesize_report",
+        "title": "Synthesize cited research report",
+        "state": "accepted",
+        "agent_role": "integration",
+        "action_type": "controller_step",
+        "node": "controller-local",
+        "model": null,
+        "attempts": 1,
+        "max_attempts": 1,
+        "failure_class": null,
+        "last_error": "",
+        "risk": "low",
+        "backoff_until": null,
+        "dispatched_at": null,
+        "depends_on": [
+          "verify_claims"
+        ],
+        "stage_id": "stg-1a235202abe648629e7362e238dc2f75",
+        "underlying_task_id": null
+      },
+      {
+        "id": "ot-ec34af375e1d4c7c",
+        "key": "verify_claims",
+        "title": "Extract and verify evidence claims",
+        "state": "accepted",
+        "agent_role": "analysis",
+        "action_type": "controller_step",
+        "node": "controller-local",
+        "model": null,
+        "attempts": 1,
+        "max_attempts": 2,
+        "failure_class": null,
+        "last_error": "",
+        "risk": "low",
+        "backoff_until": null,
+        "dispatched_at": null,
+        "depends_on": [
+          "retrieve_content"
+        ],
+        "stage_id": "stg-d272f7f4704a413ca3eb781c70b5ee7f",
+        "underlying_task_id": null
+      }
+    ],
+    "stages": [
+      {
+        "id": "stg-bd79d0e56fa544e5a41fa3642316a261",
+        "name": "Web Search",
+        "status": "planned"
+      },
+      {
+        "id": "stg-be73e844e6314ee690e45bdd8b8bee8f",
+        "name": "Document Retrieval",
+        "status": "planned"
+      },
+      {
+        "id": "stg-d272f7f4704a413ca3eb781c70b5ee7f",
+        "name": "Fact Verification",
+        "status": "planned"
+      },
+      {
+        "id": "stg-1a235202abe648629e7362e238dc2f75",
+        "name": "Report & Citation Audit",
+        "status": "planned"
+      }
+    ],
+    "decisions_required": [],
+    "blockers": [],
+    "budget": {
+      "run_id": "run-ee1166ebb5eb4558",
+      "max_tasks": 40,
+      "max_concurrent": 2,
+      "max_inference_requests": 30,
+      "max_tokens": 60000,
+      "max_runtime_seconds": 7200,
+      "max_retries_total": 12,
+      "max_storage_bytes": 104857600,
+      "used_tasks": 0,
+      "used_inference_requests": 0,
+      "used_tokens": 0,
+      "used_retries": 0,
+      "used_storage_bytes": 305739,
+      "used_runtime_seconds": 0.0,
+      "updated_at": "2026-10-22T01:12:48.197354+00:00"
+    },
+    "last_activity": "2026-10-22T01:12:48.232203+00:00",
+    "revisions": [
+      {
+        "id": "rev-3fb2df378929475e",
+        "revision_number": 1,
+        "status": "superseded",
+        "source": "template",
+        "created_by": "admin",
+        "created_at": "2026-10-22T01:10:33.057038+00:00",
+        "approved_by": null,
+        "approved_at": null
+      },
+      {
+        "id": "rev-fbf5e13b14f94f40",
+        "revision_number": 2,
+        "status": "approved",
+        "source": "template",
+        "created_by": "admin",
+        "created_at": "2026-10-22T01:10:43.152285+00:00",
+        "approved_by": "admin",
+        "approved_at": "2026-10-22T01:12:05.323248+00:00"
+      }
+    ],
+    "models": [
+      {
+        "node": "controller-local",
+        "model": "qwen2.5:3b",
+        "ready": false,
+        "health": "online",
+        "authenticated": false,
+        "requests": 0,
+        "successes": 0,
+        "avg_latency_s": null,
+        "tokens_per_second": null
+      },
+      {
+        "node": "qwen-laptop",
+        "model": "llama3.2:1b",
+        "ready": false,
+        "health": "online",
+        "authenticated": true,
+        "requests": 5,
+        "successes": 5,
+        "avg_latency_s": 35.9414,
+        "tokens_per_second": 5.1488213542438706
+      },
+      {
+        "node": "qwen-laptop",
+        "model": "qwen2.5:1.5b",
+        "ready": false,
+        "health": "online",
+        "authenticated": true,
+        "requests": 74,
+        "successes": 65,
+        "avg_latency_s": 80.57552307692308,
+        "tokens_per_second": 8.526981275065081
+      },
+      {
+        "node": "desktop-worker-01",
+        "model": "qwen2.5:3b",
+        "ready": false,
+        "health": "online",
+        "authenticated": true,
+        "requests": 0,
+        "successes": 0,
+        "avg_latency_s": null,
+        "tokens_per_second": null
+      },
+      {
+        "node": "desktop-worker-01",
+        "model": "qwen2.5:1.5b",
+        "ready": false,
+        "health": "online",
+        "authenticated": true,
+        "requests": 10,
+        "successes": 10,
+        "avg_latency_s": 4.9350000000000005,
+        "tokens_per_second": 43.441380811184764
+      },
+      {
+        "node": "t-laptop",
+        "model": "qwen2.5:1.5b",
+        "ready": false,
+        "health": "offline",
+        "authenticated": true,
+        "requests": 0,
+        "successes": 0,
+        "avg_latency_s": null,
+        "tokens_per_second": null
+      },
+      {
+        "node": "pi-brain",
+        "model": "qwen2.5:0.5b",
+        "ready": true,
+        "health": "online",
+        "authenticated": true,
+        "requests": 0,
+        "successes": 0,
+        "avg_latency_s": null,
+        "tokens_per_second": null
+      },
+      {
+        "node": "phase3-demo-vps-1792617484",
+        "model": "qwen2.5:1.5b",
+        "ready": false,
+        "health": "offline",
+        "authenticated": false,
+        "requests": 0,
+        "successes": 0,
+        "avg_latency_s": null,
+        "tokens_per_second": null
+      },
+      {
+        "node": "phase3-demo-vps-1792617484",
+        "model": "llama3.2:1b",
+        "ready": false,
+        "health": "offline",
+        "authenticated": false,
+        "requests": 0,
+        "successes": 0,
+        "avg_latency_s": null,
+        "tokens_per_second": null
+      },
+      {
+        "node": "phase3-demo-vps-1792617513",
+        "model": "qwen2.5:1.5b",
+        "ready": false,
+        "health": "offline",
+        "authenticated": false,
+        "requests": 0,
+        "successes": 0,
+        "avg_latency_s": null,
+        "tokens_per_second": null
+      },
+      {
+        "node": "phase3-demo-vps-1792617513",
+        "model": "llama3.2:1b",
+        "ready": false,
+        "health": "offline",
+        "authenticated": false,
+        "requests": 0,
+        "successes": 0,
+        "avg_latency_s": null,
+        "tokens_per_second": null
+      },
+      {
+        "node": "phase3-demo-vps-1792617545",
+        "model": "qwen2.5:1.5b",
+        "ready": false,
+        "health": "offline",
+        "authenticated": false,
+        "requests": 0,
+        "successes": 0,
+        "avg_latency_s": null,
+        "tokens_per_second": null
+      },
+      {
+        "node": "phase3-demo-vps-1792617545",
+        "model": "llama3.2:1b",
+        "ready": false,
+        "health": "offline",
+        "authenticated": false,
+        "requests": 0,
+        "successes": 0,
+        "avg_latency_s": null,
+        "tokens_per_second": null
+      },
+      {
+        "node": "phase3-demo-vps-1792617560",
+        "model": "qwen2.5:1.5b",
+        "ready": false,
+        "health": "offline",
+        "authenticated": false,
+        "requests": 0,
+        "successes": 0,
+        "avg_latency_s": null,
+        "tokens_per_second": null
+      },
+      {
+        "node": "phase3-demo-vps-1792617560",
+        "model": "llama3.2:1b",
+        "ready": false,
+        "health": "offline",
+        "authenticated": false,
+        "requests": 0,
+        "successes": 0,
+        "avg_latency_s": null,
+        "tokens_per_second": null
+      }
+    ],
+    "scheduler_lock_held_by_this_process": true
+  },
+  "orchestrator_page_text": "QWEN COLLECTIVE\nLOCAL\nPrivate Modular AI Coordinator\nDashboard\nProjects\nMachines\nInference & Models\nChat\nTasks\nDeliverables\nKnowledge Base\nInfrastructure\nSystem Observatory\nSettings & VPS\nControl Server: Operational\nProject Orchestrator\nUser: admin\nSign Out\nAUDIT-RW Sonoma Water Security Brief 20261021-1810\n\n\u2190 Project details \u00b7 Updated 6:12:52 PM\n\nCOMPLETED\nProject overview\nSTATE\nCOMPLETED\nPROGRESS\n4 / 4 tasks accepted (100%)\nACTIVE NOW\n0\nREMAINING\n0\nAUTONOMY\nLevel 2\nLAST ACTIVITY\n3s ago\n\nConduct a comprehensive, evidence-based investigation into the current status of the Potter Valley Project and its implications for Sonoma County's long-term water security. Investigate the project's current status, proposed infrastructure changes, water supply implications, drought resilience, environmental considerations, agricultural and municipal demand, and regional coordination. Evaluate the roles of Sonoma Water, affected municipalities, state and federal agencies, and other stakeholders. Use current authoritative information and independently verify significant claims.\n\nCURRENT STAGE: WEB SEARCH\nAutonomy 0 Manual\nAutonomy 1 Assisted\nAutonomy 2 Supervised\nAutonomy 3 Delegated\nDecisions required\n\nNothing needs your decision right now.\n\nLive activity\n\nNo task is executing right now.\n\nBudget: tasks 0/40, inference 0/30, tokens 0/60000, retries 0/12\nModels & nodes\nfailed qwen2.5:3b on controller-local (online) no usage yet\nfailed llama3.2:1b on qwen-laptop (online) 5/5 ok, avg 35.9s, 5.1 tok/s\nfailed qwen2.5:1.5b on qwen-laptop (online) 65/74 ok, avg 80.6s, 8.5 tok/s\nfailed qwen2.5:3b on desktop-worker-01 (online) no usage yet\nfailed qwen2.5:1.5b on desktop-worker-01 (online) 10/10 ok, avg 4.9s, 43.4 tok/s\nfailed qwen2.5:1.5b on t-laptop (offline) no usage yet\naccepted qwen2.5:0.5b on pi-brain (online) no usage yet\nfailed qwen2.5:1.5b on phase3-demo-vps-1792617484 (offline) no usage yet\nfailed llama3.2:1b on phase3-demo-vps-1792617484 (offline) no usage yet\nfailed qwen2.5:1.5b on phase3-demo-vps-1792617513 (offline) no usage yet\nfailed llama3.2:1b on phase3-demo-vps-1792617513 (offline) no usage yet\nfailed qwen2.5:1.5b on phase3-demo-vps-1792617545 (offline) no usage yet\nfailed llama3.2:1b on phase3-demo-vps-1792617545 (offline) no usage yet\nfailed qwen2.5:1.5b on phase3-demo-vps-1792617560 (offline) no usage yet\nfailed llama3.2:1b on phase3-demo-vps-1792617560 (offline) no usage yet\nDeliverables & artifacts\nFILE\tTASK\tWORKER\tPROVENANCE\tVALIDATION\tSIZE\tSHA-256\nsearch_results.json\tsearch_sources\tcontroller-local\taccepted controller generated\taccepted valid\t15.1 KiB\ted47a5385763\nretrieved_sources.json\tretrieve_content\tcontroller-local\taccepted controller generated\taccepted valid\t258.6 KiB\ta4258974a4c7\nevidence_ledger.json\tverify_claims\tcontroller-local\taccepted controller generated\taccepted valid\t17.4 KiB\t208038146e75\nresearch_report.md\tsynthesize_report\tcontroller-local\taccepted controller generated\taccepted valid\t6.5 KiB\t97d3137faf27\ncitation_audit.json\tsynthesize_report\tcontroller-local\taccepted controller generated\taccepted valid\t0.1 KiB\tfff0adce957a\ndeliverables_index.json\t-\tcontroller-local\taccepted controller generated\taccepted valid\t0.8 KiB\tfc5b526dd9a5\nExecution plan\nREVISION\n#2 (approved)\nSOURCE\ntemplate (deterministic template)\nVALIDATION\naccepted\nESTIMATED\n4 tasks, 0 inference\nOverview\n\nPublic internet research, evidence verification, and cited deliverable assembly.\n\nAssumptions: All external retrieval is conducted through the secure controller runner. | Worker sandbox isolation is preserved with zero public network exposure. | Every citation resolves to a real retrieved source and supporting excerpt.\nConstraints: Strict SSRF and private IP blocking on all outbound requests. | Per-project resource and retrieval budgets enforced. | Retrieved content is treated strictly as untrusted evidence.\nPaths and stages\nExecutable path: Search, Retrieve, Verify, Synthesize\nDirect multi-phase pipeline with deterministic citation validation.\nWeb Search - Discover authoritative public sources.\nDocument Retrieval - Fetch pages safely and extract clean text and tables.\nFact Verification - Corroborate claims against retrieved evidence in the ledger.\nReport & Citation Audit - Synthesize final deliverable with verifiable citations.\nDeliverables\nAutonomous Research Report - All claims are supported by verified evidence and all citations resolve to retrieved sources.\nRisks and approval gates\nA target domain blocks requests or returns anti-bot challenges. -> Graceful fallback to alternative discovered sources.\nA claim cannot be corroborated across multiple independent sources. -> Flag claim as INSUFFICIENT_EVIDENCE in the evidence ledger.\nApproval: Execute plan (Initial research execution requires approval.)\nRevisions: #1 superseded, #2 approved\nPlanned tasks (assignment, models, permissions)\nTASK\tACTION\tALLOWED NODES\tMODELS\tRISK\tDEPENDS ON\nSearch public web for relevant sources\tcontroller_step\tany compatible\t-\tlow\tnone\nSecurely retrieve and extract source documents\tcontroller_step\tany compatible\t-\tlow\tsearch_sources\nExtract and verify evidence claims\tcontroller_step\tany compatible\t-\tlow\tretrieve_content\nSynthesize cited research report\tcontroller_step\tany compatible\t-\tlow\tverify_claims\nDependency graph\nSecurely retrieve and extr\naccepted @ controller-local\nSearch public web for rele\naccepted @ controller-local\nSynthesize cited research\naccepted @ controller-local\nExtract and verify evidenc\naccepted @ controller-local\nExecution status\nTASK\tROLE\tACTION\tSTATE\tNODE / MODEL\tATTEMPTS\tDEPENDS ON\t\nSecurely retrieve and extract source documents\texecution\tcontroller_step\taccepted\tcontroller-local\t1/2\tsearch_sources\t\nSearch public web for relevant sources\tresearch\tcontroller_step\taccepted\tcontroller-local\t1/2\tnone\t\nSynthesize cited research report\tintegration\tcontroller_step\taccepted\tcontroller-local\t1/1\tverify_claims\t\nExtract and verify evidence claims\tanalysis\tcontroller_step\taccepted\tcontroller-local\t1/2\tretrieve_content\t",
+  "orchestration_artifacts": [
+    {
+      "id": "art-fa5e4c1ef4ad4861",
+      "task_id": null,
+      "orch_task_id": "ot-d334328ab4f34738",
+      "worker_id": "controller-local",
+      "filename": "search_results.json",
+      "mime_type": "application/json",
+      "size_bytes": 15498,
+      "sha256": "ed47a538576358911426f0e99f17a435c73bfdc3dd36e97d2e6b6bb282b0efee",
+      "provenance": "controller_generated",
+      "validation_state": "valid",
+      "validation_detail": "20 search results verified",
+      "created_at": "2026-10-22T01:12:27.697475+00:00",
+      "plan_key": "search_sources"
+    },
+    {
+      "id": "art-d750e16111594af0",
+      "task_id": null,
+      "orch_task_id": "ot-7e3f2b14fb854aec",
+      "worker_id": "controller-local",
+      "filename": "retrieved_sources.json",
+      "mime_type": "application/json",
+      "size_bytes": 264847,
+      "sha256": "a4258974a4c72fff77e69cac299f16e7a0178763576a0bae75196251845756fb",
+      "provenance": "controller_generated",
+      "validation_state": "valid",
+      "validation_detail": "6 sources retrieved and extracted",
+      "created_at": "2026-10-22T01:12:39.628800+00:00",
+      "plan_key": "retrieve_content"
+    },
+    {
+      "id": "art-8ecef8d0dc474aca",
+      "task_id": null,
+      "orch_task_id": "ot-ec34af375e1d4c7c",
+      "worker_id": "controller-local",
+      "filename": "evidence_ledger.json",
+      "mime_type": "application/json",
+      "size_bytes": 17823,
+      "sha256": "208038146e758a7c7ea7cfa37c1c0c101e7228f9a5a9476a47fa451d20f5118e",
+      "provenance": "controller_generated",
+      "validation_state": "valid",
+      "validation_detail": "10 claims corroborated",
+      "created_at": "2026-10-22T01:12:43.723225+00:00",
+      "plan_key": "verify_claims"
+    },
+    {
+      "id": "art-ea7a176ffa6f46c7",
+      "task_id": null,
+      "orch_task_id": "ot-8b0612d4b40e4999",
+      "worker_id": "controller-local",
+      "filename": "research_report.md",
+      "mime_type": "text/markdown",
+      "size_bytes": 6658,
+      "sha256": "97d3137faf27fe7ed229d29d6f031de6a9ab7efbfccb2d1e5f60a6236b5628d9",
+      "provenance": "controller_generated",
+      "validation_state": "valid",
+      "validation_detail": "Research report with deterministic citations validated",
+      "created_at": "2026-10-22T01:12:47.091695+00:00",
+      "plan_key": "synthesize_report"
+    },
+    {
+      "id": "art-cb5b13dae36548ce",
+      "task_id": null,
+      "orch_task_id": "ot-8b0612d4b40e4999",
+      "worker_id": "controller-local",
+      "filename": "citation_audit.json",
+      "mime_type": "application/json",
+      "size_bytes": 106,
+      "sha256": "fff0adce957a413ae56e1d33f14b886900d2f181b7f190e27016973fc188ac4c",
+      "provenance": "controller_generated",
+      "validation_state": "valid",
+      "validation_detail": "Citation audit passed",
+      "created_at": "2026-10-22T01:12:47.142721+00:00",
+      "plan_key": "synthesize_report"
+    },
+    {
+      "id": "art-745a79b26e9c4c62",
+      "task_id": null,
+      "orch_task_id": null,
+      "worker_id": "controller-local",
+      "filename": "deliverables_index.json",
+      "mime_type": "application/json",
+      "size_bytes": 807,
+      "sha256": "fc5b526dd9a518e1a433329a623efba3db06d5af6d36d1ec2a65806d89e1d821",
+      "provenance": "controller_generated",
+      "validation_state": "valid",
+      "validation_detail": "generated from accepted deliverables",
+      "created_at": "2026-10-22T01:12:48.185119+00:00",
+      "plan_key": null
+    }
+  ],
+  "api_log2": [
+    {
+      "t": "2026-10-22T01:12:01.178861+00:00",
+      "m": "GET",
+      "url": "/auth/login",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:01.580003+00:00",
+      "m": "POST",
+      "url": "/auth/login",
+      "status": 302
+    },
+    {
+      "t": "2026-10-22T01:12:01.636529+00:00",
+      "m": "GET",
+      "url": "/",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:02.234072+00:00",
+      "m": "GET",
+      "url": "/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestrator",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:02.341383+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:02.383357+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:02.399844+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:02.424742+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=0&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:08.042964+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:08.042964+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:08.043964+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:08.044963+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=528&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:08.046962+00:00",
+      "m": "POST",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/approve",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:08.047961+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:08.049960+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:08.051115+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:08.051618+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=528&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:08.052621+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:08.052621+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:08.053673+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:08.054673+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=531&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:08.168356+00:00",
+      "m": "GET",
+      "url": "/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestrator",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:08.282046+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:08.307678+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:08.326667+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:08.345655+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=0&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:10.960592+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:11.006626+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:11.020905+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:11.053983+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=531&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:13.659772+00:00",
+      "m": "POST",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/start",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:13.659772+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:13.660820+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:13.660820+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:13.660820+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=531&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:13.660820+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:13.660820+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:13.685016+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:13.710492+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=532&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:17.852575+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:17.852575+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:17.852575+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:17.852575+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=536&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:19.955992+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:19.955992+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:19.957095+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:19.957095+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=536&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:20.077615+00:00",
+      "m": "GET",
+      "url": "/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestrator",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:20.189370+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:20.220803+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:20.254189+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:20.272378+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=0&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:23.112467+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:23.113467+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:23.113467+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:23.114466+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=536&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:27.311241+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:27.311241+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:27.312239+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:27.313239+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=536&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:29.396664+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:29.397710+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:29.397710+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:29.398989+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=536&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:31.479679+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:31.479679+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:31.479679+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:31.479679+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=537&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:33.565281+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:33.566280+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:33.581354+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:33.593725+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=537&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:37.738354+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:37.740323+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:37.741323+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:37.741323+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=537&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:39.851065+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:39.851065+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:39.851065+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:39.851065+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=537&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:42.715394+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:42.715394+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:42.716394+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:42.717393+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=537&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:44.885737+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:44.885737+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:44.885737+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:44.885737+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=538&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:46.970724+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:46.996839+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:47.026819+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:47.049070+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=539&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:49.270513+00:00",
+      "m": "GET",
+      "url": "/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestrator",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:49.369351+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:49.401330+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:49.422317+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:49.504418+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=0&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:52.091355+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/status",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:52.122336+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/plan",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:52.136308+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/artifacts",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:52.155194+00:00",
+      "m": "GET",
+      "url": "/api/v1/projects/prj-c74dd685c2b145e5b32ab347253dbc77/orchestration/events?after_id=551&limit=200",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:52.586124+00:00",
+      "m": "GET",
+      "url": "/projects/prj-c74dd685c2b145e5b32ab347253dbc77?tab=deliverables",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:53.610509+00:00",
+      "m": "GET",
+      "url": "/projects/prj-c74dd685c2b145e5b32ab347253dbc77?tab=deliverables",
+      "status": 200
+    },
+    {
+      "t": "2026-10-22T01:12:54.273606+00:00",
+      "m": "GET",
+      "url": "/deliverables/art-ea7a176ffa6f46c7",
+      "status": 500
+    }
+  ]
+}

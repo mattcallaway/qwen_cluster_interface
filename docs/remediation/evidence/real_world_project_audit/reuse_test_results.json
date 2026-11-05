@@ -1,0 +1,45 @@
+{
+  "t": "2026-10-22T01:13:47.519275+00:00",
+  "steps": [
+    {
+      "step": "create_target_project",
+      "status": 200,
+      "project_id": "prj-58797337cbc94f3bac9fd67834fdbcaf"
+    },
+    {
+      "step": "source_artifact_before",
+      "checksum": "97d3137faf27fe7ed229d29d6f031de6a9ab7efbfccb2d1e5f60a6236b5628d9",
+      "origin_project": "prj-c74dd685c2b145e5b32ab347253dbc77",
+      "origin_worker": "controller-local",
+      "origin_task": null,
+      "cas_hash": null
+    },
+    {
+      "step": "ui_reuse_form_page",
+      "status": 500,
+      "note": "reuse form is rendered on the detail page"
+    },
+    {
+      "step": "api_reuse",
+      "status": 500,
+      "body": "Internal Server Error"
+    },
+    {
+      "step": "lineage_after",
+      "status": 200,
+      "body": "{\"artifact_id\":\"art-ea7a176ffa6f46c7\",\"upstream\":[],\"downstream\":[]}"
+    },
+    {
+      "step": "target_project_artifacts",
+      "status": 200,
+      "body": "[]"
+    },
+    {
+      "step": "download_via_target_project",
+      "status": 403,
+      "sha256": null,
+      "matches": null
+    }
+  ],
+  "target_project_id": "prj-58797337cbc94f3bac9fd67834fdbcaf"
+}

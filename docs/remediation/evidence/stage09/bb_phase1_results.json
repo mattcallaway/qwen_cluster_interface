@@ -1,0 +1,637 @@
+{
+  "execution_start_utc": "2026-10-21T20:18:40.457322+00:00",
+  "execution_completed_utc": "2026-10-21T20:18:43.203802+00:00",
+  "disposable_root": "C:\\Users\\MATTC~1\\AppData\\Local\\Temp\\qc_stage09_phase1_oo5me4qz",
+  "total_phase1_scenarios": 21,
+  "passed": 21,
+  "failed": 0,
+  "blocked": 0,
+  "scenarios": {
+    "BB-01": {
+      "scenario_id": "BB-01",
+      "name": "Unknown script produces CAPABILITY_GAP",
+      "finding": "F-01",
+      "status": "PASS",
+      "elapsed_ms": 0.04,
+      "details": {
+        "eligible_nodes_count": 0,
+        "reasons": [
+          "node-alpha: unsupported action type"
+        ]
+      },
+      "evidence": {
+        "gap": {
+          "task_key": "task-bb01",
+          "required_capability": "script:generate_natural_response",
+          "reason": "Unknown library script requested",
+          "candidate_nodes": [],
+          "blocking": true,
+          "timestamp": "2026-10-21T20:18:40.875423+00:00"
+        },
+        "routing": {
+          "eligible": [],
+          "reasons": [
+            "node-alpha: unsupported action type"
+          ]
+        }
+      },
+      "error_message": null,
+      "timestamp": "2026-10-21T20:18:40.875423+00:00"
+    },
+    "BB-02": {
+      "scenario_id": "BB-02",
+      "name": "Unsupported plan step requires replan",
+      "finding": "F-02",
+      "status": "PASS",
+      "elapsed_ms": 352.63,
+      "details": {
+        "errors_count": 1,
+        "sample_error": "Task 'task_1' has unknown controller step 'unsupported_unknown_controller_step'. Allowed controller steps: ['assemble_report', 'research_browser_read', 'research_citation_audit', 'research_extract', 'research_fetch', 'research_full_cycle', 'research_search', 'research_synthesize', 'research_verify']."
+      },
+      "evidence": {
+        "plan_errors": [
+          "Task 'task_1' has unknown controller step 'unsupported_unknown_controller_step'. Allowed controller steps: ['assemble_report', 'research_browser_read', 'research_citation_audit', 'research_extract', 'research_fetch', 'research_full_cycle', 'research_search', 'research_synthesize', 'research_verify']."
+        ]
+      },
+      "error_message": null,
+      "timestamp": "2026-10-21T20:18:41.228030+00:00"
+    },
+    "BB-03": {
+      "scenario_id": "BB-03",
+      "name": "Cyclic task graph is rejected",
+      "finding": "F-03",
+      "status": "PASS",
+      "elapsed_ms": 0.49,
+      "details": {
+        "cycle_detected": true,
+        "cycle_path": [
+          "task_a",
+          "task_b",
+          "task_c"
+        ]
+      },
+      "evidence": {
+        "cycle_nodes": [
+          "task_a",
+          "task_b",
+          "task_c"
+        ],
+        "validation_errors": [
+          "Dependency cycle among tasks: task_a, task_b.",
+          "Deliverable 'deliv_1' marked terminal is produced by intermediate task 'task_b', which has downstream dependent tasks (INCORRECT_TERMINAL_DELIVERABLE)."
+        ]
+      },
+      "error_message": null,
+      "timestamp": "2026-10-21T20:18:41.228612+00:00"
+    },
+    "BB-04": {
+      "scenario_id": "BB-04",
+      "name": "Requested deliverables and success criteria preserved",
+      "finding": "F-04",
+      "status": "PASS",
+      "elapsed_ms": 153.65,
+      "details": {
+        "project_id": "prj-4956f3a7fd0b48a4a9812d6fdcae7b9e",
+        "criteria_stored": true
+      },
+      "evidence": {
+        "project_status": {
+          "run": {
+            "id": "run-b72c88631f804b9b",
+            "project_id": "prj-4956f3a7fd0b48a4a9812d6fdcae7b9e",
+            "state": "DRAFT",
+            "autonomy_level": 2,
+            "block_reason": "",
+            "planning_error": "",
+            "created_at": "2026-10-21T20:18:41.290656+00:00",
+            "updated_at": "2026-10-21T20:18:41.290656+00:00",
+            "started_at": null,
+            "completed_at": null,
+            "current_revision_id": null,
+            "resume_state": null
+          },
+          "intake": {
+            "objective": "Build multi-tier report",
+            "success_criteria": "Deliverables must include architectural blueprint and benchmark dataset."
+          },
+          "analysis": {},
+          "progress": {
+            "total": 0,
+            "accepted": 0,
+            "percent": 0,
+            "active": 0,
+            "remaining": 0
+          },
+          "tasks": [],
+          "stages": [],
+          "decisions_required": [],
+          "blockers": [],
+          "budget": {
+            "run_id": "run-b72c88631f804b9b",
+            "max_tasks": 40,
+            "max_concurrent": 2,
+            "max_inference_requests": 30,
+            "max_tokens": 60000,
+            "max_runtime_seconds": 7200,
+            "max_retries_total": 12,
+            "max_storage_bytes": 104857600,
+            "used_tasks": 0,
+            "used_inference_requests": 0,
+            "used_tokens": 0,
+            "used_retries": 0,
+            "used_storage_bytes": 0,
+            "used_runtime_seconds": 0.0,
+            "updated_at": "2026-10-21T20:18:41.290656+00:00"
+          },
+          "last_activity": "2026-10-21T20:18:41.290656+00:00",
+          "revisions": [],
+          "models": [],
+          "scheduler_lock_held_by_this_process": false
+        }
+      },
+      "error_message": null,
+      "timestamp": "2026-10-21T20:18:41.382488+00:00"
+    },
+    "BB-05": {
+      "scenario_id": "BB-05",
+      "name": "Research report without required citations fails audit",
+      "finding": "F-05",
+      "status": "PASS",
+      "elapsed_ms": 0.04,
+      "details": {
+        "is_valid": false,
+        "markers_found": 0,
+        "errors": [
+          "MISSING_REQUIRED_CITATIONS: Report contains 0 citations. All research deliverables must cite authoritative sources."
+        ]
+      },
+      "evidence": {
+        "report": {
+          "is_valid": false,
+          "total_markers_found": 0,
+          "resolved_citations": 0,
+          "unresolved_citation_numbers": [],
+          "unretrieved_sources": [],
+          "missing_evidence_claims": [
+            "all"
+          ],
+          "supported_citations": [],
+          "contradicted_citations": [],
+          "insufficient_evidence_citations": [],
+          "unverified_citations": [],
+          "errors": [
+            "MISSING_REQUIRED_CITATIONS: Report contains 0 citations. All research deliverables must cite authoritative sources."
+          ]
+        }
+      },
+      "error_message": null,
+      "timestamp": "2026-10-21T20:18:41.382488+00:00"
+    },
+    "BB-06": {
+      "scenario_id": "BB-06",
+      "name": "Syndicated sources do not count as independent corroboration",
+      "finding": "F-06",
+      "status": "PASS",
+      "elapsed_ms": 0.31,
+      "details": {
+        "is_duplicate": true,
+        "independent": false,
+        "reason": "syndicated_content_similarity_1.00"
+      },
+      "evidence": {
+        "src1_url": "https://apnews.com/article/fed-rate-decision",
+        "src2_url": "https://dailyherald.com/business/fed-decision",
+        "syndication_reason": "syndicated_content_similarity_1.00"
+      },
+      "error_message": null,
+      "timestamp": "2026-10-21T20:18:41.383037+00:00"
+    },
+    "BB-07": {
+      "scenario_id": "BB-07",
+      "name": "Contradictory evidence is surfaced",
+      "finding": "F-07",
+      "status": "PASS",
+      "elapsed_ms": 74.68,
+      "details": {
+        "record_id": "kn-469ebab7774949eb",
+        "status": "contradicted"
+      },
+      "evidence": {
+        "rec1": "kn-469ebab7774949eb",
+        "rec2": "kn-d6dfd29d28cb4a9e",
+        "status": "contradicted"
+      },
+      "error_message": null,
+      "timestamp": "2026-10-21T20:18:41.456842+00:00"
+    },
+    "BB-08": {
+      "scenario_id": "BB-08",
+      "name": "Research evidence remains isolated across runs",
+      "finding": "F-08",
+      "status": "PASS",
+      "elapsed_ms": 62.22,
+      "details": {
+        "p1_id": "prj-2fe415f38c204552a8cc5874b17e7fb0",
+        "p2_id": "prj-3ccb2cb920ff48ebb9ccf67c82812e9c",
+        "p2_records_count": 0
+      },
+      "evidence": {
+        "p1_id": "prj-2fe415f38c204552a8cc5874b17e7fb0",
+        "p2_id": "prj-3ccb2cb920ff48ebb9ccf67c82812e9c",
+        "leaked": false
+      },
+      "error_message": null,
+      "timestamp": "2026-10-21T20:18:41.519195+00:00"
+    },
+    "BB-09": {
+      "scenario_id": "BB-09",
+      "name": "Cross-worker artifact upload is denied",
+      "finding": "F-09",
+      "status": "PASS",
+      "elapsed_ms": 130.29,
+      "details": {
+        "status_code": 403,
+        "task_id": "task-bb09-014acd"
+      },
+      "evidence": {
+        "response_status": 403,
+        "response_body": {
+          "detail": "Worker 'worker-b-f13e' is not authorized for task 'task-bb09-014acd' (assigned to 'worker-a-f366')."
+        }
+      },
+      "error_message": null,
+      "timestamp": "2026-10-21T20:18:41.650385+00:00"
+    },
+    "BB-10": {
+      "scenario_id": "BB-10",
+      "name": "Invalid artifact checksum is rejected with cleanup",
+      "finding": "F-10",
+      "status": "PASS",
+      "elapsed_ms": 85.46,
+      "details": {
+        "status_code": 400,
+        "task_id": "task-bb10-c5e886"
+      },
+      "evidence": {
+        "status": 400,
+        "detail": "Checksum mismatch: expected '0000000000000000000000000000000000000000000000000000000000000000', computed 'c8a3a32f60c8a6a25ec439874367247695ce1881f3ce3882cb27e4e13cb4294e'. Upload rejected."
+      },
+      "error_message": null,
+      "timestamp": "2026-10-21T20:18:41.735848+00:00"
+    },
+    "BB-11": {
+      "scenario_id": "BB-11",
+      "name": "Stale worker lease cannot overwrite an accepted outcome",
+      "finding": "F-11",
+      "status": "PASS",
+      "elapsed_ms": 131.97,
+      "details": {
+        "conflict_detected": true,
+        "task_id": "task-bb11-6fec59",
+        "final_assigned_worker": "worker-stale2-9304"
+      },
+      "evidence": {
+        "winner": "worker-stale2-9304",
+        "rejected": "worker-stale1-8139",
+        "conflict_msg": "Worker 'worker-stale1-8139' is not authorized for task 'task-bb11-6fec59' (assigned to 'worker-stale2-9304')."
+      },
+      "error_message": null,
+      "timestamp": "2026-10-21T20:18:41.867147+00:00"
+    },
+    "BB-14": {
+      "scenario_id": "BB-14",
+      "name": "Cookie-authenticated admin mutation without CSRF is denied",
+      "finding": "F-15",
+      "status": "PASS",
+      "elapsed_ms": 3.66,
+      "details": {
+        "status_code": 403
+      },
+      "evidence": {
+        "status": 403,
+        "body": {
+          "ok": false,
+          "error": "Invalid or missing CSRF token."
+        }
+      },
+      "error_message": null,
+      "timestamp": "2026-10-21T20:18:41.871245+00:00"
+    },
+    "BB-15": {
+      "scenario_id": "BB-15",
+      "name": "Identically named artifacts retain distinct immutable versions in CAS",
+      "finding": "F-17",
+      "status": "PASS",
+      "elapsed_ms": 130.83,
+      "details": {
+        "art1_hash": "11a7194f038f7d83",
+        "art2_hash": "f8aec9187a9e94ee"
+      },
+      "evidence": {
+        "v1_sha256": "11a7194f038f7d8354157ff848f7f1694d449db267eca9e2079e99be9f8e36b5",
+        "v2_sha256": "f8aec9187a9e94ee28f794892b353fa881a84c7a958bd2ddd150931e6485c0cd",
+        "shared_name": "architecture_spec.pdf"
+      },
+      "error_message": null,
+      "timestamp": "2026-10-21T20:18:42.002250+00:00"
+    },
+    "BB-16": {
+      "scenario_id": "BB-16",
+      "name": "Cross-project reuse preserves producer lineage",
+      "finding": "F-17",
+      "status": "PASS",
+      "elapsed_ms": 217.36,
+      "details": {
+        "producer_project": "prj-0a9a61996d554924be21c14fd4d82dd7",
+        "consumer_project": "prj-3dc566b87cce4fe58a4e0e5c67e2f0b5",
+        "reuse_id": "reuse-8c038c77ffba"
+      },
+      "evidence": {
+        "lineage_record": {
+          "id": "reuse-8c038c77ffba",
+          "artifact_id": "art-3825242ff8524571",
+          "version_number": 1,
+          "source_project_id": "prj-0a9a61996d554924be21c14fd4d82dd7",
+          "target_project_id": "prj-3dc566b87cce4fe58a4e0e5c67e2f0b5",
+          "target_run_id": null,
+          "target_task_id": "task-e2e808ed",
+          "authorized_by": "admin",
+          "authorization_note": "Lineage test reuse",
+          "authorized_at": "2026-10-21T20:18:42.196147+00:00",
+          "status": "active",
+          "action_type": "derived_training"
+        }
+      },
+      "error_message": null,
+      "timestamp": "2026-10-21T20:18:42.219913+00:00"
+    },
+    "BB-17": {
+      "scenario_id": "BB-17",
+      "name": "Unverified artifact knowledge promotion remains candidate-only",
+      "finding": "F-18",
+      "status": "PASS",
+      "elapsed_ms": 71.89,
+      "details": {
+        "proposal_id": "prm-2e3c15fa34e84931",
+        "status": "proposed"
+      },
+      "evidence": {
+        "proposal": {
+          "id": "prm-2e3c15fa34e84931",
+          "knowledge_id": "kn-b2f399e1e123489d",
+          "source_project_id": "prj-cc69cce30c094abbb1180d5b36e95aba",
+          "status": "proposed",
+          "promotion_policy": "public_technical",
+          "quality_assessment": "Verification status 'unverified' is insufficient for collective promotion; must be 'supported' or 'corroborated'.",
+          "privacy_check_passed": 0,
+          "rationale": "Researcher Alpha verified experimental efficiency",
+          "reviewed_by": null,
+          "reviewed_at": null,
+          "created_at": "2026-10-21T20:18:42.260645+00:00",
+          "target_tier": "reusable",
+          "subject": "ExperimentalTurbine",
+          "statement": "Turbine efficiency exceeded 94% under cryogenic cooling.",
+          "knowledge_type": "fact",
+          "verification_status": "unverified",
+          "scope": "project",
+          "trust_tier": "captured"
+        },
+        "auto_promoted": false
+      },
+      "error_message": null,
+      "timestamp": "2026-10-21T20:18:42.291598+00:00"
+    },
+    "BB-22": {
+      "scenario_id": "BB-22",
+      "name": "Published API examples conform to implemented API contracts",
+      "finding": "F-16",
+      "status": "PASS",
+      "elapsed_ms": 105.34,
+      "details": {
+        "tested_routes": 5,
+        "all_conforming": true
+      },
+      "evidence": {
+        "results": [
+          {
+            "path": "/api/v1/health",
+            "status": 200,
+            "ok": true
+          },
+          {
+            "path": "/api/v1/observatory/overview",
+            "status": 200,
+            "ok": true
+          },
+          {
+            "path": "/api/v1/observatory/snapshots/latest",
+            "status": 200,
+            "ok": true
+          },
+          {
+            "path": "/api/v1/orchestration/models",
+            "status": 200,
+            "ok": true
+          },
+          {
+            "path": "/api/v1/artifacts",
+            "status": 200,
+            "ok": true
+          }
+        ]
+      },
+      "error_message": null,
+      "timestamp": "2026-10-21T20:18:42.397370+00:00"
+    },
+    "BB-23": {
+      "scenario_id": "BB-23",
+      "name": "Complete backup, isolated restore, and integrity verification succeed",
+      "finding": "F-17",
+      "status": "PASS",
+      "elapsed_ms": 437.37,
+      "details": {
+        "archive_size_bytes": 54655,
+        "restored_files": 11
+      },
+      "evidence": {
+        "snapshot_id": "snp-20261021_201842-46182275",
+        "archive_path": "C:\\Users\\Matt C\\AppData\\Local\\Temp\\qc_stage09_phase1_oo5me4qz\\data\\backups\\qwen_collective_backup_snp-20261021_201842-46182275.tar.gz",
+        "canary_verified": true
+      },
+      "error_message": null,
+      "timestamp": "2026-10-21T20:18:42.834610+00:00"
+    },
+    "BB-24": {
+      "scenario_id": "BB-24",
+      "name": "Historical projects and artifacts survive supported migrations",
+      "finding": "F-17",
+      "status": "PASS",
+      "elapsed_ms": 14.0,
+      "details": {
+        "verified_tables": 9,
+        "fk_violations": 0
+      },
+      "evidence": {
+        "tables": [
+          "users",
+          "sqlite_sequence",
+          "machines",
+          "machine_audits",
+          "inference_backends",
+          "distributed_groups",
+          "benchmarks",
+          "tasks",
+          "vps_nodes",
+          "chat_conversations",
+          "chat_messages",
+          "knowledge_fts",
+          "knowledge_fts_data",
+          "knowledge_fts_idx",
+          "knowledge_fts_content",
+          "knowledge_fts_docsize",
+          "knowledge_fts_config",
+          "login_attempts",
+          "projects",
+          "project_paths",
+          "path_stages",
+          "knowledge_metadata",
+          "knowledge_relations",
+          "task_dependencies",
+          "deliverables",
+          "deliverable_revisions",
+          "task_execution_events",
+          "path_revisions",
+          "project_metrics",
+          "metric_observations",
+          "path_forecasts",
+          "forecast_evaluations",
+          "project_proposals",
+          "project_retrospectives",
+          "deliverable_evaluations",
+          "project_decisions",
+          "infrastructure_nodes",
+          "infrastructure_capabilities",
+          "infrastructure_reconciliations",
+          "infrastructure_verifications",
+          "worker_auth_tokens",
+          "worker_task_leases",
+          "worker_executions",
+          "worker_enrollment_tokens",
+          "orchestration_runs",
+          "orchestration_plan_revisions",
+          "orchestration_events",
+          "orchestration_approvals",
+          "orchestration_tasks",
+          "orchestration_task_deps",
+          "orchestration_attempts",
+          "artifact_metadata",
+          "resource_budgets",
+          "model_inference_requests",
+          "orchestration_scheduler_lock",
+          "orchestration_checkpoints",
+          "telemetry_samples",
+          "telemetry_rollups_minute",
+          "telemetry_rollups_hour",
+          "inference_telemetry",
+          "observatory_alert_rules",
+          "observatory_alerts",
+          "research_runs",
+          "research_queries",
+          "research_search_results",
+          "research_sources",
+          "research_source_versions",
+          "research_extractions",
+          "research_claims",
+          "research_evidence",
+          "research_citations",
+          "research_provider_status",
+          "research_budgets",
+          "knowledge_records",
+          "knowledge_records_fts",
+          "knowledge_records_fts_data",
+          "knowledge_records_fts_idx",
+          "knowledge_records_fts_content",
+          "knowledge_records_fts_docsize",
+          "knowledge_records_fts_config",
+          "knowledge_impacts",
+          "stage_research_checkpoints",
+          "knowledge_promotions",
+          "knowledge_freshness_policies",
+          "artifacts",
+          "artifact_versions",
+          "artifact_lineage",
+          "artifact_project_links",
+          "artifact_task_links",
+          "artifact_access_grants",
+          "artifact_knowledge_links",
+          "artifacts_fts",
+          "artifacts_fts_data",
+          "artifacts_fts_idx",
+          "artifacts_fts_content",
+          "artifacts_fts_docsize",
+          "artifacts_fts_config",
+          "research_source_reuses",
+          "artifact_reuses",
+          "artifact_packages",
+          "artifact_package_components",
+          "knowledge_conflicts"
+        ]
+      },
+      "error_message": null,
+      "timestamp": "2026-10-21T20:18:42.848003+00:00"
+    },
+    "BB-26": {
+      "scenario_id": "BB-26",
+      "name": "Prompt injection cannot bypass authorization and approval boundaries",
+      "finding": "F-15",
+      "status": "PASS",
+      "elapsed_ms": 126.45,
+      "details": {
+        "approval_required": 1,
+        "status": "awaiting_approval"
+      },
+      "evidence": {
+        "injection_blocked": true,
+        "task_status": "awaiting_approval"
+      },
+      "error_message": null,
+      "timestamp": "2026-10-21T20:18:42.975341+00:00"
+    },
+    "BB-27": {
+      "scenario_id": "BB-27",
+      "name": "Malicious HTML/SVG previews cannot execute scripts in dashboard context",
+      "finding": "F-15",
+      "status": "PASS",
+      "elapsed_ms": 80.1,
+      "details": {
+        "csp_enforced": true,
+        "allow_scripts_present": false,
+        "nosniff": true
+      },
+      "evidence": {
+        "preview_csp": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+        "download_content_type": "text/plain; charset=utf-8"
+      },
+      "error_message": null,
+      "timestamp": "2026-10-21T20:18:43.055308+00:00"
+    },
+    "BB-30": {
+      "scenario_id": "BB-30",
+      "name": "Unreviewed knowledge cannot silently become trusted planner constraints",
+      "finding": "F-18",
+      "status": "PASS",
+      "elapsed_ms": 148.47,
+      "details": {
+        "record_id": "kn-5b6e133901fa4822",
+        "initial_tier": "captured",
+        "elevation_blocked": true
+      },
+      "evidence": {
+        "sync_status": "metadata_conflict: unverified_initial_tier_demoted_to_captured (reusable)",
+        "trust_tier": "captured"
+      },
+      "error_message": null,
+      "timestamp": "2026-10-21T20:18:43.203802+00:00"
+    }
+  }
+}

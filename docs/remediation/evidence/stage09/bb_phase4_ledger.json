@@ -1,0 +1,308 @@
+{
+  "timestamp_utc": "2026-10-21T22:02:04.397340+00:00",
+  "git_checkpoint": "c98510b",
+  "phase": "Stage 9 Phase 4 Final Certification",
+  "scenarios": {
+    "BB-27": {
+      "scenario_id": "BB-27",
+      "description": "Malicious HTML/SVG artifact preview in real Playwright Chromium browser",
+      "passed": true,
+      "details": {
+        "html_dashboard_preview": {
+          "status_code": 200,
+          "xss_fired": null,
+          "title_preserved": true,
+          "safe_code_rendered": false,
+          "screenshot": "bb27_html_preview.png"
+        },
+        "html_sandboxed_preview": {
+          "status_code": 200,
+          "csp_header": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+          "has_sandbox_directive": true,
+          "script_blocked": true
+        },
+        "svg_dashboard_preview": {
+          "status_code": 200,
+          "svg_xss_fired": null,
+          "title_preserved": true,
+          "screenshot": "bb27_svg_preview.png"
+        },
+        "markdown_dashboard_preview": {
+          "status_code": 200,
+          "content_rendered": true,
+          "screenshot": "bb27_markdown_preview.png"
+        }
+      },
+      "elapsed_ms": 4836.81
+    },
+    "BB-19": {
+      "scenario_id": "BB-19",
+      "description": "Evaluator rejects unsupported deployment claims; positive control verifies runtime probe",
+      "passed": true,
+      "details": {
+        "negative_control": {
+          "code_eval_accepted": false,
+          "code_eval_decision": "REJECTED",
+          "report_eval_accepted": false,
+          "report_eval_decision": "BLOCKED",
+          "rejection_preserved": true
+        },
+        "positive_control": {
+          "probe_url": "http://127.0.0.1:63195/health",
+          "probe_healthy": true,
+          "eval_accepted": true,
+          "eval_decision": "ACCEPTED"
+        }
+      },
+      "elapsed_ms": 555.28
+    },
+    "BB-21": {
+      "scenario_id": "BB-21",
+      "description": "Untrusted generated-code execution returns SECURE_EXECUTION_UNAVAILABLE",
+      "passed": true,
+      "details": {
+        "is_os_enforced_sandbox_available": false,
+        "controller_sandbox_result": {
+          "status": "BLOCKED",
+          "error_message": "SECURE_EXECUTION_UNAVAILABLE: OS-enforced execution containment is unavailable. Automatic execution of untrusted generated code and test fixtures is disabled by default. Subprocess execution with monkey-patching does not constitute OS-enforced isolation.",
+          "stdout": "",
+          "failed_closed": true
+        },
+        "evaluator_code_deliverable_result": {
+          "decision": "BLOCKED",
+          "blocked_reason": "SECURE_EXECUTION_UNAVAILABLE",
+          "accepted": false
+        }
+      },
+      "elapsed_ms": 0.31
+    },
+    "BB-01": {
+      "scenario_id": "BB-01",
+      "description": "Unknown script produces typed CAPABILITY_GAP",
+      "passed": true,
+      "details": {
+        "is_registered": false,
+        "gap_structure": {
+          "task_key": "t_unknown",
+          "required_capability": "natural_dialogue_generation",
+          "reason": "No registered library script matches 'generate_natural_response'",
+          "candidate_nodes": [],
+          "blocking": true,
+          "timestamp": "2026-10-21T22:02:09.790803+00:00"
+        }
+      },
+      "elapsed_ms": 0.03
+    },
+    "BB-02": {
+      "scenario_id": "BB-02",
+      "description": "Unsupported controller step fails plan validation",
+      "passed": true,
+      "details": {
+        "validation_errors": [
+          "Task 't1' has unknown controller step 'unsupported_magic_step'. Allowed controller steps: ['assemble_report', 'research_browser_read', 'research_citation_audit', 'research_extract', 'research_fetch', 'research_full_cycle', 'research_search', 'research_synthesize', 'research_verify'].",
+          "At least one deliverable is required."
+        ]
+      },
+      "elapsed_ms": 0.43
+    },
+    "BB-03": {
+      "scenario_id": "BB-03",
+      "description": "Cyclic task graph fails DAG validation",
+      "passed": true,
+      "details": {
+        "valid": false,
+        "errors": [
+          "Dependency cycle among tasks: t1, t2.",
+          "At least one deliverable is required."
+        ]
+      },
+      "elapsed_ms": 0.62
+    },
+    "BB-05": {
+      "scenario_id": "BB-05",
+      "description": "Factual report with 0 citations rejected with MISSING_REQUIRED_CITATIONS",
+      "passed": true,
+      "details": {
+        "decision": "REJECTED",
+        "goal_checks": [
+          {
+            "name": "citation_coverage",
+            "passed": false,
+            "detail": "MISSING_REQUIRED_CITATIONS: Report contains 0 inline citations. All research deliverables must cite authoritative sources.",
+            "layer": "goal"
+          },
+          {
+            "name": "citations_verified",
+            "passed": false,
+            "detail": "no verified source library provided to validate citations",
+            "layer": "goal"
+          },
+          {
+            "name": "claims_grounded",
+            "passed": true,
+            "detail": "claims corroborated by retrieved sources",
+            "layer": "goal"
+          }
+        ]
+      },
+      "elapsed_ms": 0.26
+    },
+    "BB-06": {
+      "scenario_id": "BB-06",
+      "description": "Syndicated identical articles deduplicated; not independently corroborated",
+      "passed": true,
+      "details": {
+        "status_with_syndicated_sources": "supported",
+        "status_after_independent_source": "corroborated"
+      },
+      "elapsed_ms": 224.23
+    },
+    "BB-07": {
+      "scenario_id": "BB-07",
+      "description": "Contradictory evidence surfaced via entailment classification and flagged in ledger",
+      "passed": true,
+      "details": {
+        "entailment_status": "CONTRADICTED",
+        "entailment_reason": "Numeric percentage mismatch: claim asserts ['50']% but source states ['20']% in 'Testing revealed the battery life was measured at 20% capacity.'",
+        "claim_verification_status": "contradicted",
+        "contradiction_details": "Contradicted by source src-374aea147bfb: 'Testing revealed the battery life was measured at 20% capacity.'"
+      },
+      "elapsed_ms": 123.12
+    },
+    "BB-08": {
+      "scenario_id": "BB-08",
+      "description": "Research run cannot contaminate citations from another run",
+      "passed": true,
+      "details": {
+        "decision": "REJECTED",
+        "cross_run_detected": true
+      },
+      "elapsed_ms": 99.78
+    },
+    "BB-11": {
+      "scenario_id": "BB-11",
+      "description": "Stale worker lease submission rejected and fenced",
+      "passed": true,
+      "details": {
+        "submission_blocked": true,
+        "error_message": "Worker 'worker-A' is not authorized for task 'phase4-lease-fenced-1792620130' (assigned to 'worker-B').",
+        "task_fenced": true
+      },
+      "elapsed_ms": 31.02
+    },
+    "BB-15": {
+      "scenario_id": "BB-15",
+      "description": "Identically named artifacts have distinct CAS hashes and independent downloads",
+      "passed": true,
+      "details": {
+        "art1_id": "art-25112aff61124ccd",
+        "art1_cas": "38260b113d1dd0b7e73e9a102b03515a27d62d3743e0075c01989cf1fa0d20f0",
+        "art2_id": "art-51b69bd75ab3435e",
+        "art2_cas": "3af11ec31820385c1c204ebcc1ef9d19191556e07b34c1e69e3de8c9de546250"
+      },
+      "elapsed_ms": 100.88
+    },
+    "BB-17": {
+      "scenario_id": "BB-17",
+      "description": "Unverified artifact knowledge remains candidate-only",
+      "passed": true,
+      "details": {
+        "record_id": "kn-bc9962c7ad934159",
+        "trust_tier": "candidate",
+        "verification_status": "unverified"
+      },
+      "elapsed_ms": 65.6
+    },
+    "BB-23": {
+      "scenario_id": "BB-23",
+      "description": "Backup archive integrity verified with valid DB and CAS checksums, successful restore into isolated environment",
+      "passed": true,
+      "details": {
+        "archive_path": "qwen_collective_backup_snp-20261021_220210-34a424ab.tar.gz",
+        "verify_valid": true,
+        "component_count": 90,
+        "restore_status": "restored",
+        "db_restored": true
+      },
+      "elapsed_ms": 8756.42
+    },
+    "BB-24": {
+      "scenario_id": "BB-24",
+      "description": "Additive migrations retain historical table columns and readable schemas",
+      "passed": true,
+      "details": {
+        "has_cas_columns": true,
+        "has_deliverables_primary_artifact": true,
+        "has_tasks_assigned_worker": true
+      },
+      "elapsed_ms": 5.9
+    },
+    "BB-30": {
+      "scenario_id": "BB-30",
+      "description": "Unreviewed vault material cannot self-promote to trusted tiers",
+      "passed": true,
+      "details": {
+        "tier_preserved_candidate": true,
+        "conflict_flagged": true,
+        "sync_status": "metadata_conflict: unverified_trust_tier_in_frontmatter (reusable)"
+      },
+      "elapsed_ms": 187.84
+    }
+  },
+  "integrated_workflow": {
+    "workflow_name": "Integrated 12-Step User Workflow",
+    "passed": true,
+    "steps": {
+      "step1_intake_submission": {
+        "objective": "Build secure distributed telemetry report with verified system diagnostics",
+        "constraints_count": 2,
+        "success_criteria_count": 3
+      },
+      "step2_plan_construction": {
+        "valid": true,
+        "revision_number": 1,
+        "plan_digest": "00ca37845035a7951e81a983c0cd125ef1fb3e93216062901c272a8c357bceff"
+      },
+      "step3_user_authorization": {
+        "approved_state": "READY",
+        "authorized": true
+      },
+      "step4_capability_discovery": {
+        "eligible_nodes_t1": [],
+        "has_eligible_nodes": false
+      },
+      "step5_evidence_association": {
+        "source_id": "src-2f78c27a7741",
+        "project_id": "prj-36a6ce2cc7a6423584ce302a57d18bdf"
+      },
+      "step6_execution_progression": {
+        "state": "RUNNING"
+      },
+      "step7_deliverable_production": {
+        "artifact_id": "art-794f1e4ae0c64dd0",
+        "cas_hash": "6e4360effb553751921b276a8b2d1b6e5df75f2c692dac0d97270db9e8149ca8",
+        "display_name": "executive_telemetry_report.md"
+      },
+      "step8_user_interface_listing": {
+        "appears_in_project_artifacts": true
+      },
+      "step9_preview_and_download": {
+        "preview_type": "markdown",
+        "content_length": 367,
+        "download_file_exists": true
+      },
+      "step10_cross_project_reuse": {
+        "lineage_recorded": true
+      },
+      "step11_knowledge_candidate_tier": {
+        "candidate_id": "kn-130368769c6344c4",
+        "tier": "candidate"
+      },
+      "step12_success_criteria_evaluation": {
+        "decision": "ACCEPTED",
+        "all_passed": true
+      }
+    },
+    "elapsed_ms": 508.17
+  }
+}

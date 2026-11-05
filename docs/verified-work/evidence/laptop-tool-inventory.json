@@ -1,0 +1,31 @@
+{
+  "observed_at_utc": "2026-10-28T04:34:05.194465+00:00",
+  "host": "100.101.187.115",
+  "mode": "read-only tool/privilege inspection",
+  "inventory": {
+    "tools": {
+      "mke2fs": "/usr/sbin/mke2fs",
+      "mkfs.ext4": "/usr/sbin/mkfs.ext4",
+      "mksquashfs": "/usr/bin/mksquashfs",
+      "debootstrap": null,
+      "ldd": "/usr/bin/ldd",
+      "readelf": "/usr/bin/readelf",
+      "tar": "/usr/bin/tar",
+      "cp": "/usr/bin/cp",
+      "du": "/usr/bin/du",
+      "systemd-run": "/usr/bin/systemd-run",
+      "systemctl": "/usr/bin/systemctl",
+      "python3": "/usr/bin/python3"
+    },
+    "passwordless_root_id_probe": true,
+    "existing_collective_service_states": [
+      "ollama.service                                        loaded    active   running Ollama Service",
+      "qc-ollama-ts.service                                  loaded    active   running Proxy Tailscale:11434 -> 127.0.0.1:11434 (Ollama)",
+      "qwen-worker.service                                   loaded    active   running Qwen Collective Laptop Execution & Inference Worker Daemon"
+    ],
+    "python_executable": "/usr/bin/python3.12",
+    "python_stdlib_exists": true,
+    "test_root_exists": false,
+    "mutations": []
+  }
+}

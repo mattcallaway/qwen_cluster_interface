@@ -1,0 +1,294 @@
+import threading
+import time
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
+
+from .hasher import ExecutionNamespace, PagedKVHasher, PrefixRadixTree, TokenBlock
+from .identity import IdentityIssuanceAuthority, IssuedReuseAuthority
+from .page_table import PhysicalBlock, PhysicalBlockPool, VirtualBlockTable
+from .store import PagedKVStore
+
+
+class PagedKVManager:
+    """
+    Coordinates paged KV cache allocation, cryptographic prefix matching,
+    tiered storage offloading, and memory boundary enforcement.
+    Thread-safe across concurrent multi-tenant ingest and restoration requests.
+    """
+
+    def __init__(
+        self,
+        storage_dir: Union[str, Path],
+        max_ram_blocks: int = 64,
+        max_ram_bytes: Optional[int] = None,
+        max_disk_bytes: Optional[int] = None,
+        block_size: int = 16,
+        compress: bool = True,
+        auth_key: Optional[Union[bytes, str]] = None,
+        trusted_issuer: Optional[IdentityIssuanceAuthority] = None,
+    ):
+        self._lock = threading.RLock()
+        self.block_size = block_size
+        self.max_ram_blocks = max_ram_blocks
+        self.max_ram_bytes = max_ram_bytes or (max_ram_blocks * 64 * 1024)
+        self.max_disk_bytes = max_disk_bytes
+        self.hasher = PagedKVHasher(block_size=block_size)
+        self.radix_tree = PrefixRadixTree(hasher=self.hasher)
+        self.pool = PhysicalBlockPool(total_blocks=max_ram_blocks * 4)
+        self.table = VirtualBlockTable(pool=self.pool)
+        self.store = PagedKVStore(
+            storage_dir=storage_dir,
+            compress=compress,
+            auth_key=auth_key,
+            max_disk_bytes=max_disk_bytes,
+        )
+        self.trusted_issuer = trusted_issuer
+
+        # Connect physical pool eviction callback to safely offload unpinned blocks to disk
+        self.pool.eviction_callback = self._evict_lru_page_to_disk
+        self.sequence_namespaces: Dict[str, ExecutionNamespace] = {}
+        self.sequence_authorities: Dict[str, IssuedReuseAuthority] = {}
+        self.sequence_model_instances: Dict[str, Optional[str]] = {}
+
+        # Statistics
+        self.total_queries = 0
+        self.total_matched_tokens = 0
+        self.total_evaluated_tokens = 0
+        self.total_evictions = 0
+
+    def ingest_prompt(
+        self,
+        sequence_id: str,
+        tokens: Sequence[int],
+        model_name: Optional[str] = None,
+        namespace: Optional[Union[ExecutionNamespace, str]] = None,
+        authority: Optional[Any] = None,
+        dummy_tensor_generator: Optional[Callable[[TokenBlock], bytes]] = None,
+        model_instance_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Ingests a prompt sequence bound to an immutable execution namespace,
+        identifies cached prefix blocks, and attaches them to the sequence table.
+        Genuine cross-request prefix reuse is authorized ONLY when accompanied
+        by an authentic IssuedReuseAuthority valid for the execution namespace.
+        Thread-safe under concurrent query ingestion.
+        """
+        with self._lock:
+            if namespace is None:
+                namespace = ExecutionNamespace.create_canonical(model_name=model_name or "qwen2.5:1.5b")
+            elif isinstance(namespace, str):
+                namespace = ExecutionNamespace.create_canonical(model_name=namespace)
+
+            if sequence_id in self.table.seq_tables:
+                # Prevent duplicate block mappings and ref_count leaks if an active sequence_id is re-ingested
+                self.release_sequence(sequence_id)
+
+            self.sequence_namespaces[sequence_id] = namespace
+            effective_model_name = namespace.model_name
+            total_tokens = len(tokens)
+
+            # Authority verification: genuine reuse requires that the manager's configured trusted_issuer
+            # confirms this authority token was issued by it, is active, non-empty, and valid.
+            is_authorized = False
+            if self.trusted_issuer is not None and authority is not None:
+                is_authorized = self.trusted_issuer.validate_authority_for_reuse(
+                    authority=authority,
+                    namespace=namespace,
+                    model_instance_id=model_instance_id,
+                )
+
+            if is_authorized and isinstance(authority, IssuedReuseAuthority):
+                self.sequence_authorities[sequence_id] = authority
+                self.sequence_model_instances[sequence_id] = model_instance_id
+            else:
+                self.sequence_authorities.pop(sequence_id, None)
+                self.sequence_model_instances.pop(sequence_id, None)
+
+            matched_blocks: List[TokenBlock] = []
+            matched_token_count = 0
+            if is_authorized or namespace.identity_scope == "prototype_simulation":
+                # For authorized runs or explicit prototype simulation, search Radix tree
+                matched_blocks, matched_token_count, payloads = self.radix_tree.match_prefix(
+                    tokens, namespace=namespace
+                )
+
+            self.table.create_sequence(sequence_id)
+            remaining_tokens = tokens[matched_token_count:]
+            new_blocks: List[TokenBlock] = []
+
+            try:
+                # Step 2: Attach matched prefix blocks to sequence and verify stored page integrity
+                for block in matched_blocks:
+                    self.table.append_block(sequence_id, block.block_hash)
+                    page_bytes = self.store.read_page(
+                        block.block_hash,
+                        expected_namespace_digest=block.namespace_digest,
+                    )
+                    if page_bytes is None:
+                        raise ValueError(
+                            f"Missing stored page for matched radix block {block.block_hash}"
+                        )
+
+                # Step 3: Chunk and allocate remaining novel suffix tokens
+                if remaining_tokens:
+                    all_blocks = self.hasher.chunk_tokens(tokens, namespace=namespace)
+                    new_blocks = all_blocks[len(matched_blocks) :]
+
+                    for block in new_blocks:
+                        self.table.append_block(sequence_id, block.block_hash)
+
+                        # Generate or record KV tensor bytes for the new block
+                        if dummy_tensor_generator:
+                            t_bytes = dummy_tensor_generator(block)
+                        else:
+                            t_bytes = f"TENSOR:{effective_model_name}:{block.block_hash}:{block.tokens}".encode()
+
+                        self.store.write_page(
+                            block.block_hash,
+                            t_bytes,
+                            persist_to_disk=True,
+                            namespace_digest=block.namespace_digest,
+                        )
+
+                    # Insert new sequence branch into Radix tree only after all allocations succeed
+                    self.radix_tree.insert(
+                        tokens,
+                        payload={"model": effective_model_name, "last_seq": sequence_id},
+                        namespace=namespace,
+                    )
+            except Exception:
+                # Transactional rollback: release any partially allocated blocks and sequence state
+                self.release_sequence(sequence_id)
+                raise
+
+            # Commit accounting only after full sequence ingestion succeeds
+            self.total_queries += 1
+            self.total_evaluated_tokens += total_tokens
+            self.total_matched_tokens += matched_token_count
+
+            # Step 4: Check RAM quota and evict LRU blocks if necessary
+            self._enforce_ram_quota()
+
+            prefill_saved_pct = (
+                (matched_token_count / total_tokens * 100.0) if total_tokens > 0 else 0.0
+            )
+
+            return {
+                "sequence_id": sequence_id,
+                "total_tokens": total_tokens,
+                "matched_tokens": matched_token_count,
+                "novel_tokens": total_tokens - matched_token_count,
+                "prefill_saved_percent": round(prefill_saved_pct, 2),
+                "reused_blocks_count": len(matched_blocks),
+                "new_blocks_count": len(new_blocks),
+                "total_sequence_blocks": len(self.table.get_physical_blocks(sequence_id)),
+                "ram_blocks_in_use": self.store.get_ram_page_count(),
+                "ram_bytes_in_use": self.store.get_ram_bytes(),
+                "verified_reuse_authorized": is_authorized,
+                "identity_scope": namespace.identity_scope,
+                "authority_id": authority.authority_id if is_authorized else None,
+            }
+
+    def _evict_lru_page_to_disk(self) -> bool:
+        """
+        Offloads least recently used unpinned page from RAM cache to disk.
+        Unmaps physical block from virtual table and frees the physical pool slot.
+        """
+        with self._lock:
+            candidates = list(self.store._ram_cache.keys())
+            for candidate_hash in candidates:
+                bid = self.pool.hash_to_block_id.get(candidate_hash)
+                if bid is not None and self.pool.blocks[bid].pinned:
+                    continue
+
+                self.store.evict_from_ram(candidate_hash)
+                self.table.offload_block(candidate_hash)
+                self.total_evictions += 1
+                return True
+
+            return False
+
+    def _enforce_ram_quota(self) -> int:
+        """Flushes least recently used blocks to disk when RAM quota is exceeded."""
+        with self._lock:
+            evicted = 0
+            while self.store.get_ram_page_count() > self.max_ram_blocks or (
+                self.max_ram_bytes is not None and self.store.get_ram_bytes() > self.max_ram_bytes
+            ):
+                if not self._evict_lru_page_to_disk():
+                    break
+                evicted += 1
+            return evicted
+
+    def restore_sequence_to_ram(
+        self,
+        sequence_id: str,
+        model_instance_id: Optional[str] = None,
+    ) -> int:
+        """
+        Ensures all physical blocks of a sequence are loaded in Tier 1 RAM,
+        remapping unmapped pages from disk, validating identities, and re-enforcing RAM quotas.
+        """
+        with self._lock:
+            hashes = self.table.get_block_hashes(sequence_id)
+            auth = self.sequence_authorities.get(sequence_id)
+            ns = self.sequence_namespaces.get(sequence_id)
+            recorded_instance = self.sequence_model_instances.get(sequence_id)
+            effective_instance = model_instance_id if model_instance_id is not None else recorded_instance
+            if auth is not None:
+                if self.trusted_issuer is None or not self.trusted_issuer.validate_authority_for_reuse(
+                    auth, ns, model_instance_id=effective_instance
+                ):
+                    raise ValueError(
+                        f"Cannot restore sequence '{sequence_id}' to RAM: reuse authority has been revoked or invalidated."
+                    )
+
+            expected_ns_digest = ns.compute_digest() if ns else None
+            restored = 0
+            for idx, h in enumerate(hashes):
+                was_in_ram = self.store.is_in_ram(h)
+                # read_page touches the block, validates namespace and key identity, moves it to MRU
+                page_bytes = self.store.read_page(h, expected_namespace_digest=expected_ns_digest)
+                if page_bytes is None:
+                    raise ValueError(f"Cannot restore sequence '{sequence_id}': block {h} missing from storage.")
+                if not was_in_ram:
+                    restored += 1
+                if idx < len(self.table.seq_tables[sequence_id]):
+                    if self.table.seq_tables[sequence_id][idx] is None:
+                        new_block = self.pool.allocate_block(block_hash=h)
+                        self.table.remap_block(sequence_id, idx, new_block)
+
+            # Strictly re-enforce RAM bounds after restoration
+            self._enforce_ram_quota()
+            return restored
+
+    def release_sequence(self, sequence_id: str) -> int:
+        """Releases sequence resources and cleans up table mappings."""
+        with self._lock:
+            self.sequence_namespaces.pop(sequence_id, None)
+            self.sequence_authorities.pop(sequence_id, None)
+            self.sequence_model_instances.pop(sequence_id, None)
+            freed_bids = self.table.release_sequence(sequence_id)
+            return len(freed_bids)
+
+    def get_metrics(self) -> Dict[str, Any]:
+        with self._lock:
+            hit_rate = (
+                (self.total_matched_tokens / self.total_evaluated_tokens * 100.0)
+                if self.total_evaluated_tokens > 0
+                else 0.0
+            )
+            return {
+                "total_queries": self.total_queries,
+                "total_evaluated_tokens": self.total_evaluated_tokens,
+                "total_matched_tokens": self.total_matched_tokens,
+                "prefix_hit_rate_percent": round(hit_rate, 2),
+                "total_evictions": self.total_evictions,
+                "current_ram_pages": self.store.get_ram_page_count(),
+                "max_ram_blocks": self.max_ram_blocks,
+                "current_ram_bytes": self.store.get_ram_bytes(),
+                "max_ram_bytes": self.max_ram_bytes,
+                "free_physical_blocks": self.pool.get_free_block_count(),
+                "active_sequences": len(self.table.seq_tables),
+            }
+

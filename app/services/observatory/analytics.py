@@ -234,7 +234,10 @@ def get_cluster_overview() -> Dict[str, Any]:
             "avg_latency_ms": round(float(inf_row.get("avg_latency_ms") or 0.0), 1),
         },
         "active_alerts_count": active_alerts_count,
+        "research_and_knowledge": get_research_and_knowledge_metrics(),
+        "artifacts_and_deliverables": get_deliverables_and_artifacts_metrics(),
     }
+
 
 
 def get_node_detail(node_id: str) -> Optional[Dict[str, Any]]:
@@ -567,3 +570,189 @@ def generate_system_insights() -> List[Dict[str, Any]]:
             })
 
     return insights
+
+
+def get_research_and_knowledge_metrics() -> Dict[str, Any]:
+    """Calculate observatory telemetry for continuous research and persistent knowledge."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Checkpoint stats
+    cursor.execute("""
+        SELECT 
+            COUNT(*) as total_checkpoints,
+            SUM(CASE WHEN research_needed = 1 AND status = 'completed' THEN 1 ELSE 0 END) as searches_executed,
+            SUM(CASE WHEN research_needed = 0 THEN 1 ELSE 0 END) as searches_skipped,
+            SUM(CASE WHEN status = 'degraded' THEN 1 ELSE 0 END) as degraded_modes
+        FROM stage_research_checkpoints
+    """)
+
+    cp_row = dict(cursor.fetchone() or {})
+    total_cp = cp_row.get("total_checkpoints") or 0
+    searches_exec = cp_row.get("searches_executed") or 0
+    searches_skipped = cp_row.get("searches_skipped") or 0
+    degraded = cp_row.get("degraded_modes") or 0
+    reuse_rate = round((searches_skipped / max(1, total_cp)) * 100.0, 1)
+
+    # Knowledge record counts
+    cursor.execute("""
+        SELECT 
+            COUNT(*) as total_records,
+            SUM(CASE WHEN scope = 'collective' THEN 1 ELSE 0 END) as collective_records,
+            SUM(CASE WHEN scope = 'project' THEN 1 ELSE 0 END) as project_records,
+            SUM(CASE WHEN verification_status IN ('supported', 'corroborated') OR confidence_assessment = 'verified' THEN 1 ELSE 0 END) as verified_records,
+            SUM(CASE WHEN verification_status = 'corroborated' THEN 1 ELSE 0 END) as corroborated_records,
+            SUM(CASE WHEN verification_status = 'contradicted' OR knowledge_type = 'contradiction' THEN 1 ELSE 0 END) as contradictions,
+            SUM(CASE WHEN superseded_by IS NOT NULL THEN 1 ELSE 0 END) as superseded,
+            SUM(CASE WHEN source_ids_json != '[]' THEN 1 ELSE 0 END) as with_sources,
+            SUM(CASE WHEN verification_status = 'outdated' THEN 1 ELSE 0 END) as stale_records
+        FROM knowledge_records
+    """)
+
+    kr_row = dict(cursor.fetchone() or {})
+    total_kr = kr_row.get("total_records") or 0
+    verified_kr = kr_row.get("verified_records") or 0
+    with_sources = kr_row.get("with_sources") or 0
+    evidence_coverage = round((with_sources / max(1, total_kr)) * 100.0, 1) if total_kr > 0 else 0.0
+
+    # Promotions
+    cursor.execute("""
+        SELECT 
+            COUNT(*) as total_promotions,
+            SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved_promotions,
+            SUM(CASE WHEN status = 'proposed' THEN 1 ELSE 0 END) as pending_promotions
+        FROM knowledge_promotions
+    """)
+    pr_row = dict(cursor.fetchone() or {})
+
+    # Impacts
+    cursor.execute("""
+        SELECT 
+            COUNT(*) as total_impacts,
+            SUM(CASE WHEN is_affected = 1 THEN 1 ELSE 0 END) as affected_impacts
+        FROM knowledge_impacts
+    """)
+    imp_row = dict(cursor.fetchone() or {})
+
+    research_efficiency = round(total_kr / max(1, searches_exec), 2) if searches_exec > 0 else round(float(total_kr), 2)
+
+    conn.close()
+
+    return {
+        "checkpoints": {
+            "total": total_cp,
+            "searches_executed": searches_exec,
+            "searches_skipped": searches_skipped,
+            "degraded_modes": degraded,
+            "reuse_rate_percent": reuse_rate,
+        },
+        "knowledge_base": {
+            "total_records": total_kr,
+            "collective_records": kr_row.get("collective_records") or 0,
+            "project_records": kr_row.get("project_records") or 0,
+            "verified_records": verified_kr,
+            "corroborated_records": kr_row.get("corroborated_records") or 0,
+            "contradictions_detected": kr_row.get("contradictions") or 0,
+            "superseded_records": kr_row.get("superseded") or 0,
+            "stale_records": kr_row.get("stale_records") or 0,
+            "evidence_coverage_percent": evidence_coverage,
+            "research_efficiency": research_efficiency,
+        },
+        "promotions": {
+            "total": pr_row.get("total_promotions") or 0,
+            "approved": pr_row.get("approved_promotions") or 0,
+            "pending": pr_row.get("pending_promotions") or 0,
+        },
+        "impacts": {
+            "tracked": imp_row.get("total_impacts") or 0,
+            "affected": imp_row.get("affected_impacts") or 0,
+        },
+    }
+
+
+def get_deliverables_and_artifacts_metrics() -> Dict[str, Any]:
+    """Calculate Observatory metrics for Unified Deliverables and Artifacts Management."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT
+            COUNT(*) as total_artifacts,
+            COALESCE(SUM(size_bytes), 0) as total_storage_bytes,
+            SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) as available_count,
+            SUM(CASE WHEN status = 'accepted' THEN 1 ELSE 0 END) as accepted_count,
+            SUM(CASE WHEN status = 'needs_review' THEN 1 ELSE 0 END) as review_count,
+            SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count,
+            SUM(CASE WHEN knowledge_status IN ('extracted', 'verified') THEN 1 ELSE 0 END) as knowledge_count
+        FROM artifacts
+    """)
+    art_row = dict(cursor.fetchone() or {})
+
+    cursor.execute("SELECT COUNT(*) FROM artifact_versions")
+    total_versions = cursor.fetchone()[0]
+
+    cursor.execute("""
+        SELECT
+            COUNT(*) as total_deliverables,
+            SUM(CASE WHEN status = 'accepted' THEN 1 ELSE 0 END) as accepted_deliverables,
+            SUM(CASE WHEN primary_artifact_id IS NOT NULL THEN 1 ELSE 0 END) as linked_to_artifact
+        FROM deliverables
+    """)
+    del_row = dict(cursor.fetchone() or {})
+
+    cursor.execute("""
+        SELECT
+            COUNT(*) as total_lineage_links,
+            SUM(CASE WHEN relationship_type = 'uses_as_input' THEN 1 ELSE 0 END) as input_reuses,
+            SUM(CASE WHEN relationship_type = 'revised_from' THEN 1 ELSE 0 END) as revisions,
+            SUM(CASE WHEN relationship_type = 'derived_from' THEN 1 ELSE 0 END) as derivatives
+        FROM artifact_lineage
+    """)
+    lin_row = dict(cursor.fetchone() or {})
+
+    cursor.execute("SELECT COUNT(*) FROM artifact_access_grants WHERE status = 'active'")
+    active_grants = cursor.fetchone()[0]
+
+    cursor.execute("SELECT COUNT(*) FROM artifact_knowledge_links")
+    knowledge_extracted = cursor.fetchone()[0]
+
+    cursor.execute("""
+        SELECT artifact_type, COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as storage_bytes
+        FROM artifacts
+        GROUP BY artifact_type
+        ORDER BY storage_bytes DESC
+    """)
+    type_rows = [dict(r) for r in cursor.fetchall()]
+
+    conn.close()
+
+    return {
+        "artifacts": {
+            "total": art_row.get("total_artifacts") or 0,
+            "total_versions": total_versions,
+            "total_storage_bytes": art_row.get("total_storage_bytes") or 0,
+            "available": art_row.get("available_count") or 0,
+            "accepted": art_row.get("accepted_count") or 0,
+            "needs_review": art_row.get("review_count") or 0,
+            "failed": art_row.get("failed_count") or 0,
+            "in_knowledge_base": art_row.get("knowledge_count") or 0,
+        },
+        "deliverables": {
+            "total": del_row.get("total_deliverables") or 0,
+            "accepted": del_row.get("accepted_deliverables") or 0,
+            "linked_to_artifact": del_row.get("linked_to_artifact") or 0,
+        },
+        "reuse_and_lineage": {
+            "total_links": lin_row.get("total_lineage_links") or 0,
+            "input_reuses": lin_row.get("input_reuses") or 0,
+            "revisions": lin_row.get("revisions") or 0,
+            "derivatives": lin_row.get("derivatives") or 0,
+            "active_grants": active_grants,
+        },
+        "knowledge_integration": {
+            "findings_extracted": knowledge_extracted,
+        },
+        "types_breakdown": type_rows,
+    }
+
+

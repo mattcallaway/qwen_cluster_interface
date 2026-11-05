@@ -1,0 +1,31 @@
+{
+  "schema": "qc.increment19.containment_and_public_suite_reproduction.v1",
+  "commit_sha": "d26cc639ac3f3927956de578cafbe503702425de",
+  "gap_1_public_suite_fabricated_from_holdouts_on_linux_branch": {
+    "reproduced": true,
+    "accepted": true,
+    "public_tests_reported": {
+      "schema": "qc.repo_test_run.v1",
+      "passed": true,
+      "status": "verified_for_scope",
+      "verification_scope": "verified_inside_linux_systemd_root_image_sandbox",
+      "executed_on_controller_host": false,
+      "containment_category": "linux_systemd_root_image_sandbox",
+      "tests_run": 2,
+      "failures": 0,
+      "errors": 0,
+      "cleanup_confirmed": true,
+      "output_excerpt": "Candidate executed exclusively inside Linux root-image sandbox (tests_run=2, failures=0)."
+    },
+    "holdout_tests_reported_ran": 2,
+    "explanation": "Public test test_deliberate_public_failure was designed to fail (expected 999 vs actual 5), but apply_and_verify_repository_patch copied holdout_ok=True and tests_run=2 into public_tests without executing tests/test_public.py."
+  },
+  "gap_2_uncontained_host_execution_without_holdouts_or_via_direct_tools": {
+    "apply_and_verify_without_holdout_executed_on_host": true,
+    "apply_and_verify_without_holdout_status": "public_diagnostics_passed",
+    "run_repository_test_suite_when_held_executed_on_host": true,
+    "run_repository_test_suite_status": "public_diagnostics_passed",
+    "run_bounded_python_verification_when_held_executed_on_host": true,
+    "run_bounded_python_verification_accepted": true
+  }
+}

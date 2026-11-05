@@ -14,7 +14,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
-from app.auth import get_current_user
+from app.auth import get_current_user, verify_csrf, verify_session_token
+from app.config import settings
+from app.services import operational_health
 from app.services.observatory import alerting, analytics, models, storage
 
 logger = logging.getLogger("qwen_collective.observatory_routes")
@@ -24,6 +26,48 @@ templates = Jinja2Templates(directory="app/templates")
 router = APIRouter(tags=["observatory"])
 
 
+def _require_observatory_auth(request: Request, mutating: bool = False) -> str:
+    """Require valid session cookie or Bearer session token on Observatory routes."""
+    if request is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
+    user = None
+    is_bearer = False
+    auth_hdr = request.headers.get("Authorization", "")
+    if auth_hdr.startswith("Bearer "):
+        tok = auth_hdr[7:].strip()
+        user = verify_session_token(tok) or ("admin" if tok == settings.admin_password else None)
+        if user:
+            is_bearer = True
+    if not user:
+        user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
+    if mutating and not is_bearer:
+        csrf_hdr = request.headers.get("X-CSRF-Token")
+        if not verify_csrf(request, csrf_hdr):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid or missing CSRF token.")
+    return user if isinstance(user, str) else user.get("username", "operator")
+
+
+# ---------------------------------------------------------------------------
+# Health & Operational Reliability Endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/api/v1/observatory/snapshots/latest")
+def get_latest_health_snapshot(request: Request):
+    """Cluster Real-Time Health Snapshot matching API Specification Section 6.1."""
+    _require_observatory_auth(request)
+    return operational_health.get_cluster_health_snapshot()
+
+
+@router.get("/api/v1/system/diagnostics")
+def get_system_diagnostics(request: Request):
+    """Comprehensive operational diagnostics, worker health, queue progress, and stall detection."""
+    _require_observatory_auth(request)
+    return operational_health.get_operational_diagnostics()
+
+
 # ---------------------------------------------------------------------------
 # HTML Views
 # ---------------------------------------------------------------------------
@@ -31,7 +75,7 @@ router = APIRouter(tags=["observatory"])
 @router.get("/observatory", response_class=HTMLResponse)
 def observatory_page(request: Request, tab: str = "overview"):
     """Render the primary System Observatory control-room dashboard."""
-    current_user = get_current_user(request)
+    current_user = _require_observatory_auth(request)
     overview_data = analytics.get_cluster_overview()
 
     return templates.TemplateResponse(
@@ -53,12 +97,14 @@ def observatory_page(request: Request, tab: str = "overview"):
 @router.get("/api/v1/observatory/overview")
 def get_overview_api(request: Request):
     """Retrieve near-real-time overall cluster health, node counts, and capacity."""
+    _require_observatory_auth(request)
     return analytics.get_cluster_overview()
 
 
 @router.get("/api/v1/observatory/nodes")
 def list_nodes_api(request: Request):
     """List physical nodes with latest telemetry, excluding legacy virtual records."""
+    _require_observatory_auth(request)
     overview = analytics.get_cluster_overview()
     return overview.get("nodes", {})
 
@@ -66,6 +112,7 @@ def list_nodes_api(request: Request):
 @router.get("/api/v1/observatory/nodes/{node_id}")
 def get_node_detail_api(node_id: str, request: Request):
     """Retrieve detailed telemetry, hardware specifications, and time series for a node."""
+    _require_observatory_auth(request)
     detail = analytics.get_node_detail(node_id)
     if not detail:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Node '{node_id}' not found.")
@@ -74,14 +121,15 @@ def get_node_detail_api(node_id: str, request: Request):
 
 @router.get("/api/v1/observatory/metrics")
 def get_metrics_time_series(
+    request: Request,
     node_id: Optional[str] = None,
     resolution: str = Query("raw", pattern="^(raw|minute|hour)$"),
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
     limit: int = Query(500, ge=10, le=2000),
-    request: Request = None,
 ):
     """Query time-series telemetry samples or consolidated rollups."""
+    _require_observatory_auth(request)
     if resolution == "raw":
         samples = storage.get_time_series_samples(
             node_id=node_id,
@@ -104,6 +152,7 @@ def get_metrics_time_series(
 @router.get("/api/v1/observatory/inference")
 def get_inference_analytics_api(request: Request):
     """Retrieve model performance statistics, side-by-side comparison, and token usage."""
+    _require_observatory_auth(request)
     models_perf = analytics.get_model_performance_analytics()
     tokens_acct = analytics.get_token_accounting()
     return {
@@ -116,12 +165,14 @@ def get_inference_analytics_api(request: Request):
 @router.get("/api/v1/observatory/tasks")
 def get_task_and_worker_metrics_api(request: Request):
     """Retrieve worker task execution rates, useful-time ratios, and orchestrator metrics."""
+    _require_observatory_auth(request)
     return analytics.get_task_and_worker_efficiency()
 
 
 @router.get("/api/v1/observatory/projects")
 def get_project_resource_metrics_api(request: Request):
     """Retrieve resource and token consumption attributed to individual projects."""
+    _require_observatory_auth(request)
     tokens_acct = analytics.get_token_accounting()
     task_eff = analytics.get_task_and_worker_efficiency()
     return {
@@ -132,12 +183,13 @@ def get_project_resource_metrics_api(request: Request):
 
 @router.get("/api/v1/observatory/alerts")
 def get_alerts_api(
+    request: Request,
     state: Optional[str] = Query(None, pattern="^(firing|acknowledged|resolved)$"),
     node_id: Optional[str] = None,
     limit: int = 100,
-    request: Request = None,
 ):
     """List active or historical alerts and configured alert rules."""
+    _require_observatory_auth(request)
     alert_list = storage.get_alerts(state=state, node_id=node_id, limit=limit)
     rules = storage.get_all_alert_rules()
     return {
@@ -150,11 +202,11 @@ def get_alerts_api(
 @router.post("/api/v1/observatory/alerts/{alert_id}/acknowledge")
 def acknowledge_alert_api(
     alert_id: str,
+    request: Request,
     req: Optional[models.AlertAcknowledgeRequest] = None,
-    request: Request = None,
 ):
     """Acknowledge an active alert."""
-    admin_user = get_current_user(request) or "operator"
+    admin_user = _require_observatory_auth(request, mutating=True)
     success = storage.acknowledge_alert(alert_id, acknowledged_by=admin_user)
     if not success:
         raise HTTPException(
@@ -167,17 +219,33 @@ def acknowledge_alert_api(
 @router.get("/api/v1/observatory/insights")
 def get_system_insights_api(request: Request):
     """Retrieve deterministic evidence-backed system health insights and optimizations."""
+    _require_observatory_auth(request)
     return {"insights": analytics.generate_system_insights()}
+
+
+@router.get("/api/v1/observatory/research")
+def get_research_observatory_api(request: Request):
+    """Retrieve continuous research, stage checkpoint metrics, and persistent knowledge telemetry."""
+    _require_observatory_auth(request)
+    return analytics.get_research_and_knowledge_metrics()
+
+
+@router.get("/api/v1/observatory/artifacts")
+def get_artifacts_observatory_api(request: Request):
+    """Retrieve unified deliverables and artifacts management telemetry."""
+    _require_observatory_auth(request)
+    return analytics.get_deliverables_and_artifacts_metrics()
 
 
 @router.get("/api/v1/observatory/export")
 def export_telemetry_csv(
+    request: Request,
     data_type: str = Query("telemetry", pattern="^(telemetry|inference)$"),
     node_id: Optional[str] = None,
     limit: int = Query(1000, ge=10, le=10000),
-    request: Request = None,
 ):
     """Export raw telemetry samples or inference metrics to downloadable CSV."""
+    _require_observatory_auth(request)
     output = io.StringIO()
     writer = csv.writer(output)
 

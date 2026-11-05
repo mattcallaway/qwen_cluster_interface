@@ -1,0 +1,95 @@
+{
+  "schema": "qc.increment19_cross_domain_transfer_evidence.v1",
+  "generated_at_utc": "2026-11-04T19:20:00Z",
+  "model_identity": "qwen2.5:3b",
+  "worker_node_id": "node-inc19-live-worker",
+  "supplier_domain": {
+    "project_id": "prj-8672ddbf4b794c5cae167f47b8088a05",
+    "domain": "supplier_option_evaluation",
+    "final_cycle_phase": "completed",
+    "native_worker_lease_ids": [
+      "lease_73f754282024"
+    ],
+    "tool_selection_stats": {
+      "total_proposals": 3,
+      "valid_proposals": 3,
+      "valid_selections": 3,
+      "rejected_proposals": 0,
+      "proposal_validation_rate": 1.0,
+      "model_tool_selection_accuracy": "not_evaluated",
+      "tool_selection_accuracy": "not_evaluated",
+      "action_origin_counts": {
+        "template": 3,
+        "caller_supplied_contract": 0,
+        "model_proposal": 0,
+        "controller_policy": 0
+      }
+    },
+    "integration_verified": true,
+    "artifacts": [
+      "quote_reconciliation_ledger.json",
+      "supplier_recommendation.json",
+      "supplier_recommendation.md"
+    ]
+  },
+  "repository_bugfix_domain": {
+    "project_id": "prj-2adaddea143648f9826ebab26d38913c",
+    "domain": "repository_bugfix",
+    "initial_clarification_phase": "clarify",
+    "step1_inspection_status": "verified",
+    "park_and_restart_status": "verified_resumed_across_controller_restart",
+    "attempt1_natural_repair": {
+      "final_cycle_phase": "completed",
+      "native_worker_lease_ids": [
+        "lease_7ec5d7549df2"
+      ],
+      "tool_selection_stats": {
+        "total_proposals": 2,
+        "valid_proposals": 2,
+        "valid_selections": 2,
+        "rejected_proposals": 0,
+        "proposal_validation_rate": 1.0,
+        "model_tool_selection_accuracy": "not_evaluated",
+        "tool_selection_accuracy": "not_evaluated",
+        "action_origin_counts": {
+          "template": 2,
+          "caller_supplied_contract": 0,
+          "model_proposal": 0,
+          "controller_policy": 0
+        }
+      },
+      "integration_verified": true,
+      "untouched_reporting_sha256": "d66c879595e1c52ca8cda492c2282d574aee7a738dc664d5cf5e354265164074",
+      "untouched_public_test_sha256": "c29ea0aa89052a8de91b803a104d2436ff7545876e50a36630e1fc727857d18c",
+      "patched_allocator_sha256": "2a8e58a3cce4e45893ddcd11960bc89aaae5c5cd2cf9c750451d738309e15e3d"
+    },
+    "mid_flight_steering_and_fault_injection_recovery": {
+      "invalidated_task_keys": [
+        "t2_propose_and_verify_patch",
+        "t3_publish_change_report"
+      ],
+      "preserved_task_keys": [
+        "t1_inspect_and_reproduce"
+      ],
+      "final_cycle_phase": "completed",
+      "native_worker_lease_ids": [
+        "lease_3af0049e7833"
+      ],
+      "repair_events_count": 1,
+      "oracle_exposure_prevented": true
+    },
+    "epistemic_statuses_observed": [
+      "failed",
+      "observed",
+      "proposed",
+      "stale",
+      "verified_for_scope"
+    ],
+    "prompt_injection_stripped_in_repo": true,
+    "artifacts": [
+      "repo_inspection_and_reproduction.json",
+      "verified_bugfix_patch.diff",
+      "bugfix_verification_report.md"
+    ]
+  }
+}

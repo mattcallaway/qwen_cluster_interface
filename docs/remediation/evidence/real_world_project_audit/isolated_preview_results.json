@@ -1,0 +1,145 @@
+{
+  "captured_utc": "2026-10-22T01:19:03.846755+00:00",
+  "code": "working tree (byte-identical to RC2 package)",
+  "data_dir": "disposable temp dir",
+  "fixtures": {
+    "fixture_brief.md": {
+      "id": "art-3f0ad6c4e1354fff",
+      "sha256": "5236bb7ebad233be991a9b56276e5dd5cf38c0826ddf9d06debf3bc745c0cbd3"
+    },
+    "fixture_notes.txt": {
+      "id": "art-658b11f351664ad6",
+      "sha256": "33657584d4bc552bfac216d490107ebcd1406061f5f32c6dcfa2a6b29cfe44f2"
+    },
+    "fixture_table.csv": {
+      "id": "art-f8fbcf49854049c1",
+      "sha256": "758a420f98e8c24177cd034062be6bf06aa50828282618b243df5e432f90a4d8"
+    },
+    "fixture_data.json": {
+      "id": "art-2ccd8f29ace14a04",
+      "sha256": "d83e08808fdab3705fc03e65f50dd81aa5c0b41193b0d25a00466339b066b37a"
+    },
+    "fixture_doc.pdf": {
+      "id": "art-47a108be2a174dcb",
+      "sha256": "477360c4738ebbc31ae9ab90a9d58ad4f909a6351d5ef69d28581255a1a53afc"
+    },
+    "fixture_active.html": {
+      "id": "art-7d22b77af645491d",
+      "sha256": "b43d2983eec37cfe856c34a79deb2c6012bb6f0a2cd5e96679c6b8bb4017acbe"
+    },
+    "fixture_active.svg": {
+      "id": "art-3715573757ac42d7",
+      "sha256": "ec13dc8f5d756e60e0b6c242c48121c623402539a25fd9dfc65b14edd5ae793a"
+    }
+  },
+  "checks": [
+    {
+      "file": "fixture_brief.md",
+      "detail_status": 200,
+      "preview_panel_present": true,
+      "expected_content_visible": true,
+      "panel_excerpt": "Safe File Preview\nMode: Markdown\n# Synthetic Brief\n\n**FIXTURE** markdown content line.\n\n- item A\n- item B\n",
+      "script_executed": false,
+      "page_title": "Qwen Collective",
+      "download_status": 200,
+      "download_content_type": "text/markdown; charset=utf-8",
+      "download_disposition": "attachment; filename=\"fixture_brief.md\"",
+      "download_sha_match": true
+    },
+    {
+      "file": "fixture_notes.txt",
+      "detail_status": 200,
+      "preview_panel_present": true,
+      "expected_content_visible": true,
+      "panel_excerpt": "Safe File Preview\nMode: Code\nSYNTHETIC FIXTURE plain text line one\nline two\n",
+      "script_executed": false,
+      "page_title": "Qwen Collective",
+      "download_status": 200,
+      "download_content_type": "text/plain; charset=utf-8",
+      "download_disposition": "attachment; filename=\"fixture_notes.txt\"",
+      "download_sha_match": true
+    },
+    {
+      "file": "fixture_table.csv",
+      "detail_status": 200,
+      "preview_panel_present": true,
+      "expected_content_visible": true,
+      "panel_excerpt": "Safe File Preview\nMode: Csv\nsource\tclaim\tstatus\nFixtureOrg\tFixture claim 1\tverified\nFixtureOrg2\tFixture claim 2\tdisputed",
+      "script_executed": false,
+      "page_title": "Qwen Collective",
+      "download_status": 200,
+      "download_content_type": "application/vnd.ms-excel",
+      "download_disposition": "attachment; filename=\"fixture_table.csv\"",
+      "download_sha_match": true
+    },
+    {
+      "file": "fixture_data.json",
+      "detail_status": 200,
+      "preview_panel_present": true,
+      "expected_content_visible": true,
+      "panel_excerpt": "Safe File Preview\nMode: Json\n{\n  \"fixture\": true,\n  \"sources\": [\n    {\n      \"title\": \"Fixture\"\n    }\n  ]\n}",
+      "script_executed": false,
+      "page_title": "Qwen Collective",
+      "download_status": 200,
+      "download_content_type": "application/json",
+      "download_disposition": "attachment; filename=\"fixture_data.json\"",
+      "download_sha_match": true
+    },
+    {
+      "file": "fixture_doc.pdf",
+      "detail_status": 200,
+      "preview_panel_present": true,
+      "expected_content_visible": true,
+      "panel_excerpt": "Safe File Preview\nMode: Pdf\nPDF Document Ready\nOpen PDF in Browser Viewer",
+      "script_executed": false,
+      "page_title": "Qwen Collective",
+      "download_status": 200,
+      "download_content_type": "application/pdf",
+      "download_disposition": "attachment; filename=\"fixture_doc.pdf\"",
+      "download_sha_match": true
+    },
+    {
+      "file": "fixture_active.html",
+      "detail_status": 200,
+      "preview_panel_present": true,
+      "expected_content_visible": true,
+      "panel_excerpt": "Safe File Preview\nMode: Code\n<html><body><h1 id=x>FIXTURE HTML</h1><script>document.title='XSS_EXECUTED'</script></body></html>",
+      "script_executed": false,
+      "page_title": "Qwen Collective",
+      "download_status": 200,
+      "download_content_type": "text/html; charset=utf-8",
+      "download_disposition": "attachment; filename=\"fixture_active.html\"",
+      "download_sha_match": true
+    },
+    {
+      "file": "fixture_active.svg",
+      "detail_status": 200,
+      "preview_panel_present": true,
+      "expected_content_visible": true,
+      "panel_excerpt": "Safe File Preview\nMode: Code\n<svg xmlns='http://www.w3.org/2000/svg'><script>document.title='SVG_XSS_EXECUTED'</script><text y='20'>FIXTURE SVG</text></svg>",
+      "script_executed": false,
+      "page_title": "Qwen Collective",
+      "download_status": 200,
+      "download_content_type": "image/svg+xml",
+      "download_disposition": "attachment; filename=\"fixture_active.svg\"",
+      "download_sha_match": true
+    },
+    {
+      "unauthenticated_get": "/api/v1/artifacts/art-3f0ad6c4e1354fff",
+      "status": 200
+    },
+    {
+      "unauthenticated_get": "/api/v1/artifacts/art-3f0ad6c4e1354fff/preview",
+      "status": 200
+    },
+    {
+      "unauthenticated_get": "/api/v1/artifacts/art-3f0ad6c4e1354fff/download",
+      "status": 200
+    },
+    {
+      "unauthenticated_get": "/api/v1/artifacts",
+      "status": 200
+    }
+  ],
+  "server_errors_tail": "2026-10-21 18:19:03,537 [INFO] qwen_collective: Initializing Qwen Collective Control Server...\n2026-10-21 18:19:03,556 [INFO] qwen_collective.db: Database initialized successfully.\n2026-10-21 18:19:03,737 [INFO] qwen_collective: Control Server ready at http://127.0.0.1:64331\n2026-10-21 18:19:03,737 [INFO] qwen_collective: Project Orchestrator engine loop disabled (set QC_ORCHESTRATOR_ENABLED=1 to enable).\n2026-10-21 18:19:03,738 [INFO] qwen_collective.observatory.engine: System Observatory background telemetry engine started.\n2026-10-21 18:19:03,738 [INFO] qwen_collective: System Observatory background telemetry engine started.\n"
+}

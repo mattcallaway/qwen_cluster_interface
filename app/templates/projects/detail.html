@@ -400,6 +400,8 @@
         <td style="font-size:0.8rem; max-width:240px;">
           {% if t.deliverable_id %}
             <div><strong>Deliverable:</strong> {{ deliverable_names.get(t.deliverable_id, t.deliverable_id) }}</div>
+          {% elif t.task_type == 'artifact_reuse' %}
+            <div><strong>Reuse Action:</strong> <span class="badge badge-role" style="font-size:0.7rem;">Artifact Reuse</span></div>
           {% endif %}
           <div style="margin-top:4px;"><strong>Prerequisites:</strong>
             {% if t.dependencies %}
@@ -428,7 +430,15 @@
           </details>
           {% endif %}
         </td>
-        <td style="font-size:0.82rem; max-width:260px;">{{ t.purpose or '—' }}<div style="color:var(--text-muted);">{{ t.expected_output or '' }}</div></td>
+        <td style="font-size:0.82rem; max-width:260px;">
+          {{ t.purpose or t.description or '—' }}
+          <div style="color:var(--text-muted);">{{ t.expected_output or '' }}</div>
+          {% if t.task_type == 'artifact_reuse' %}
+            <div style="margin-top:4px;">
+              <span class="badge badge-primary" style="font-size:0.7rem;">Input Artifact Linked</span>
+            </div>
+          {% endif %}
+        </td>
         <td style="font-size:0.8rem; max-width:240px;">
           {% if t.status in ('draft','awaiting_approval') %}
             {% if t.problems %}<ul style="margin:0; padding-left:16px; color:#b91c1c;">{% for pr in t.problems %}<li>{{ pr }}</li>{% endfor %}</ul>
@@ -555,6 +565,55 @@
           {% if d.artifact_references %}
             <div><strong>Artifacts:</strong> <span style="white-space:pre-wrap;">{{ d.artifact_references }}</span></div>
           {% else %}<span style="color:var(--text-muted);">No artifacts submitted</span>{% endif %}
+          {% if d.primary_artifact_id %}
+            <div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+              <a href="/deliverables/{{ d.primary_artifact_id }}" class="btn btn-secondary btn-sm" style="font-size:0.72rem; padding:3px 8px; text-decoration:none;" title="Open and Preview Deliverable">
+                Open / Preview
+              </a>
+              <a href="/api/v1/artifacts/{{ d.primary_artifact_id }}/download" class="btn btn-primary btn-sm" style="font-size:0.72rem; padding:3px 8px; text-decoration:none;" title="Download exact file">
+                Download
+              </a>
+              <details class="dropdown" style="position:relative; display:inline-block;">
+                <summary class="btn btn-secondary btn-sm" style="font-size:0.72rem; padding:3px 8px; cursor:pointer;" title="Reuse deliverable in current or other project">
+                  Reuse ▾
+                </summary>
+                <div style="position:absolute; left:0; top:100%; margin-top:4px; width:280px; background:white; border:1px solid var(--border-color, #e5e7eb); border-radius:6px; box-shadow:0 10px 15px -3px rgba(0,0,0,0.1); padding:10px; z-index:50; text-align:left;">
+                  <div style="font-weight:600; font-size:0.8rem; margin-bottom:2px; color:var(--text-color, #111827);">Reuse Deliverable</div>
+                  <div style="font-size:0.72rem; color:var(--text-muted, #6b7280); margin-bottom:8px;">
+                    Artifact: <strong>{{ d.name }}</strong> (ID: {{ d.primary_artifact_id[:8] }})
+                  </div>
+                  <form action="/deliverables/{{ d.primary_artifact_id }}/reuse" method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <div class="form-group" style="margin-bottom:6px;">
+                      <label style="font-size:0.72rem; color:var(--text-muted, #6b7280); display:block; margin-bottom:2px;">Destination Project</label>
+                      <select name="target_project_id" class="form-control" style="font-size:0.75rem; width:100%; padding:3px 6px;">
+                        <option value="{{ project.id }}" selected>{{ project.name }} (Current Project)</option>
+                        {% for cp in candidate_parents %}
+                          <option value="{{ cp.id }}">{{ cp.name }}</option>
+                        {% endfor %}
+                      </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom:6px;">
+                      <label style="font-size:0.72rem; color:var(--text-muted, #6b7280); display:block; margin-bottom:2px;">Action</label>
+                      <select name="action_type" class="form-control" style="font-size:0.75rem; width:100%; padding:3px 6px;">
+                        <option value="analyze">Analyze Content</option>
+                        <option value="revise">Revise Deliverable</option>
+                        <option value="expand">Expand Report</option>
+                        <option value="summarize">Summarize Document</option>
+                        <option value="convert">Convert Format</option>
+                        <option value="extract_data">Extract Structured Data</option>
+                      </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom:8px;">
+                      <label style="font-size:0.72rem; color:var(--text-muted, #6b7280); display:block; margin-bottom:2px;">Instructions (Optional)</label>
+                      <input type="text" name="instructions" placeholder="e.g. Update findings with latest data" class="form-control" style="font-size:0.75rem; width:100%; padding:3px 6px;">
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-sm" style="width:100%; font-size:0.75rem; padding:4px 8px;">Confirm Reuse</button>
+                  </form>
+                </div>
+              </details>
+            </div>
+          {% endif %}
           {% if d.verification_results %}
             <div style="margin-top:4px;"><strong>Verification:</strong> <span style="white-space:pre-wrap;">{{ d.verification_results }}</span></div>
           {% endif %}
@@ -619,6 +678,116 @@
   {% endif %}
 </div>
 
+<!-- Managed Project Artifacts & Output Assets Table -->
+<div class="card" style="padding:0; margin-bottom:20px;">
+  <div style="padding:14px 16px 10px; display:flex; justify-content:space-between; align-items:center;">
+    <div>
+      <h3 class="card-title" style="margin:0;">Project Artifacts &amp; Output Assets ({{ project_artifacts|length }})</h3>
+      <p class="card-subtitle" style="margin:2px 0 0 0;">All physical files, datasets, code, and reports registered for this project.</p>
+    </div>
+    <a href="/deliverables?project_id={{ project.id }}" class="btn btn-secondary btn-sm" style="font-size:0.78rem;">
+      View in Global Hub &rarr;
+    </a>
+  </div>
+  {% if project_artifacts %}
+  <div class="table-container"><table class="data-table">
+    <thead>
+      <tr>
+        <th>Artifact</th>
+        <th>Type &amp; Version</th>
+        <th>Size</th>
+        <th>Status</th>
+        <th>Knowledge</th>
+        <th style="text-align:right;">One-Click Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for art in project_artifacts %}
+      <tr>
+        <td>
+          <a href="/deliverables/{{ art.id }}" style="font-weight:600; color:var(--color-primary, #4f46e5); text-decoration:none;">
+            {{ art.display_name }}
+          </a>
+          <div style="font-size:0.7rem; color:var(--text-muted); font-family:var(--font-mono);">
+            {{ art.id }} · SHA: {{ art.checksum_sha256[:10] }}...
+          </div>
+        </td>
+        <td style="font-size:0.8rem;">
+          <span class="badge" style="background:#e0e7ff; color:#3730a3; font-size:0.7rem; padding:1px 6px;">{{ art.artifact_type }}</span>
+          <span class="badge" style="background:#dbeafe; color:#1e40af; font-size:0.7rem; padding:1px 6px;">v{{ art.current_version_number }}</span>
+        </td>
+        <td style="font-size:0.8rem;">
+          {% if art.size_bytes < 1024 %}{{ art.size_bytes }} B
+          {% elif art.size_bytes < 1024*1024 %}{{ (art.size_bytes / 1024)|round(1) }} KB
+          {% else %}{{ (art.size_bytes / (1024*1024))|round(2) }} MB{% endif %}
+        </td>
+        <td>
+          <span class="badge" style="font-size:0.7rem;">{{ art.status }}</span>
+        </td>
+        <td style="font-size:0.75rem;">
+          {% if art.knowledge_status in ('extracted', 'verified') %}
+            <span style="color:#059669; font-weight:600;">✓ In Knowledge</span>
+          {% else %}
+            <form action="/deliverables/{{ art.id }}/knowledge" method="post" style="display:inline;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="btn btn-secondary btn-sm" style="font-size:0.7rem; padding:1px 6px;">+ Extract</button>
+            </form>
+          {% endif %}
+        </td>
+        <td style="text-align:right; white-space:nowrap;">
+          <a href="/deliverables/{{ art.id }}" class="btn btn-secondary btn-sm" style="font-size:0.75rem; padding:2px 8px; margin-right:4px;">Open</a>
+          <a href="/api/v1/artifacts/{{ art.id }}/download" class="btn btn-primary btn-sm" style="font-size:0.75rem; padding:2px 8px; margin-right:4px;">Download</a>
+          <details class="dropdown" style="position:relative; display:inline-block; text-align:left;">
+            <summary class="btn btn-secondary btn-sm" style="font-size:0.75rem; padding:2px 8px; cursor:pointer;" title="Reuse artifact in project">
+              Reuse ▾
+            </summary>
+            <div style="position:absolute; right:0; top:100%; margin-top:4px; width:280px; background:white; border:1px solid var(--border-color, #e5e7eb); border-radius:6px; box-shadow:0 10px 15px -3px rgba(0,0,0,0.1); padding:10px; z-index:50;">
+              <div style="font-weight:600; font-size:0.8rem; margin-bottom:2px; color:var(--text-color, #111827);">Reuse Output Asset</div>
+              <div style="font-size:0.72rem; color:var(--text-muted, #6b7280); margin-bottom:8px;">
+                Artifact: <strong>{{ art.display_name or art.filename }}</strong> (v{{ art.version or 1 }})
+              </div>
+              <form action="/deliverables/{{ art.id }}/reuse" method="post">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="form-group" style="margin-bottom:6px;">
+                  <label style="font-size:0.72rem; color:var(--text-muted, #6b7280); display:block; margin-bottom:2px;">Destination Project</label>
+                  <select name="target_project_id" class="form-control" style="font-size:0.75rem; width:100%; padding:3px 6px;">
+                    <option value="{{ project.id }}" selected>{{ project.name }} (Current Project)</option>
+                    {% for cp in candidate_parents %}
+                      <option value="{{ cp.id }}">{{ cp.name }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="form-group" style="margin-bottom:6px;">
+                  <label style="font-size:0.72rem; color:var(--text-muted, #6b7280); display:block; margin-bottom:2px;">Action</label>
+                  <select name="action_type" class="form-control" style="font-size:0.75rem; width:100%; padding:3px 6px;">
+                    <option value="analyze">Analyze Content</option>
+                    <option value="revise">Revise Deliverable</option>
+                    <option value="expand">Expand Report</option>
+                    <option value="summarize">Summarize Document</option>
+                    <option value="convert">Convert Format</option>
+                    <option value="extract_data">Extract Structured Data</option>
+                  </select>
+                </div>
+                <div class="form-group" style="margin-bottom:8px;">
+                  <label style="font-size:0.72rem; color:var(--text-muted, #6b7280); display:block; margin-bottom:2px;">Instructions (Optional)</label>
+                  <input type="text" name="instructions" placeholder="e.g. Update findings with latest data" class="form-control" style="font-size:0.75rem; width:100%; padding:3px 6px;">
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm" style="width:100%; font-size:0.75rem; padding:4px 8px;">Confirm Reuse</button>
+              </form>
+            </div>
+          </details>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <div style="padding:20px; text-align:center; color:var(--text-muted); font-size:0.85rem;">
+    No artifacts recorded yet. Worker task executions and model analyses will automatically populate this asset registry.
+  </div>
+  {% endif %}
+</div>
+
 {% if project.status not in ('completed','cancelled','archived') %}
 <details class="card" {% if not deliverables %}open{% endif %}>
   <summary style="cursor:pointer; font-weight:600;">Plan New Deliverable</summary>
@@ -654,19 +823,252 @@
 
 {# ============================ KNOWLEDGE ============================ #}
 {% if tab == 'knowledge' %}
-<div class="alert alert-info" style="margin-bottom:16px;">
-  Trust status is a <strong>review state, not a guarantee of truth</strong>. New entries always start as <em>captured</em>.
-  Knowledge from external sources, the VPS, or AI is labelled and is evidence, never instructions.
-</div>
 
-<div class="card" style="margin-bottom:20px;">
-  <label class="form-label" for="kn_search">Search this project's knowledge</label>
-  <input class="form-control" id="kn_search" name="q" type="search" placeholder="Search notes owned by or linked to this project"
-         hx-get="/projects/{{ project.id }}/knowledge/search" hx-trigger="keyup changed delay:400ms, search" hx-target="#kn-results">
-  <div id="kn-results" style="margin-top:10px;"></div>
+{% if affected_impacts %}
+<div class="alert alert-warning" style="margin-bottom:16px; border-left: 4px solid var(--color-warning, #f59e0b);">
+  <strong style="display:flex; align-items:center; gap:6px;">⚠️ Knowledge Impact Alert:</strong>
+  <div>{{ affected_impacts|length }} planning decisions, task contexts, or deliverables rely on knowledge that has been contradicted or superseded:</div>
+  <ul style="margin: 8px 0 0 16px; font-size: 0.85rem;">
+    {% for ai in affected_impacts %}
+    <li>
+      <strong>{{ ai.target_type|upper }}</strong> (<code>{{ ai.target_id }}</code>): {{ ai.impact_context }}
+      {% if ai.affected_reason %}<span style="color:var(--text-muted);">— Reason: {{ ai.affected_reason }}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
 </div>
+{% endif %}
 
+<!-- SECTION 1: STAGE RESEARCH CHECKPOINTS -->
 <div class="card" style="padding:0; margin-bottom:20px;">
+  <div style="padding:14px 16px 8px; display:flex; justify-content:space-between; align-items:flex-start;">
+    <div>
+      <h3 class="card-title">Continuous Research Activity &amp; Checkpoints</h3>
+      <p class="card-subtitle">Every project lifecycle stage conducts a mandatory research-relevance assessment before proceeding.</p>
+    </div>
+    <span class="badge badge-primary">{{ checkpoints|length }} Checkpoint{% if checkpoints|length != 1 %}s{% endif %}</span>
+  </div>
+  {% if checkpoints %}
+  <div class="table-container"><table class="data-table">
+    <thead>
+      <tr>
+        <th>Stage</th>
+        <th>Decision</th>
+        <th>Reason &amp; Queries</th>
+        <th>Sources Considered / Retrieved</th>
+        <th>Evidence Gaps</th>
+        <th>Recorded At</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for cp in checkpoints %}
+      <tr>
+        <td style="font-weight:600; font-size:0.85rem;">
+          {{ cp.stage_id|replace('_',' ')|capitalize }}
+          {% if cp.execution_id %}<div style="font-size:0.7rem; color:var(--text-muted); font-family:var(--font-mono);">{{ cp.execution_id[:12] }}</div>{% endif %}
+        </td>
+        <td>
+          {% if cp.search_decision == 'search_executed' %}
+            <span class="badge badge-online">Search Executed</span>
+          {% elif cp.search_decision == 'search_skipped' %}
+            <span class="badge badge-offline">Knowledge Reused</span>
+          {% elif cp.search_decision == 'degraded_mode' %}
+            <span class="badge badge-warning">Degraded Mode</span>
+          {% else %}
+            <span class="badge badge-primary">{{ cp.search_decision|replace('_',' ') }}</span>
+          {% endif %}
+        </td>
+        <td style="font-size:0.82rem; max-width:280px;">
+          <div>{{ cp.decision_reason or 'No reason recorded' }}</div>
+          {% if cp.external_queries %}
+            <div style="font-size:0.75rem; color:var(--text-muted); margin-top:4px;">
+              <strong>Web queries:</strong> {{ cp.external_queries|join('; ') }}
+            </div>
+          {% elif cp.knowledge_queries %}
+            <div style="font-size:0.75rem; color:var(--text-muted); margin-top:4px;">
+              <strong>KB queries:</strong> {{ cp.knowledge_queries|join('; ') }}
+            </div>
+          {% endif %}
+        </td>
+        <td style="font-size:0.8rem; max-width:240px;">
+          {% if cp.sources_retrieved %}
+            <div style="color:var(--status-online); font-weight:600;">{{ cp.sources_retrieved|length }} source(s) retrieved</div>
+            {% for s in cp.sources_retrieved[:2] %}
+              <div style="font-size:0.72rem; word-break:break-all;"><a href="{{ s.url }}" target="_blank" rel="noopener">{{ s.title or s.url|truncate(40) }}</a></div>
+            {% endfor %}
+            {% if cp.sources_retrieved|length > 2 %}<div style="font-size:0.7rem; color:var(--text-muted);">+{{ cp.sources_retrieved|length - 2 }} more</div>{% endif %}
+          {% else %}
+            <span style="color:var(--text-muted);">Existing KB relied upon</span>
+          {% endif %}
+        </td>
+        <td style="font-size:0.8rem; color:var(--text-muted); max-width:200px;">
+          {% if cp.evidence_gaps %}
+            <ul style="margin:0; padding-left:14px; font-size:0.75rem;">
+              {% for g in cp.evidence_gaps %}<li>{{ g }}</li>{% endfor %}
+            </ul>
+          {% else %}
+            None
+          {% endif %}
+        </td>
+        <td style="font-size:0.75rem; color:var(--text-muted); white-space:nowrap;">{{ cp.created_at[:16]|replace('T',' ') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <div class="empty-state" style="border:none; padding:16px;">
+    <p class="empty-state-text">No research checkpoints recorded yet. Checkpoints are created automatically during intake, planning, execution, and evaluation.</p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- SECTION 2: STRUCTURED KNOWLEDGE & EVIDENCE BASE -->
+<div class="card" style="padding:0; margin-bottom:20px;">
+  <div style="padding:14px 16px 8px; display:flex; justify-content:space-between; align-items:flex-start;">
+    <div>
+      <h3 class="card-title">Structured Knowledge &amp; Evidence Records</h3>
+      <p class="card-subtitle">Canonical evidence-informed knowledge records with full provenance and verification tracking.</p>
+    </div>
+    <span class="badge badge-primary">{{ structured_knowledge|length }} Record{% if structured_knowledge|length != 1 %}s{% endif %}</span>
+  </div>
+  {% if structured_knowledge %}
+  <div class="table-container"><table class="data-table">
+    <thead>
+      <tr>
+        <th>Subject &amp; Statement</th>
+        <th>Scope</th>
+        <th>Type</th>
+        <th>Verification</th>
+        <th>Evidence &amp; Provenance</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for k in structured_knowledge %}
+      <tr {% if k.verification_status == 'contradicted' %}style="background:rgba(239,68,68,0.05);"{% elif k.verification_status == 'superseded' %}style="opacity:0.7;"{% endif %}>
+        <td>
+          <div style="font-weight:600; font-size:0.9rem;">{{ k.subject }}</div>
+          <div style="font-size:0.82rem; margin-top:2px; line-height:1.3;">{{ k.statement }}</div>
+          {% if k.summary %}<div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">{{ k.summary }}</div>{% endif %}
+          <div style="font-size:0.7rem; color:var(--text-muted); font-family:var(--font-mono); margin-top:2px;">{{ k.id }}</div>
+        </td>
+        <td>
+          {% if k.scope == 'collective' %}
+            <span class="badge badge-role" title="Reusable across all projects">Collective</span>
+          {% else %}
+            <span class="badge badge-offline" title="Isolated to this project">Project</span>
+          {% endif %}
+        </td>
+        <td style="font-size:0.8rem;">
+          <span class="badge badge-secondary">{{ k.knowledge_type|replace('_',' ') }}</span>
+        </td>
+        <td>
+          {% if k.verification_status == 'verified' %}
+            <span class="badge badge-online">Verified</span>
+          {% elif k.verification_status == 'corroborated' %}
+            <span class="badge badge-primary">Corroborated</span>
+          {% elif k.verification_status == 'supported' %}
+            <span class="badge badge-secondary">Supported</span>
+          {% elif k.verification_status == 'contradicted' %}
+            <span class="badge badge-error">Contradicted</span>
+          {% elif k.verification_status == 'superseded' %}
+            <span class="badge badge-offline">Superseded</span>
+          {% else %}
+            <span class="badge badge-warning">{{ k.verification_status }}</span>
+          {% endif %}
+          {% if k.last_verified_at %}<div style="font-size:0.7rem; color:var(--text-muted); margin-top:2px;">Verified: {{ k.last_verified_at[:10] }}</div>{% endif %}
+        </td>
+        <td style="font-size:0.8rem; min-width:220px;">
+          <details style="cursor:pointer;">
+            <summary style="font-size:0.78rem; color:var(--color-primary, #4f46e5); font-weight:600;">Inspect Evidence</summary>
+            <div style="margin-top:6px; padding:8px; background:rgba(0,0,0,0.02); border:1px solid #e5e7eb; border-radius:4px; font-size:0.75rem;">
+              {% if k.source_url %}
+                <div style="margin-bottom:4px;"><strong>URL:</strong> <a href="{{ k.source_url }}" target="_blank" rel="noopener">{{ k.source_url|truncate(50) }}</a></div>
+              {% endif %}
+              {% if k.source_title %}
+                <div style="margin-bottom:4px;"><strong>Title:</strong> {{ k.source_title }}</div>
+              {% endif %}
+              {% if k.publisher_author %}
+                <div style="margin-bottom:4px;"><strong>Publisher:</strong> {{ k.publisher_author }}</div>
+              {% endif %}
+              {% if k.supporting_excerpt %}
+                <div style="margin-bottom:4px;"><strong>Excerpt:</strong> <em>“{{ k.supporting_excerpt|truncate(140) }}”</em></div>
+              {% endif %}
+              {% if k.verification_method %}
+                <div style="margin-bottom:4px;"><strong>Method:</strong> {{ k.verification_method }}</div>
+              {% endif %}
+              {% if k.content_hash %}
+                <div style="font-family:var(--font-mono); color:var(--text-muted);">Hash: {{ k.content_hash[:16] }}…</div>
+              {% endif %}
+            </div>
+          </details>
+        </td>
+        <td>
+          {% if k.scope == 'project' and k.verification_status in ('verified', 'corroborated', 'supported') %}
+            <form action="/knowledge/promote/{{ k.id }}" method="post" style="display:inline;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="rationale" value="Direct project promotion request">
+              <button class="btn btn-secondary btn-sm" type="submit" style="font-size:0.75rem; padding:2px 8px;" title="Submit to Collective Knowledge Promotion Queue">Promote</button>
+            </form>
+          {% elif k.scope == 'collective' %}
+            <span style="font-size:0.75rem; color:var(--text-muted);">In Collective</span>
+          {% else %}
+            <span style="font-size:0.75rem; color:var(--text-muted);">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <div class="empty-state" style="border:none; padding:16px;">
+    <p class="empty-state-text">No structured knowledge records yet. Findings discovered during intake, planning, or execution will appear here.</p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- SECTION 3: KNOWLEDGE PROMOTIONS QUEUE -->
+{% if project_promotions %}
+<div class="card" style="padding:0; margin-bottom:20px;">
+  <div style="padding:14px 16px 8px;">
+    <h3 class="card-title">Collective Promotion Contributions</h3>
+    <p class="card-subtitle">Knowledge from this project proposed or approved for collective-wide sharing.</p>
+  </div>
+  <div class="table-container"><table class="data-table">
+    <thead>
+      <tr>
+        <th>Subject</th>
+        <th>Status</th>
+        <th>Rationale</th>
+        <th>Policy</th>
+        <th>Proposed / Decided</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in project_promotions %}
+      <tr>
+        <td style="font-weight:600; font-size:0.85rem;">{{ p.subject }}</td>
+        <td>
+          {% if p.status == 'approved' %}<span class="badge badge-online">Approved</span>
+          {% elif p.status == 'rejected' %}<span class="badge badge-error">Rejected</span>
+          {% else %}<span class="badge badge-warning">Proposed</span>{% endif %}
+        </td>
+        <td style="font-size:0.8rem; max-width:240px;">{{ p.rationale }}</td>
+        <td style="font-size:0.8rem;">{{ p.promotion_policy|replace('_',' ') }}</td>
+        <td style="font-size:0.75rem; color:var(--text-muted);">{{ p.created_at[:10] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}
+
+<!-- SECTION 4: VAULT NOTES & CAPTURED NARRATIVES -->
+<div class="card" style="padding:0; margin-bottom:20px;">
+  <div style="padding:14px 16px 8px;">
+    <h3 class="card-title">Vault Documents &amp; Captured Notes</h3>
+    <p class="card-subtitle">Markdown files and notes linked to this project in the knowledge repository.</p>
+  </div>
   {% if knowledge %}
   <div class="table-container"><table class="data-table">
     <thead><tr><th>Entry</th><th>Type</th><th>Origin / source</th><th>Trust</th><th>Relations</th><th>Review &amp; link</th></tr></thead>
@@ -738,8 +1140,8 @@
     {% endfor %}
     </tbody></table></div>
   {% else %}
-    <div class="empty-state" style="border:none;"><h3 class="empty-state-title">No project knowledge</h3>
-      <p class="empty-state-text">Capture findings, sources, assumptions and decisions. Narrative is stored as Markdown in <code>{{ project.knowledge_dir }}/</code>.</p></div>
+    <div class="empty-state" style="border:none;"><h3 class="empty-state-title">No markdown vault notes</h3>
+      <p class="empty-state-text">Narratives and raw notes are stored as Markdown in <code>{{ project.knowledge_dir }}/</code>.</p></div>
   {% endif %}
 </div>
 

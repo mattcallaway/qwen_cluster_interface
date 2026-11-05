@@ -1,0 +1,360 @@
+{
+  "schema": "qc.increment19_protected_boundary_live_evidence.v1",
+  "host": "100.101.187.115",
+  "image_sha256": "43b057aa6a7133de2bbed57a8caaeecd07aea9228fa7cb6bec1608286b967b61",
+  "containment_backend": "linux_systemd_root_image_sandbox",
+  "total_adversarial_and_valid_cases": 12,
+  "all_hostile_candidates_rejected": true,
+  "valid_candidate_accepted": true,
+  "results": [
+    {
+      "id": "01_read_hidden_markers_outside_mounts",
+      "category": "Read hidden test markers outside approved mounts",
+      "accepted": false,
+      "status": "failed",
+      "protected_verification": false,
+      "containment_backend": "linux_systemd_root_image_sandbox",
+      "filesystem_and_network_containment": true,
+      "hidden_oracle_separated": true,
+      "independent_result_authority": true,
+      "cleanup_confirmed": true,
+      "grant_nonce": "9eb883dc966b430cb900ae93f5fadecf",
+      "observations": [
+        {
+          "case_id": "case_public_equiv",
+          "executed": true,
+          "reason": "service_failure",
+          "exit_code": 1,
+          "cleanup_confirmed": true,
+          "unit": "qc-sandbox-4f74fc9e2785467f91f1eb09c99fdcd0.service"
+        },
+        {
+          "case_id": "case_hidden_holdout",
+          "executed": true,
+          "reason": "service_failure",
+          "exit_code": 1,
+          "cleanup_confirmed": true,
+          "unit": "qc-sandbox-4fcc143e925f46ac8f319aee47c27582.service"
+        }
+      ]
+    },
+    {
+      "id": "02_read_or_alter_holdout_and_expected_answers",
+      "category": "Read or alter holdout source and expected answers",
+      "accepted": false,
+      "status": "failed",
+      "protected_verification": false,
+      "containment_backend": "linux_systemd_root_image_sandbox",
+      "filesystem_and_network_containment": true,
+      "hidden_oracle_separated": true,
+      "independent_result_authority": true,
+      "cleanup_confirmed": true,
+      "grant_nonce": "677ce31c4aca43ca9fa701eb0ae5a0c8",
+      "observations": [
+        {
+          "case_id": "case_public_equiv",
+          "executed": true,
+          "reason": "service_failure",
+          "exit_code": 1,
+          "cleanup_confirmed": true,
+          "unit": "qc-sandbox-984f57fc446842668ec167a8cdedd30b.service"
+        },
+        {
+          "case_id": "case_hidden_holdout",
+          "executed": true,
+          "reason": "service_failure",
+          "exit_code": 1,
+          "cleanup_confirmed": true,
+          "unit": "qc-sandbox-3b19d96aabbf4eb0a96ae31ebde44216.service"
+        }
+      ]
+    },
+    {
+      "id": "03_modify_public_tests_runner_or_source_mount",
+      "category": "Modify public tests, runner logic, or result objects",
+      "accepted": false,
+      "status": "failed",
+      "protected_verification": false,
+      "containment_backend": "linux_systemd_root_image_sandbox",
+      "filesystem_and_network_containment": true,
+      "hidden_oracle_separated": true,
+      "independent_result_authority": true,
+      "cleanup_confirmed": true,
+      "grant_nonce": "d71fb60dfff140369f7bdc0332d328fe",
+      "observations": [
+        {
+          "case_id": "case_public_equiv",
+          "executed": true,
+          "reason": "timeout",
+          "exit_code": null,
+          "cleanup_confirmed": true,
+          "unit": "qc-sandbox-b182c5f592f646eaa21d3690ca73234a.service"
+        },
+        {
+          "case_id": "case_hidden_holdout",
+          "executed": true,
+          "reason": "service_failure",
+          "exit_code": 1,
+          "cleanup_confirmed": true,
+          "unit": "qc-sandbox-fc50d75481c7405cba6cf2211d670719.service"
+        }
+      ]
+    },
+    {
+      "id": "04_print_fabricated_summaries_or_receipts",
+      "category": "Print fabricated success summaries or receipts",
+      "accepted": false,
+      "status": "failed",
+      "protected_verification": false,
+      "containment_backend": "linux_systemd_root_image_sandbox",
+      "filesystem_and_network_containment": true,
+      "hidden_oracle_separated": true,
+      "independent_result_authority": true,
+      "cleanup_confirmed": true,
+      "grant_nonce": "435bfa91250b40bc8c6bbc6da919e5fc",
+      "observations": [
+        {
+          "case_id": "case_public_equiv",
+          "executed": true,
+          "reason": "completed",
+          "exit_code": 0,
+          "cleanup_confirmed": true,
+          "unit": "qc-sandbox-1c37774e3a494f15a06ea833b04aa6d7.service"
+        },
+        {
+          "case_id": "case_hidden_holdout",
+          "executed": true,
+          "reason": "completed",
+          "exit_code": 0,
+          "cleanup_confirmed": true,
+          "unit": "qc-sandbox-7c9a32565140454b95e362eea74c346c.service"
+        }
+      ]
+    },
+    {
+      "id": "05_exit_early_with_code_zero",
+      "category": "Exit early with code zero",
+      "accepted": false,
+      "status": "failed",
+      "protected_verification": false,
+      "containment_backend": "linux_systemd_root_image_sandbox",
+      "filesystem_and_network_containment": true,
+      "hidden_oracle_separated": true,
+      "independent_result_authority": true,
+      "cleanup_confirmed": true,
+      "grant_nonce": "6a0512d57c234137b1de580301beb3e3",
+      "observations": [
+        {
+          "case_id": "case_public_equiv",
+          "executed": true,
+          "reason": "completed",
+          "exit_code": 0,
+          "cleanup_confirmed": true,
+          "unit": "qc-sandbox-f8bc54d95dd5441084b80ac8af3733d6.service"
+        },
+        {
+          "case_id": "case_hidden_holdout",
+          "executed": true,
+          "reason": "completed",
+          "exit_code": 0,
+          "cleanup_confirmed": true,
+          "unit": "qc-sandbox-778dc3a70f864f57b375fadcbaacc31d.service"
+        }
+      ]
+    },
+    {
+      "id": "06_network_access_via_socket_and_child_process",
+      "category": "Access network through alternate APIs or child processes",
+      "accepted": false,
+      "status": "failed",
+      "protected_verification": false,
+      "containment_backend": "linux_systemd_root_image_sandbox",
+      "filesystem_and_network_containment": true,
+      "hidden_oracle_separated": true,
+      "independent_result_authority": true,
+      "cleanup_confirmed": true,
+      "grant_nonce": "a89206df1d1847ff891dcbd6593cb0cd",
+      "observations": [
+        {
+          "case_id": "case_public_equiv",
+          "executed": true,
+          "reason": "service_failure",
+          "exit_code": 1,
+          "cleanup_confirmed": true,
+          "unit": "qc-sandbox-a6df6f77b0634e11bbdbd61c477db848.service"
+        },
+        {
+          "case_id": "case_hidden_holdout",
+          "executed": true,
+          "reason": "service_failure",
+          "exit_code": 1,
+          "cleanup_confirmed": true,
+          "unit": "qc-sandbox-3b13344e3f284fa58220f34a339873a0.service"
+        }
+      ]
+    },
+    {
+      "id": "07_read_host_config_or_credentials",
+      "category": "Read host configuration or credentials",
+      "accepted": false,
+      "status": "failed",
+      "protected_verification": false,
+      "containment_backend": "linux_systemd_root_image_sandbox",
+      "filesystem_and_network_containment": true,
+      "hidden_oracle_separated": true,
+      "independent_result_authority": true,
+      "cleanup_confirmed": true,
+      "grant_nonce": "5b44123299dc4e55a70f23f25c769d55",
+      "observations": [
+        {
+          "case_id": "case_public_equiv",
+          "executed": true,
+          "reason": "service_failure",
+          "exit_code": 1,
+          "cleanup_confirmed": true,
+          "unit": "qc-sandbox-ce986a10575b4ca28a7e229d3b350d57.service"
+        },
+        {
+          "case_id": "case_hidden_holdout",
+          "executed": true,
+          "reason": "service_failure",
+          "exit_code": 1,
+          "cleanup_confirmed": true,
+          "unit": "qc-sandbox-49a9f077715047ce914f215a7d5d93ea.service"
+        }
+      ]
+    },
+    {
+      "id": "08_spawn_surviving_descendant_process",
+      "category": "Spawn descendants that survive the parent",
+      "accepted": false,
+      "status": "failed",
+      "protected_verification": false,
+      "containment_backend": "linux_systemd_root_image_sandbox",
+      "filesystem_and_network_containment": true,
+      "hidden_oracle_separated": true,
+      "independent_result_authority": true,
+      "cleanup_confirmed": true,
+      "grant_nonce": "1d0a09e4753348c8b00e9b886783f226",
+      "observations": [
+        {
+          "case_id": "case_public_equiv",
+          "executed": true,
+          "reason": "orphaned_descendant",
+          "exit_code": 0,
+          "cleanup_confirmed": true,
+          "unit": "qc-sandbox-c52ea75dd26b47758d15e9c2217c74bc.service"
+        },
+        {
+          "case_id": "case_hidden_holdout",
+          "executed": true,
+          "reason": "orphaned_descendant",
+          "exit_code": 0,
+          "cleanup_confirmed": true,
+          "unit": "qc-sandbox-0fbe16270a1c4d62940a48d65a86cff4.service"
+        }
+      ]
+    },
+    {
+      "id": "09a_exhaust_stdout_output_limit",
+      "category": "Exhaust output (>64KB stdout flood)",
+      "accepted": false,
+      "status": "failed",
+      "protected_verification": false,
+      "containment_backend": "linux_systemd_root_image_sandbox",
+      "filesystem_and_network_containment": true,
+      "hidden_oracle_separated": true,
+      "independent_result_authority": true,
+      "cleanup_confirmed": true,
+      "grant_nonce": "4ee42d9fedcf454d8dc070d64b90628d",
+      "observations": [
+        {
+          "case_id": "case_public_equiv",
+          "executed": true,
+          "reason": "output_limit",
+          "exit_code": null,
+          "cleanup_confirmed": true,
+          "unit": "qc-sandbox-62237ca05eca4972b3c6c891efec0aed.service"
+        },
+        {
+          "case_id": "case_hidden_holdout",
+          "executed": true,
+          "reason": "output_limit",
+          "exit_code": null,
+          "cleanup_confirmed": true,
+          "unit": "qc-sandbox-c086fea883444f5bb451fd5c93134758.service"
+        }
+      ]
+    },
+    {
+      "id": "09b_exhaust_memory_process_disk_and_runtime",
+      "category": "Exhaust memory (>256MB), processes (>32), disk (>32MB /work), or runtime",
+      "accepted": false,
+      "status": "failed",
+      "protected_verification": false,
+      "containment_backend": "linux_systemd_root_image_sandbox",
+      "filesystem_and_network_containment": true,
+      "hidden_oracle_separated": true,
+      "independent_result_authority": true,
+      "cleanup_confirmed": true,
+      "grant_nonce": "78cce4ac80584419a326beae29cea1bc",
+      "observations": [
+        {
+          "case_id": "case_public_equiv",
+          "executed": true,
+          "reason": "timeout",
+          "exit_code": null,
+          "cleanup_confirmed": true,
+          "unit": "qc-sandbox-82e30fac01c6431b9ad79c0f6eea2f77.service"
+        },
+        {
+          "case_id": "case_hidden_holdout",
+          "executed": true,
+          "reason": "timeout",
+          "exit_code": null,
+          "cleanup_confirmed": true,
+          "unit": "qc-sandbox-e61a9f0ba44549c9ab10f50f020513f9.service"
+        }
+      ]
+    },
+    {
+      "id": "11_valid_passing_candidate",
+      "category": "Valid candidate satisfying specification and hidden holdout cases",
+      "accepted": true,
+      "status": "verified_for_scope",
+      "protected_verification": true,
+      "containment_backend": "linux_systemd_root_image_sandbox",
+      "filesystem_and_network_containment": true,
+      "hidden_oracle_separated": true,
+      "independent_result_authority": true,
+      "cleanup_confirmed": true,
+      "grant_nonce": "27f0cbf7ee0a445d86b82d0fb3d3c4fd",
+      "observations": [
+        {
+          "case_id": "case_public_equiv",
+          "executed": true,
+          "reason": "completed",
+          "exit_code": 0,
+          "cleanup_confirmed": true,
+          "unit": "qc-sandbox-f55c33214f1e45d4b5f3186b18e6c660.service"
+        },
+        {
+          "case_id": "case_hidden_holdout",
+          "executed": true,
+          "reason": "completed",
+          "exit_code": 0,
+          "cleanup_confirmed": true,
+          "unit": "qc-sandbox-d932c7c5e1364f84ae32546af7dd1445.service"
+        }
+      ]
+    },
+    {
+      "id": "10_source_substitution_and_receipt_nonce_replay",
+      "category": "Substitute source after review or replay old verification evidence",
+      "source_substitution_rejected": true,
+      "forged_receipt_rejected": true,
+      "live_nonce_replay_denied_count": 23,
+      "accepted": false
+    }
+  ]
+}

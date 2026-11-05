@@ -1,0 +1,20 @@
+{
+  "passed": true,
+  "checks": [
+    "title",
+    "initial inventory",
+    "initial count",
+    "blocked filter",
+    "filtered task",
+    "filtered count",
+    "reset filter",
+    "mobile width",
+    "no page errors",
+    "no HTTP requests"
+  ],
+  "fixture_only": true,
+  "native_execution": false,
+  "certification_eligible": false,
+  "failures": [],
+  "network": []
+}

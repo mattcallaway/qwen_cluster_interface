@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Tuple
@@ -12,6 +13,7 @@ from app.services.infrastructure import build_architecture_context_packet
 from app.services import projects as proj_svc
 from app.services import deliverables as deliv_svc
 
+logger = logging.getLogger("qwen_collective.routes.chat")
 router = APIRouter(tags=["chat"])
 templates = Jinja2Templates(directory="app/templates")
 
@@ -453,11 +455,15 @@ async def chat_send(
     
     assistant_content = response.get("content") or f"Error from model backend: {response.get('error')}"
     resp_now = datetime.now(timezone.utc).isoformat()
+    actual_backend = response.get("backend") or (active_backend["name"] if active_backend else "Unknown Backend")
+    actual_model = response.get("model") or (active_backend.get("model_name") if active_backend else "Unknown Model")
+    if response.get("fallback_occurred"):
+        actual_backend = f"{actual_backend} (Fallback Tier)"
 
     conn = get_db_connection()
     conn.execute(
         "INSERT INTO chat_messages (session_id, role, content, backend_used, model_used, created_at) VALUES (?, 'assistant', ?, ?, ?, ?)",
-        (active_session_id, assistant_content, active_backend["name"], response.get("model"), resp_now)
+        (active_session_id, assistant_content, actual_backend, actual_model, resp_now)
     )
     conn.execute("UPDATE chat_conversations SET updated_at = ? WHERE id = ?", (resp_now, active_session_id))
     conn.commit()
@@ -483,3 +489,378 @@ def chat_clear(request: Request, csrf_token: str = Form(...), session_id: str = 
     conn.close()
 
     return RedirectResponse(url=f"/chat?session_id={active_session_id}", status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/api/v1/chat/deliberate")
+async def chat_deliberate_api(request: Request):
+    """Unified conversational entry point supporting direct-response mode and durable-project mode (Increment 18)."""
+    user = None
+    is_bearer = False
+    auth_hdr = request.headers.get("Authorization", "")
+    if auth_hdr.startswith("Bearer "):
+        from app.auth import verify_session_token
+        from app.config import settings
+        tok = auth_hdr[7:].strip()
+        user = verify_session_token(tok) or ("admin" if tok == settings.admin_password else None)
+        if user:
+            is_bearer = True
+    if not user:
+        user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+
+    if not is_bearer:
+        csrf_hdr = request.headers.get("X-CSRF-Token")
+        if not verify_csrf(request, csrf_hdr):
+            raise HTTPException(status_code=403, detail="Invalid or missing CSRF token.")
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    intake_override = body.get("intake")
+    has_fault_injection = bool(
+        body.get("simulate_first_attempt_defect")
+        or body.get("injected_first_attempt_candidate") is not None
+        or (
+            isinstance(intake_override, dict)
+            and (
+                intake_override.get("simulate_first_attempt_defect")
+                or intake_override.get("injected_first_attempt_candidate") is not None
+            )
+        )
+    )
+    if has_fault_injection:
+        raise HTTPException(
+            status_code=400,
+            detail="Fault-injection parameters (simulate_first_attempt_defect, injected_first_attempt_candidate) are prohibited on external API routes.",
+        )
+
+    from app.services.orchestration import protected_repo_verifier, tool_catalogue
+
+    raw_ws = (
+        (intake_override.get("workspace_path") if isinstance(intake_override, dict) else None)
+        or body.get("workspace_path")
+    )
+    raw_holdout = (
+        (intake_override.get("holdout_test_dir") if isinstance(intake_override, dict) else None)
+        or body.get("holdout_test_dir")
+    )
+    validated_ws: Optional[str] = None
+    validated_holdout: Optional[str] = None
+
+    if raw_ws is not None and str(raw_ws).strip():
+        try:
+            resolved_ws_path = tool_catalogue.validate_and_confine_workspace_path(
+                str(raw_ws),
+                enforce_allowed_roots=True,
+            )
+            validated_ws = str(resolved_ws_path)
+        except (PermissionError, ValueError) as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    if raw_holdout is not None and str(raw_holdout).strip():
+        try:
+            resolved_hold = protected_repo_verifier.resolve_registered_holdout_dir(
+                str(raw_holdout),
+                workspace_path=validated_ws,
+            )
+        except (PermissionError, ValueError) as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        if resolved_hold is None:
+            raise HTTPException(
+                status_code=403,
+                detail="Holdout test locations are under verifier control; arbitrary user-supplied holdout paths are prohibited.",
+            )
+        validated_holdout = resolved_hold
+
+    if isinstance(intake_override, dict):
+        intake_override = dict(intake_override)
+        if "workspace_path" in intake_override:
+            intake_override["workspace_path"] = validated_ws
+        if "holdout_test_dir" in intake_override:
+            intake_override["holdout_test_dir"] = validated_holdout
+
+    message = str(body.get("message") or "").strip()
+    project_id = body.get("project_id")
+    action = str(body.get("action") or "auto")
+    should_advance = bool(body.get("advance", False) or action == "advance")
+    use_live_worker = bool(body.get("use_live_worker", True))
+    actor_name = user if isinstance(user, str) else user["username"]
+
+    from starlette.concurrency import run_in_threadpool
+    from app.services.orchestration import (
+        context_manager,
+        deliberate_loop,
+        engine,
+        intake as intake_mod,
+        working_memory as wm,
+    )
+
+    if action == "park" and project_id:
+        try:
+            park_res = await run_in_threadpool(
+                wm.park_project,
+                project_id,
+                actor=actor_name,
+                reason=message or "User requested project park via chat",
+                active_process_cleanup_confirmed=None,
+            )
+            return {
+                "ok": True,
+                "mode": "durable_project",
+                "action": "park",
+                "park_result": park_res,
+                "project_status": deliberate_loop.build_coherent_user_status(project_id),
+            }
+        except wm.ParkOrCancelCleanupError as exc:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=status.HTTP_409_CONFLICT,
+                content={
+                    "ok": False,
+                    "mode": "durable_project",
+                    "action": "park",
+                    "error": "cleanup_unconfirmed",
+                    "detail": str(exc),
+                    "project_status": deliberate_loop.build_coherent_user_status(project_id),
+                },
+            )
+
+    if action == "cancel" and project_id:
+        try:
+            cancel_res = await run_in_threadpool(
+                wm.cancel_task_or_project,
+                project_id,
+                task_key=body.get("task_key"),
+                actor=actor_name,
+                reason=message or "User requested cancellation via chat",
+                process_cleanup_confirmed=None,
+            )
+            return {
+                "ok": True,
+                "mode": "durable_project",
+                "action": "cancel",
+                "cancel_result": cancel_res,
+                "project_status": deliberate_loop.build_coherent_user_status(project_id),
+            }
+        except wm.ParkOrCancelCleanupError as exc:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=status.HTTP_409_CONFLICT,
+                content={
+                    "ok": False,
+                    "mode": "durable_project",
+                    "action": "cancel",
+                    "error": "cleanup_unconfirmed",
+                    "detail": str(exc),
+                    "project_status": deliberate_loop.build_coherent_user_status(project_id),
+                },
+            )
+
+    if action == "resume" and project_id:
+        res_out = await run_in_threadpool(wm.resume_project, project_id, actor=actor_name)
+        adv_out = None
+        if should_advance:
+            adv_out = await run_in_threadpool(
+                deliberate_loop.advance_deliberate_project,
+                project_id,
+                max_steps=int(body.get("max_steps", 5)),
+                use_live_worker=use_live_worker,
+                preferred_model=str(body.get("preferred_model") or "qwen2.5:3b"),
+                quotes_data=body.get("quotes"),
+                workspace_path=validated_ws,
+                holdout_test_dir=validated_holdout,
+            )
+        return {
+            "ok": True,
+            "mode": "durable_project",
+            "action": "resume",
+            "resume_result": res_out,
+            "advance_result": adv_out,
+            "project_status": deliberate_loop.build_coherent_user_status(project_id),
+        }
+
+    if action in ("steer", "clarify") and project_id:
+        run = engine.get_run_for_project(project_id)
+        steer_res = await run_in_threadpool(
+            intake_mod.apply_user_steering_update,
+            project_id,
+            run_id=run["id"] if run else None,
+            actor=actor_name,
+            action=action,
+            updated_constraints=body.get("updated_constraints"),
+            replaced_req_codes=body.get("replaced_req_codes"),
+            added_deliverables=body.get("added_deliverables"),
+            resolved_gaps=body.get("resolved_gaps"),
+            reason=message or "Conversational steering update",
+        )
+        changed_reqs = list((body.get("replaced_req_codes") or {}).keys()) + list(steer_res.get("updated_req_ids") or [])
+        closure_res = await run_in_threadpool(
+            wm.invalidate_dependency_closure,
+            project_id,
+            changed_requirement_ids=changed_reqs,
+            reason=message or "Conversational steering update",
+        )
+        adv_out = None
+        if should_advance:
+            adv_out = await run_in_threadpool(
+                deliberate_loop.advance_deliberate_project,
+                project_id,
+                max_steps=int(body.get("max_steps", 5)),
+                use_live_worker=use_live_worker,
+                preferred_model=str(body.get("preferred_model") or "qwen2.5:3b"),
+                quotes_data=body.get("quotes"),
+                workspace_path=validated_ws,
+                holdout_test_dir=validated_holdout,
+            )
+        return {
+            "ok": True,
+            "mode": "durable_project",
+            "action": action,
+            "steering_result": steer_res,
+            "closure_invalidation": closure_res,
+            "advance_result": adv_out,
+            "project_status": deliberate_loop.build_coherent_user_status(project_id),
+        }
+
+    if action == "advance" and project_id:
+        adv_out = await run_in_threadpool(
+            deliberate_loop.advance_deliberate_project,
+            project_id,
+            max_steps=int(body.get("max_steps", 5)),
+            use_live_worker=use_live_worker,
+            preferred_model=str(body.get("preferred_model") or "qwen2.5:3b"),
+            quotes_data=body.get("quotes"),
+            workspace_path=validated_ws,
+            holdout_test_dir=validated_holdout,
+        )
+        return {
+            "ok": True,
+            "mode": "durable_project",
+            "action": "advance",
+            "project_id": project_id,
+            "advance_result": adv_out,
+            "project_status": deliberate_loop.build_coherent_user_status(project_id),
+        }
+
+    mode_info = deliberate_loop.classify_request_mode(message, explicit_intake=intake_override)
+    if mode_info["mode"] == "direct_response" and not project_id:
+        direct_out = await run_in_threadpool(
+            deliberate_loop.execute_direct_response_turn,
+            message,
+            preferred_model=body.get("preferred_model"),
+        )
+        return {
+            "ok": True,
+            "mode": "direct_response",
+            "reason": mode_info["reason"],
+            "created_project": False,
+            "created_artifacts": [],
+            "message": message,
+            "response": direct_out["response"],
+            "producing_actor": direct_out["producing_actor"],
+            "verification_status": direct_out["verification_status"],
+            "lease_id": direct_out.get("lease_id"),
+            "model": direct_out.get("model"),
+        }
+
+    # Durable project mode
+    quotes_from_intake = None
+    if isinstance(intake_override, dict) and isinstance(intake_override.get("quotes"), list):
+        quotes_from_intake = intake_override["quotes"]
+    elif isinstance(body.get("quotes"), list):
+        quotes_from_intake = body["quotes"]
+
+    workspace_from_intake = validated_ws
+    holdout_from_intake = validated_holdout
+    explicit_contracts = (
+        (intake_override.get("task_contracts") if isinstance(intake_override, dict) else None)
+        or body.get("task_contracts")
+    )
+
+    if not project_id:
+        intake_payload = dict(intake_override or {"objective": message})
+        if isinstance(intake_payload.get("constraints"), list):
+            intake_for_engine = {**intake_payload, "constraints": "\n".join(str(x) for x in intake_payload["constraints"])}
+        else:
+            intake_for_engine = dict(intake_payload)
+        if isinstance(intake_payload.get("deliverables"), list):
+            intake_for_engine["deliverables"] = "\n".join(str(x) for x in intake_payload["deliverables"])
+        if isinstance(intake_payload.get("success_criteria"), list):
+            intake_for_engine["success_criteria"] = "\n".join(str(x) for x in intake_payload["success_criteria"])
+
+        created = engine.create_project_with_run(
+            name=message[:48] or "Deliberate Assignment",
+            actor=actor_name,
+            intake=intake_for_engine,
+            autonomy_level=2,
+        )
+        project_id = created["project"]["id"]
+        run_id = created["run"]["id"]
+        ledger = intake_mod.parse_intake_requirements(intake_payload)
+        intake_mod.persist_requirement_ledger(project_id, ledger, run_id=run_id, actor=actor_name)
+        conflict_info = ledger.detect_conflicts_and_ambiguities()
+        phase = "clarify" if (conflict_info["has_material_gaps"] or conflict_info["has_conflicts"]) else "plan"
+        context_manager.save_project_memory_state(
+            project_id,
+            run_id=run_id,
+            current_cycle_phase=phase,
+            escalation_step=1,
+            assumptions=conflict_info["disclosed_assumptions"],
+            unresolved_questions=conflict_info["material_gaps"],
+            contradictions=conflict_info["conflicts"],
+            next_action={"action": "await_clarification" if phase == "clarify" else "execute_plan"},
+        )
+        if quotes_from_intake:
+            wm.record_epistemic_item(
+                project_id,
+                epistemic_category="source_observation",
+                statement=f"Attached {len(quotes_from_intake)} supplier quote records at intake.",
+                verification_status="observed",
+                run_id=run_id,
+                qualifiers={"raw_quotes": quotes_from_intake},
+                idempotency_key=f"intake:raw_quotes:{project_id}",
+            )
+        if workspace_from_intake or holdout_from_intake:
+            wm.record_epistemic_item(
+                project_id,
+                epistemic_category="source_observation",
+                statement=f"Bound scoped repository workspace '{workspace_from_intake}' at intake.",
+                verification_status="observed",
+                run_id=run_id,
+                qualifiers={
+                    "workspace_path": workspace_from_intake,
+                    "holdout_test_dir": holdout_from_intake,
+                },
+                idempotency_key=f"intake:workspace_config:{project_id}",
+            )
+        if phase != "clarify":
+            deliberate_loop.ensure_deliberate_task_contracts(
+                project_id,
+                run_id=run_id,
+                explicit_contracts=explicit_contracts,
+            )
+
+    adv_out = None
+    if should_advance:
+        adv_out = await run_in_threadpool(
+            deliberate_loop.advance_deliberate_project,
+            project_id,
+            max_steps=int(body.get("max_steps", 5)),
+            use_live_worker=use_live_worker,
+            preferred_model=str(body.get("preferred_model") or "qwen2.5:3b"),
+            quotes_data=quotes_from_intake,
+            workspace_path=workspace_from_intake,
+            holdout_test_dir=holdout_from_intake,
+        )
+
+    return {
+        "ok": True,
+        "mode": "durable_project",
+        "reason": mode_info["reason"],
+        "project_id": project_id,
+        "advance_result": adv_out,
+        "project_status": deliberate_loop.build_coherent_user_status(project_id),
+    }

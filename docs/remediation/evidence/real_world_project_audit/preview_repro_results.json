@@ -1,0 +1,191 @@
+{
+  "captured_at": "2026-10-22T01:05:50.982046+00:00",
+  "base": "http://127.0.0.1:8000",
+  "steps": [
+    {
+      "step": "login",
+      "url": "/",
+      "t": "2026-10-22T01:05:52.837026+00:00"
+    },
+    {
+      "step": "project_detail",
+      "status": 200,
+      "t": "2026-10-22T01:05:53.834784+00:00"
+    },
+    {
+      "step": "preview_buttons_found",
+      "count": 0,
+      "hrefs": [],
+      "t": "2026-10-22T01:05:53.851772+00:00"
+    },
+    {
+      "step": "preview_buttons_after_tab",
+      "count": 1,
+      "t": "2026-10-22T01:05:54.594307+00:00"
+    },
+    {
+      "step": "click_open_preview",
+      "url": "/deliverables/art-b9ab64a5bd614164",
+      "status": 500,
+      "visible_body": "Internal Server Error",
+      "t": "2026-10-22T01:05:55.304243+00:00"
+    },
+    {
+      "step": "artifact_check",
+      "artifact": "art-b9ab64a5bd614164",
+      "detail_status": 500,
+      "detail_preview_panel_rendered": false,
+      "detail_visible_text": "Internal Server Error",
+      "api_preview_status": 200,
+      "api_preview_type": "markdown",
+      "api_preview_chars": 7011,
+      "download_status": 200,
+      "download_sha256": "2f56c1e07cd02d8ec635eab7af983bdcac3b5d0a986a79d07e71a2e4edbf005b",
+      "download_bytes": 7021,
+      "t": "2026-10-22T01:05:56.010157+00:00"
+    },
+    {
+      "step": "artifact_check",
+      "artifact": "art-956321c67c6848b5",
+      "detail_status": 500,
+      "detail_preview_panel_rendered": false,
+      "detail_visible_text": "Internal Server Error",
+      "api_preview_status": 200,
+      "api_preview_type": "json",
+      "api_preview_chars": 23057,
+      "download_status": 200,
+      "download_sha256": "5bc329040db24f332cffc569fcd0eb8f22aabff7964d7b7542758ffb8231f68f",
+      "download_bytes": 23057,
+      "t": "2026-10-22T01:05:56.714283+00:00"
+    },
+    {
+      "step": "artifact_check",
+      "artifact": "art-0c90faff75c04acb",
+      "detail_status": 500,
+      "detail_preview_panel_rendered": false,
+      "detail_visible_text": "Internal Server Error",
+      "api_preview_status": 200,
+      "api_preview_type": "json",
+      "api_preview_chars": 92178,
+      "download_status": 200,
+      "download_sha256": "67e474f171281c56e13d11ee6c4fb88fa999d65642b6116bdec10830869813e9",
+      "download_bytes": 92178,
+      "t": "2026-10-22T01:05:57.438652+00:00"
+    },
+    {
+      "step": "artifact_check",
+      "artifact": "art-dc40bafe3e5e4a01",
+      "detail_status": 500,
+      "detail_preview_panel_rendered": false,
+      "detail_visible_text": "Internal Server Error",
+      "api_preview_status": 200,
+      "api_preview_type": "json",
+      "api_preview_chars": 17654,
+      "download_status": 200,
+      "download_sha256": "11f545f80f8b8c299d7ea73d39d2892279f3257d280599668f75335af1cbb13b",
+      "download_bytes": 17654,
+      "t": "2026-10-22T01:05:58.174288+00:00"
+    },
+    {
+      "step": "artifact_check",
+      "artifact": "art-3d946ed5bf284d21",
+      "detail_status": 500,
+      "detail_preview_panel_rendered": false,
+      "detail_visible_text": "Internal Server Error",
+      "api_preview_status": 200,
+      "api_preview_type": "json",
+      "api_preview_chars": 106,
+      "download_status": 200,
+      "download_sha256": "fff0adce957a413ae56e1d33f14b886900d2f181b7f190e27016973fc188ac4c",
+      "download_bytes": 106,
+      "t": "2026-10-22T01:05:58.860603+00:00"
+    },
+    {
+      "step": "artifact_check",
+      "artifact": "art-984475af896147a6",
+      "detail_status": 500,
+      "detail_preview_panel_rendered": false,
+      "detail_visible_text": "Internal Server Error",
+      "api_preview_status": 200,
+      "api_preview_type": "json",
+      "api_preview_chars": 807,
+      "download_status": 200,
+      "download_sha256": "5983003425fc8d0fdfd2cd1f391c956393581134b9457f9d1f2e4b4d6fda2d9d",
+      "download_bytes": 807,
+      "t": "2026-10-22T01:05:59.545558+00:00"
+    },
+    {
+      "step": "deliverables_index",
+      "status": 500,
+      "visible": "Internal Server Error",
+      "t": "2026-10-22T01:06:00.212358+00:00"
+    }
+  ],
+  "network": [
+    {
+      "url": "/auth/login",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "url": "/auth/login",
+      "status": 302,
+      "method": "POST"
+    },
+    {
+      "url": "/",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "url": "/projects/prj-c3e69205a8e0466ab54b609801694796",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "url": "/projects/prj-c3e69205a8e0466ab54b609801694796?tab=deliverables",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "url": "/deliverables/art-b9ab64a5bd614164",
+      "status": 500,
+      "method": "GET"
+    },
+    {
+      "url": "/deliverables/art-b9ab64a5bd614164",
+      "status": 500,
+      "method": "GET"
+    },
+    {
+      "url": "/deliverables/art-956321c67c6848b5",
+      "status": 500,
+      "method": "GET"
+    },
+    {
+      "url": "/deliverables/art-0c90faff75c04acb",
+      "status": 500,
+      "method": "GET"
+    },
+    {
+      "url": "/deliverables/art-dc40bafe3e5e4a01",
+      "status": 500,
+      "method": "GET"
+    },
+    {
+      "url": "/deliverables/art-3d946ed5bf284d21",
+      "status": 500,
+      "method": "GET"
+    },
+    {
+      "url": "/deliverables/art-984475af896147a6",
+      "status": 500,
+      "method": "GET"
+    },
+    {
+      "url": "/deliverables",
+      "status": 500,
+      "method": "GET"
+    }
+  ]
+}

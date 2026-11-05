@@ -6,7 +6,9 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 
-from app.auth import get_csrf_token, get_current_user, verify_csrf
+from app.auth import get_csrf_token, get_current_user, verify_csrf, verify_session_token
+from app.config import settings
+from app.database import get_db_connection
 from app.services import projects as ps
 from app.services.orchestration import (
     approval_manager, artifact_manager, engine, model_router, planner, task_graph, telemetry,
@@ -25,11 +27,45 @@ def _err(status: int, message: str) -> JSONResponse:
 
 
 async def _auth(request: Request, mutating: bool = False):
-    """Return (user, None) or (None, error response). Mutating calls require the CSRF header."""
+    """Return (user, None) or (None, error response). Mutating cookie calls require the CSRF header."""
     user = get_current_user(request)
+    is_bearer = False
+    if not user:
+        auth_hdr = request.headers.get("Authorization")
+        if auth_hdr and auth_hdr.startswith("Bearer "):
+            raw_token = auth_hdr[7:].strip()
+            session_u = verify_session_token(raw_token)
+            if session_u:
+                user = session_u
+                is_bearer = True
+            elif raw_token == settings.admin_password:
+                user = "admin"
+                is_bearer = True
+            else:
+                import hashlib
+                tok_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+                c = get_db_connection()
+                try:
+                    row = c.execute(
+                        """SELECT t.node_id
+                           FROM worker_auth_tokens t
+                           LEFT JOIN infrastructure_nodes n ON n.id = t.node_id
+                           WHERE t.token_hash = ? AND t.revoked = 0
+                             AND COALESCE(n.is_enabled, 1) != 0
+                             AND t.node_id != 'node-d35568f5'""",
+                        (tok_hash,),
+                    ).fetchone()
+                    if row:
+                        user = f"node:{row['node_id']}"
+                        is_bearer = True
+                finally:
+                    c.close()
+
     if not user:
         return None, _err(401, "Authentication required.")
-    if mutating and not verify_csrf(request, request.headers.get("X-CSRF-Token")):
+
+    # Mutating cookie requests require CSRF; Bearer token API requests do not
+    if mutating and not is_bearer and not verify_csrf(request, request.headers.get("X-CSRF-Token")):
         return None, _err(403, "Invalid or missing CSRF token.")
     return user, None
 
@@ -42,15 +78,22 @@ async def _body(request: Request) -> Dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+class Forbidden(Exception):
+    """Operation not permitted for the authenticated principal (HTTP 403)."""
+
+
 async def _do(fn: Callable[[], Any]) -> JSONResponse:
+    from app.services.orchestration import working_memory as wm
     try:
         result = await run_in_threadpool(fn)
         return JSONResponse({"ok": True, "result": result}, status_code=200)
+    except Forbidden as e:
+        return _err(403, str(e))
     except NotFound as e:
         return _err(404, str(e))
-    except (InvalidTransition, StaleState) as e:
+    except (InvalidTransition, StaleState, wm.ParkOrCancelCleanupError, wm.StaleWorkerResultError, wm.ParallelConflictError) as e:
         return _err(409, str(e))
-    except (OrchestrationError, ps.ValidationError) as e:
+    except (OrchestrationError, ps.ValidationError, wm.WorkingMemoryError) as e:
         return _err(400, str(e))
 
 
@@ -59,6 +102,165 @@ def _run(project_id: str) -> Dict[str, Any]:
     if not run:
         raise NotFound("This project has no orchestration run.")
     return run
+
+
+# --- canonical documented API routes (ADR-01 / Finding F-16) -----------------
+
+@router.post("/api/v1/orchestrator/runs", status_code=201)
+async def create_orchestrator_run_api(request: Request):
+    """API Specification 2.1: Create Project Orchestration Run."""
+    user, bad = await _auth(request, True)
+    if bad:
+        return bad
+    b = await _body(request)
+
+    def go():
+        project_id = str(b.get("project_id", "")).strip()
+        objective = str(b.get("objective", "")).strip()
+        if not project_id:
+            raise ps.ValidationError("project_id is required.")
+        if user.startswith("node:") or user.startswith("worker:"):
+            raise Forbidden("Worker automation tokens cannot create projects or orchestration runs.")
+        proj = ps.get_project(project_id)
+        if not proj:
+            proj = ps.create_project(name=project_id, owner=user, objective=objective or "Orchestrator Run")
+            project_id = proj["id"]
+        else:
+            if user != "admin" and not user.startswith("operator") and proj.get("owner") and proj["owner"] != user:
+                raise Forbidden(f"Principal '{user}' is not authorized to create runs for project '{project_id}'.")
+
+        intake = {
+            "objective": objective or proj.get("user_objective") or proj.get("name") or "",
+            "scope": b.get("scope", ""),
+            "deliverables": b.get("deliverables", ""),
+            "success_criteria": b.get("success_criteria", ""),
+            "deadline": b.get("deadline", ""),
+        }
+        run = engine.create_run(project_id, user, intake, int(b.get("autonomy_level", 1)))
+        return JSONResponse(
+            {
+                "run_id": run["id"],
+                "state": run["state"],
+                "version": run.get("version", 1),
+                "created_at": run.get("created_at"),
+            },
+            status_code=201,
+        )
+    try:
+        return await run_in_threadpool(go)
+    except Forbidden as e:
+        return _err(403, str(e))
+    except NotFound as e:
+        return _err(404, str(e))
+    except (InvalidTransition, StaleState) as e:
+        return _err(409, str(e))
+    except (OrchestrationError, ps.ValidationError) as e:
+        return _err(400, str(e))
+
+
+@router.post("/api/v1/orchestrator/runs/{run_id}/plan")
+async def trigger_plan_api(request: Request, run_id: str):
+    """API Specification 2.2: Trigger Analysis & Plan Generation."""
+    user, bad = await _auth(request, True)
+    if bad:
+        return bad
+    b = await _body(request)
+
+    def go():
+        if user.startswith("node:") or user.startswith("worker:"):
+            raise Forbidden("Worker automation tokens cannot trigger plan generation.")
+        run = engine.get_run(run_id)
+        if not run:
+            raise NotFound(f"Run '{run_id}' not found.")
+        proj = ps.get_project(run["project_id"])
+        if proj and user != "admin" and not user.startswith("operator") and proj.get("owner") and proj["owner"] != user:
+            raise Forbidden(f"Principal '{user}' is not authorized for project '{run['project_id']}'.")
+        plan_res = planner.generate_plan(
+            run_id,
+            user,
+            mode=str(b.get("mode", "auto")),
+            planner_model=b.get("planner_model"),
+        )
+        updated_run = engine.get_run(run_id)
+        return {
+            "state": updated_run["state"],
+            "request_id": plan_res.get("request_id") or f"inf-{run_id[:16]}",
+            "node": plan_res.get("node") or "controller-local",
+            "model": plan_res.get("model") or b.get("planner_model") or "qwen2.5:1.5b",
+        }
+    return await _do(go)
+
+
+@router.post("/api/v1/orchestrator/runs/{run_id}/approve")
+async def approve_plan_api(request: Request, run_id: str):
+    """API Specification 2.3: Approve Generated Plan."""
+    user, bad = await _auth(request, True)
+    if bad:
+        return bad
+    b = await _body(request)
+
+    def go():
+        if user.startswith("node:") or user.startswith("worker:"):
+            raise Forbidden("Human approval required: ordinary automation tokens cannot approve plans.")
+        run = engine.get_run(run_id)
+        if not run:
+            raise NotFound(f"Run '{run_id}' not found.")
+        proj = ps.get_project(run["project_id"])
+        if proj and user != "admin" and not user.startswith("operator") and proj.get("owner") and proj["owner"] != user:
+            raise Forbidden(f"Principal '{user}' is not authorized to approve plans for project '{run['project_id']}'.")
+        actor = user if (user != "admin" and not user.startswith("operator")) else (b.get("actor") or user)
+        rev_id = b.get("revision_id") or run.get("current_revision_id")
+        appr_run = approval_manager.approve_plan(
+            run_id,
+            actor,
+            rationale=str(b.get("rationale", "Plan approved via API")),
+            revision_id=rev_id,
+            expected_digest=b.get("digest") or b.get("expected_digest"),
+            require_digest=bool(b.get("digest") or b.get("expected_digest")),
+        )
+        c = get_db_connection()
+        try:
+            cur = c.cursor()
+            cur.execute("SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status IN ('pending', 'queued', 'ready')", (appr_run["project_id"],))
+            enqueued = cur.fetchone()[0] or 0
+        finally:
+            c.close()
+        return {
+            "state": appr_run["state"],
+            "active_revision": rev_id,
+            "tasks_enqueued": enqueued,
+        }
+    return await _do(go)
+
+
+@router.post("/api/v1/orchestrator/tick")
+async def trigger_tick_api(request: Request):
+    """API Specification 2.4: Trigger Task Execution Tick."""
+    user, bad = await _auth(request, True)
+    if bad:
+        return bad
+    if user.startswith("node:") or user.startswith("worker:"):
+        return _err(403, "Worker nodes cannot trigger orchestrator ticks.")
+    if user != "admin" and not user.startswith("operator"):
+        return _err(403, "Only administrators or operators can trigger orchestrator ticks.")
+
+    def go():
+        active_count = engine.tick_all()
+        c = get_db_connection()
+        try:
+            cur = c.cursor()
+            cur.execute("SELECT id FROM orchestration_runs WHERE state IN ('COMPLETED', 'SUCCEEDED')")
+            completed = [r[0] for r in cur.fetchall()]
+            cur.execute("SELECT COUNT(*) FROM tasks WHERE status IN ('running', 'in_progress')")
+            dispatched = cur.fetchone()[0] or 0
+        finally:
+            c.close()
+        return {
+            "active_runs": active_count,
+            "tasks_dispatched": dispatched,
+            "completed_runs": completed,
+        }
+    return await _do(go)
 
 
 # --- creation ----------------------------------------------------------------------------------------------
@@ -117,7 +319,7 @@ async def get_plan(request: Request, project_id: str):
         cur = None
         if run["current_revision_id"]:
             rev = planner.get_revision(run["current_revision_id"])
-            cur = {k: rev[k] for k in ("id", "revision_number", "status", "source", "plan", "validation", "model_info", "created_at", "approved_by", "approved_at")}
+            cur = {k: rev[k] for k in ("id", "revision_number", "status", "source", "plan", "validation", "model_info", "plan_digest", "created_at", "approved_by", "approved_at")}
             cur["graph"] = task_graph.summarize_graph(rev["plan"]) if rev["plan"].get("tasks") else {"nodes": [], "edges": []}
         return {"state": run["state"], "current": cur, "revisions": planner.list_revisions(run["id"]),
                 "planning_error": run["planning_error"], "analysis": jload(run["analysis_json"])}
@@ -141,7 +343,16 @@ async def approve(request: Request, project_id: str):
     b = await _body(request)
 
     def go():
-        run = approval_manager.approve_plan(_run(project_id)["id"], user, str(b.get("rationale", "")), b.get("revision_id"))
+        req_digest = bool(b.get("require_digest"))
+        exp_digest = b.get("expected_digest") or b.get("plan_digest")
+        run = approval_manager.approve_plan(
+            _run(project_id)["id"],
+            user,
+            str(b.get("rationale", "")),
+            b.get("revision_id"),
+            expected_digest=exp_digest,
+            require_digest=req_digest,
+        )
         return {"state": run["state"]}
     return await _do(go)
 
@@ -296,3 +507,178 @@ async def orchestrator_page(request: Request, project_id: str):
     return templates.TemplateResponse(request=request, name="projects/orchestrator.html", context={
         "active_nav": "projects", "current_user": user, "csrf_token": get_csrf_token(request),
         "project": project, "has_run": get_run_for_project(project_id) is not None})
+
+
+# --- Increment 18: Deliberate Task-Solving Loop & Requirement Ledger Endpoints ---
+
+@router.get(API + "/deliberate-status")
+async def get_deliberate_status(request: Request, project_id: str):
+    user, bad = await _auth(request)
+    if bad:
+        return bad
+    from app.services.orchestration import deliberate_loop
+    return await _do(lambda: deliberate_loop.build_coherent_user_status(project_id))
+
+
+@router.get(API + "/requirements")
+async def get_requirement_ledger_api(request: Request, project_id: str):
+    user, bad = await _auth(request)
+    if bad:
+        return bad
+    from app.services.orchestration import intake as intake_mod
+    def go():
+        ledger = intake_mod.load_durable_requirement_ledger(project_id, include_superseded=True)
+        return {
+            "project_id": project_id,
+            "revision_number": ledger.revision_number,
+            "requirements": ledger.to_dict(),
+            "conflict_check": ledger.detect_conflicts_and_ambiguities(),
+        }
+    return await _do(go)
+
+
+@router.post(API + "/steer")
+async def steer_project_requirements(request: Request, project_id: str):
+    user, bad = await _auth(request, True)
+    if bad:
+        return bad
+    b = await _body(request)
+    from app.services.orchestration import intake as intake_mod, context_manager
+
+    def go():
+        run = get_run_for_project(project_id)
+        run_id = run["id"] if run else None
+        res = intake_mod.apply_user_steering_update(
+            project_id,
+            run_id=run_id,
+            actor=user,
+            action=str(b.get("action", "steer")),
+            updated_constraints=b.get("updated_constraints"),
+            replaced_req_codes=b.get("replaced_req_codes"),
+            added_deliverables=b.get("added_deliverables"),
+            added_decisions=b.get("added_decisions"),
+            resolved_gaps=b.get("resolved_gaps"),
+            affected_task_keys=b.get("affected_task_keys"),
+            affected_artifact_ids=b.get("affected_artifact_ids"),
+            reason=str(b.get("reason", "")),
+            source_origin=str(b.get("source_origin", "user_explicit")),
+        )
+        if b.get("replaced_req_codes") or b.get("updated_constraints"):
+            context_manager.invalidate_downstream_memory_on_input_change(
+                project_id,
+                changed_input_key="requirement_ledger",
+                reason=str(b.get("reason", "User steering updated constraints")),
+            )
+        return {"ok": True, "result": res, **res}
+
+    try:
+        return await run_in_threadpool(go)
+    except PermissionError as pe:
+        return _err(403, str(pe))
+    except Exception as e:
+        return _err(400, str(e))
+
+
+@router.get("/api/v1/orchestration/tools")
+async def list_tool_catalogue(request: Request):
+    user, bad = await _auth(request)
+    if bad:
+        return bad
+    from app.services.orchestration import tool_catalogue
+    return await _do(lambda: {"tools": tool_catalogue.GLOBAL_TOOL_CATALOGUE.list_tools()})
+
+
+@router.get(API + "/working-memory")
+async def get_project_working_memory_api(request: Request, project_id: str):
+    user, bad = await _auth(request)
+    if bad:
+        return bad
+    from app.services.orchestration import working_memory as wm
+    return await _do(
+        lambda: {
+            "authoritative_state": wm.derive_authoritative_project_state(project_id),
+            "memory_accounting": wm.get_memory_accounting_report(project_id),
+        }
+    )
+
+
+@router.post(API + "/working-memory/query")
+async def query_project_working_memory_api(request: Request, project_id: str):
+    user, bad = await _auth(request, True)
+    if bad:
+        return bad
+    b = await _body(request)
+    from app.services.orchestration import working_memory as wm
+    return await _do(
+        lambda: wm.WorkingMemoryRetriever.query(
+            project_id,
+            str(b.get("query_type", "remaining_for_completion")),
+            task_key=b.get("task_key"),
+            req_id=b.get("req_id"),
+            conclusion_id=b.get("conclusion_id"),
+            search_text=b.get("search_text"),
+            since_checkpoint_seq=b.get("since_checkpoint_seq"),
+            limit=int(b.get("limit", 10)),
+            offset=int(b.get("offset", 0)),
+        )
+    )
+
+
+@router.get(API + "/task-contracts")
+async def get_project_task_contracts_api(request: Request, project_id: str):
+    user, bad = await _auth(request)
+    if bad:
+        return bad
+    from app.services.orchestration import working_memory as wm
+    return await _do(
+        lambda: {
+            "contracts": wm.list_task_contracts(project_id),
+            "integration_check": wm.verify_project_task_integration(project_id),
+        }
+    )
+
+
+@router.post(API + "/park")
+async def park_project_api(request: Request, project_id: str):
+    user, bad = await _auth(request, True)
+    if bad:
+        return bad
+    b = await _body(request)
+    from app.services.orchestration import working_memory as wm
+    # Never trust caller-provided active_process_cleanup_confirmed=True as authority;
+    # park_project derives confirmation authoritatively from tasks, leases, futures, and processes.
+    return await _do(
+        lambda: wm.park_project(
+            project_id,
+            actor=user,
+            reason=str(b.get("reason", "User requested park via API")),
+            active_process_cleanup_confirmed=None,
+        )
+    )
+
+
+@router.post(API + "/cancel-working-memory")
+async def cancel_project_working_memory_api(request: Request, project_id: str):
+    user, bad = await _auth(request, True)
+    if bad:
+        return bad
+    b = await _body(request)
+    from app.services.orchestration import working_memory as wm
+    return await _do(
+        lambda: wm.cancel_task_or_project(
+            project_id,
+            task_key=b.get("task_key"),
+            actor=user,
+            reason=str(b.get("reason", "User requested cancel via API")),
+            process_cleanup_confirmed=None,
+        )
+    )
+
+
+@router.post(API + "/resume-working-memory")
+async def resume_project_working_memory_api(request: Request, project_id: str):
+    user, bad = await _auth(request, True)
+    if bad:
+        return bad
+    from app.services.orchestration import working_memory as wm
+    return await _do(lambda: wm.resume_project(project_id, actor=user))

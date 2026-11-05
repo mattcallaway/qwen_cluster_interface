@@ -7,7 +7,9 @@ __pycache__/
 .Python
 env/
 .venv/
+.venv*/
 venv/
+scratch/models/
 ENV/
 build/
 develop-eggs/

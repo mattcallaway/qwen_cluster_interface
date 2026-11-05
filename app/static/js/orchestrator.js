@@ -100,7 +100,10 @@
       box.appendChild(ctl("Approve Plan", "btn-primary", function (b) {
         var why = prompt("Approval note (optional):", "") ;
         if (why === null) return;
-        act("Approving", b, function () { return api("POST", "/approve", { rationale: why }); }, "Plan approved. Review it, then Start Execution.");
+        var rev = window.__orchRevision;
+        var revId = rev ? rev.id : null;
+        var digest = rev ? rev.plan_digest : null;
+        act("Approving", b, function () { return api("POST", "/approve", { rationale: why, revision_id: revId, expected_digest: digest }); }, "Plan approved. Review it, then Start Execution.");
       }, "approve"));
       box.appendChild(ctl("Reject Plan", "btn-secondary", function (b) {
         var why = prompt("Reason for rejecting:", ""); if (why === null) return;
@@ -334,6 +337,7 @@
         renderGraph(gt);
       }
       window.__orchPlan = plan;
+      window.__orchRevision = c;
     } catch (e) { clear(box); box.appendChild(el("div", { "class": "alert alert-error", text: e.message })); }
   }
 

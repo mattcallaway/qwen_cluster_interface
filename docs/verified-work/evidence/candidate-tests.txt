@@ -1,0 +1,36 @@
+test_database_failure_is_closed (__main__.ContainmentTests.test_database_failure_is_closed) ... ok
+test_missing_native_execution_cannot_certify (__main__.ContainmentTests.test_missing_native_execution_cannot_certify) ... ok
+test_preserves_negation (__main__.ContainmentTests.test_preserves_negation) ... ok
+test_refuses_unsupported_positive_substitution (__main__.ContainmentTests.test_refuses_unsupported_positive_substitution) ... ok
+test_seeded_source_cannot_certify (__main__.ContainmentTests.test_seeded_source_cannot_certify) ... ok
+test_supplied_audit_cannot_certify (__main__.ContainmentTests.test_supplied_audit_cannot_certify) ... ok
+test_aggregate_cap (__main__.LedgerTests.test_aggregate_cap) ... ok
+test_balanced_valid (__main__.LedgerTests.test_balanced_valid) ... ok
+test_decimal_exact (__main__.LedgerTests.test_decimal_exact) ... ok
+test_double_counted_match (__main__.LedgerTests.test_double_counted_match) ... ok
+test_gap_not_added_to_match_deficit (__main__.LedgerTests.test_gap_not_added_to_match_deficit) ... ok
+test_ineligible_permitting (__main__.LedgerTests.test_ineligible_permitting) ... ok
+test_match_basis_total (__main__.LedgerTests.test_match_basis_total) ... ok
+test_money_rejects_invalid (__main__.LedgerTests.test_money_rejects_invalid) ... ok
+test_proposed_is_not_awarded (__main__.LedgerTests.test_proposed_is_not_awarded) ... ok
+test_scope_total_mismatch (__main__.LedgerTests.test_scope_total_mismatch) ... ok
+test_unknown_reference (__main__.LedgerTests.test_unknown_reference) ... ok
+test_aggregate_database_failure (__main__.ProvenanceTests.test_aggregate_database_failure) ... ok
+test_aggregate_missing_results (__main__.ProvenanceTests.test_aggregate_missing_results) ... ok
+test_aggregate_rejects_incomplete_or_conflicting_summary (__main__.ProvenanceTests.test_aggregate_rejects_incomplete_or_conflicting_summary) ... ok
+test_aggregate_valid_native_nonresearch (__main__.ProvenanceTests.test_aggregate_valid_native_nonresearch) ... ok
+test_complete_native_chain (__main__.ProvenanceTests.test_complete_native_chain) ... ok
+test_completed_native_inference (__main__.ProvenanceTests.test_completed_native_inference) ... ok
+test_missing_or_mismatched_links (__main__.ProvenanceTests.test_missing_or_mismatched_links) ... ok
+test_missing_tables (__main__.ProvenanceTests.test_missing_tables) ... ok
+test_native_fetch_action_retains_research_hold_without_coverage (__main__.ProvenanceTests.test_native_fetch_action_retains_research_hold_without_coverage) ... ok
+test_native_research_still_held (__main__.ProvenanceTests.test_native_research_still_held) ... ok
+test_planned_inference_is_not_executed (__main__.ProvenanceTests.test_planned_inference_is_not_executed) ... ok
+test_research_coverage_cannot_waive_hold (__main__.ProvenanceTests.test_research_coverage_cannot_waive_hold) ... ok
+test_wrong_content (__main__.ProvenanceTests.test_wrong_content) ... ok
+test_wrong_project (__main__.ProvenanceTests.test_wrong_project) ... ok
+
+----------------------------------------------------------------------
+Ran 31 tests in 0.072s
+
+OK

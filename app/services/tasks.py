@@ -252,7 +252,7 @@ def update_task_progress(task_id: str, status: str, result_data: Optional[Dict[s
         error_details = ?,
         attempt_count = attempt_count + CASE WHEN ? = 'running' THEN 1 ELSE 0 END,
         updated_at = ?
-    WHERE id = ?
+    WHERE id = ? AND status != 'cancelled'
     """, (status, res_str, error_details, status, now, task_id))
     conn.commit()
     conn.close()
@@ -364,23 +364,56 @@ def get_task_dependents(task_id: str) -> List[Dict[str, Any]]:
 def record_task_execution(
     task_id: str,
     outcome: str,
-    user: str,
-    attempted: str,
-    actual_result: str,
+    user: str = "operator",
+    attempted: str = "",
+    actual_result: str = "",
     evidence_summary: str = "",
     assumptions_feedback: str = "",
     error_details: str = "",
     reusable_lessons: str = "",
     create_knowledge_note: bool = False,
-    knowledge_title: str = ""
+    knowledge_title: str = "",
+    *,
+    actor: Optional[str] = None,
+    result_summary: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Record an operational execution event for a task, and optionally capture durable Markdown knowledge."""
+    if actor and user == "operator":
+        user = actor
+    if result_summary and not actual_result:
+        actual_result = result_summary
     if outcome not in ("completed", "failed", "aborted"):
         raise ValidationError(f"Invalid execution outcome: '{outcome}'.")
 
     task = get_task_by_id(task_id)
     if not task:
         raise NotFound("Task not found.")
+    if task["status"] == "cancelled":
+        logger.warning("Attempted to record completion for cancelled task %s; preserving cancelled state", task_id)
+        return task
+
+    # AUD-04: Reject manual 'completed' transitions for worker-assigned or worker-typed tasks unless
+    # backed by a verified worker_task_leases + worker_executions record.
+    if outcome == "completed" and (
+        task.get("assigned_worker")
+        or task.get("task_type") in ("inference", "python_execution", "library_script", "research_fetch", "vps_action")
+    ):
+        conn_check = get_db_connection()
+        try:
+            has_lease = conn_check.execute(
+                "SELECT id FROM worker_task_leases WHERE task_id = ? AND status = 'completed' LIMIT 1",
+                (task_id,),
+            ).fetchone()
+            has_exec = conn_check.execute(
+                "SELECT id FROM worker_executions WHERE task_id = ? AND status = 'success' AND exit_code = 0 LIMIT 1",
+                (task_id,),
+            ).fetchone()
+        finally:
+            conn_check.close()
+        if not has_lease or not has_exec:
+            raise ValidationError(
+                f"Cannot manually mark worker/inference task '{task_id}' as 'completed' without a verified worker lease and execution record."
+            )
 
     kn_id = None
     if create_knowledge_note and task.get("project_id"):
@@ -437,7 +470,7 @@ def record_task_execution(
         new_status = "completed" if outcome == "completed" else ("failed" if outcome == "failed" else "cancelled")
         conn.execute("""
             UPDATE tasks SET status = ?, error_details = ?, attempt_count = attempt_count + 1, updated_at = ?
-            WHERE id = ?
+            WHERE id = ? AND status != 'cancelled'
         """, (new_status, error_details or None, now, task_id))
 
         if task.get("project_id"):

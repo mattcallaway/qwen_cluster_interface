@@ -1,0 +1,152 @@
+{
+  "timestamp_utc": "2026-10-21T22:20:00Z",
+  "base_url": "http://127.0.0.1:8029",
+  "browser": "Playwright Chromium Headless",
+  "steps": {
+    "step1_project_creation": {
+      "status": "PASS",
+      "project_id": "prj-86244cb8727642558e894a6a043602b3",
+      "url": "http://127.0.0.1:8029/projects/prj-86244cb8727642558e894a6a043602b3/orchestrator",
+      "screenshot": "e2e_01_project_created.png"
+    },
+    "step2_planning_and_approval": {
+      "status": "PASS",
+      "plan_reviewed": true,
+      "approved_state": "READY",
+      "screenshot": "e2e_02_plan_approved.png"
+    },
+    "step3_execution_visibility": {
+      "status": "PASS",
+      "execution_state": "RUNNING",
+      "tasks_visible": true,
+      "screenshot": "e2e_03_execution_visibility.png"
+    },
+    "step4_research_evidence_and_citations": {
+      "status": "PASS",
+      "source_id": "src-17020d9ae5b0",
+      "deliverable_id": "del-9fc0629c90ff4aa7a3dbf78fc48b59de",
+      "screenshot": "e2e_04_evidence_citations.png"
+    },
+    "step5_deliverables_catalog": {
+      "status": "PASS",
+      "artifact_id": "art-31995973fa4e4f29",
+      "display_name": "system_health_report.md",
+      "screenshot": "e2e_05_deliverables_catalog.png"
+    },
+    "step6_preview_and_download": {
+      "status": "PASS",
+      "preview_verified": true,
+      "downloaded_bytes_len": 646,
+      "checksum_sha256": "bae1c257ff11c954f5449c133a0b715edbd7e9a978ce581bf34a8d7451a723f0",
+      "screenshot": "e2e_06_preview_download.png"
+    },
+    "step7_cross_project_reuse": {
+      "status": "PASS",
+      "target_project_id": "prj-f765032c02f54b2582b5ea13470e04b3",
+      "reused_task_created": true,
+      "screenshot": "e2e_07_authorized_reuse.png"
+    },
+    "step8_knowledge_candidate": {
+      "status": "PASS",
+      "candidate_recorded": true,
+      "trust_tier": "candidate",
+      "screenshot": "e2e_08_knowledge_candidate.png"
+    },
+    "step9_success_criteria_evaluation": {
+      "status": "PASS",
+      "evaluation_type": "goal_acceptance",
+      "outcome_status": "accepted",
+      "screenshot": "e2e_09_success_evaluation.png"
+    }
+  },
+  "api_requests": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:8029/api/v1/orchestration/projects"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:8029/api/v1/projects/prj-86244cb8727642558e894a6a043602b3/orchestration/plan"
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:8029/api/v1/projects/prj-86244cb8727642558e894a6a043602b3/orchestration/status"
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:8029/api/v1/projects/prj-86244cb8727642558e894a6a043602b3/orchestration/plan"
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:8029/api/v1/projects/prj-86244cb8727642558e894a6a043602b3/orchestration/artifacts"
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:8029/api/v1/projects/prj-86244cb8727642558e894a6a043602b3/orchestration/events?after_id=0&limit=200"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:8029/api/v1/projects/prj-86244cb8727642558e894a6a043602b3/orchestration/approve"
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:8029/api/v1/projects/prj-86244cb8727642558e894a6a043602b3/orchestration/status"
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:8029/api/v1/projects/prj-86244cb8727642558e894a6a043602b3/orchestration/plan"
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:8029/api/v1/projects/prj-86244cb8727642558e894a6a043602b3/orchestration/artifacts"
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:8029/api/v1/projects/prj-86244cb8727642558e894a6a043602b3/orchestration/events?after_id=11&limit=200"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:8029/api/v1/projects/prj-86244cb8727642558e894a6a043602b3/orchestration/start"
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:8029/api/v1/projects/prj-86244cb8727642558e894a6a043602b3/orchestration/status"
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:8029/api/v1/projects/prj-86244cb8727642558e894a6a043602b3/orchestration/plan"
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:8029/api/v1/projects/prj-86244cb8727642558e894a6a043602b3/orchestration/artifacts"
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:8029/api/v1/projects/prj-86244cb8727642558e894a6a043602b3/orchestration/events?after_id=14&limit=200"
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:8029/api/v1/projects/prj-86244cb8727642558e894a6a043602b3/orchestration/status"
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:8029/api/v1/projects/prj-86244cb8727642558e894a6a043602b3/orchestration/plan"
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:8029/api/v1/projects/prj-86244cb8727642558e894a6a043602b3/orchestration/artifacts"
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:8029/api/v1/projects/prj-86244cb8727642558e894a6a043602b3/orchestration/events?after_id=15&limit=200"
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:8029/api/v1/artifacts/art-31995973fa4e4f29/download?version=1"
+    }
+  ],
+  "screenshots": {},
+  "artifacts": {},
+  "overall_verdict": "PASS",
+  "duration_seconds": 0.0
+}

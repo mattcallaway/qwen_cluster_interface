@@ -1,0 +1,105 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-9.1.1, pluggy-1.6.0
+rootdir: C:\Users\Matt C\.gemini\antigravity-ide\scratch\qwen-collective-integration
+plugins: anyio-4.15.1
+collected 4 items
+
+tests\test_shape_and_bounds_reproduction.py FFFF                         [100%]
+
+================================== FAILURES ===================================
+______________________ test_reproduce_json_shape_bypass _______________________
+
+    def test_reproduce_json_shape_bypass():
+        # In qc.json_io_cases.v1, expected is scalar 4.
+        # The candidate stdout is {"value": 4}.
+        # This MUST fail in the broader JSON profile!
+        cases = [{
+            'id': 'case_scalar',
+            'requirement_id': 'req1',
+            'input': {'text': 'test'},
+            'expected': 4,
+            'profile': 'qc.json_io_cases.v1'
+        }]
+        observations = [{
+            'case_id': 'case_scalar',
+            'executed': True,
+            'reason': 'completed',
+            'exit_code': 0,
+            'cleanup_confirmed': True,
+            'stdout': '{"value": 4}',
+            'unit': 'qc-sandbox-' + '0'*32 + '.service'
+        }]
+        results = evaluate_observations(cases, observations)
+        # If the bypass exists, results[0]['passed'] will be True!
+>       assert not results[0]['passed'], "SHAPE BYPASS: {'value': 4} was accepted for expected scalar 4 in json_io profile!"
+E       AssertionError: SHAPE BYPASS: {'value': 4} was accepted for expected scalar 4 in json_io profile!
+E       assert not True
+
+tests\test_shape_and_bounds_reproduction.py:33: AssertionError
+____________________ test_reproduce_float_magnitude_limit _____________________
+
+    def test_reproduce_float_magnitude_limit():
+        # Absolute numeric maximum is declared as 10^14.
+        # 1e100 exceeds 10^14.
+        # strict_json_equal must reject numbers > 10^14!
+        result = strict_json_equal(1e100, 1e100)
+>       assert not result, "MAGNITUDE BYPASS: strict_json_equal accepted 1e100 which exceeds 10^14!"
+E       AssertionError: MAGNITUDE BYPASS: strict_json_equal accepted 1e100 which exceeds 10^14!
+E       assert not True
+
+tests\test_shape_and_bounds_reproduction.py:40: AssertionError
+__________________ test_reproduce_deep_nesting_in_cases_from __________________
+
+    def test_reproduce_deep_nesting_in_cases_from():
+        # Construct input nested 25 levels deep
+        nested = {"leaf": 1}
+        for _ in range(25):
+            nested = {"nest": nested}
+    
+        doc = {
+            'schema': 'qc.independent_tests.v1',
+            'requirement_ids': ['req1'],
+            'files': [{
+                'path': 'tests/cases.json',
+                'content': json.dumps({
+                    'schema': 'qc.json_io_cases.v1',
+                    'cases': [
+                        {'id': 'c1', 'requirement_id': 'req1', 'input': nested, 'expected': {'ok': True}},
+                        {'id': 'c2', 'requirement_id': 'req1', 'input': {'a': 1}, 'expected': {'ok': True}}
+                    ]
+                })
+            }]
+        }
+>       with pytest.raises(ValueError, match="Nesting depth"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+tests\test_shape_and_bounds_reproduction.py:62: Failed
+________________ test_reproduce_oversized_number_in_cases_from ________________
+
+    def test_reproduce_oversized_number_in_cases_from():
+        doc = {
+            'schema': 'qc.independent_tests.v1',
+            'requirement_ids': ['req1'],
+            'files': [{
+                'path': 'tests/cases.json',
+                'content': json.dumps({
+                    'schema': 'qc.json_io_cases.v1',
+                    'cases': [
+                        {'id': 'c1', 'requirement_id': 'req1', 'input': {'val': 1}, 'expected': {'val': 1e100}},
+                        {'id': 'c2', 'requirement_id': 'req1', 'input': {'val': 2}, 'expected': {'val': 2.0}}
+                    ]
+                })
+            }]
+        }
+>       with pytest.raises(ValueError, match="magnitude"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+tests\test_shape_and_bounds_reproduction.py:80: Failed
+=========================== short test summary info ===========================
+FAILED tests/test_shape_and_bounds_reproduction.py::test_reproduce_json_shape_bypass
+FAILED tests/test_shape_and_bounds_reproduction.py::test_reproduce_float_magnitude_limit
+FAILED tests/test_shape_and_bounds_reproduction.py::test_reproduce_deep_nesting_in_cases_from
+FAILED tests/test_shape_and_bounds_reproduction.py::test_reproduce_oversized_number_in_cases_from
+============================== 4 failed in 0.80s ==============================
