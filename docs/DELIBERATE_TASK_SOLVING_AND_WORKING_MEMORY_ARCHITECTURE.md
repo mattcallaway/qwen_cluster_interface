@@ -162,3 +162,16 @@ Derived directly from SQLite tables (never from an unverified model summary), an
 - **Conversational Execution Consumer & End-to-End Live Native Project Verification**:
   - `/api/v1/chat/deliberate` executes `execute_direct_response_turn` for direct questions and `advance_deliberate_project` for durable projects, routing model inference through `WorkerOllamaProvider` (`worker.lease_task_for_worker`).
   - Verified end-to-end across all 10 required steps in `tests/test_increment18_live_native_project_e2e.py` against a live `uvicorn` controller subprocess and a separately running authenticated `VPSWorkerAgent` subprocess executing local loopback Ollama (`qwen2.5:3b`).
+
+### 7.4 Release Validation Baseline, Execution Chain & Remaining Limitations (Increment 18)
+- **Tested Implementation & Integration Rehearsal Commits**:
+  - Pre-fix baseline: `2cc6dab4e9e4e1c539f024cfe062f55f36732e8b` (`6 failed` in [`docs/verified-work/evidence/increment18-pre-fix-failures-20261104.json`](verified-work/evidence/increment18-pre-fix-failures-20261104.json)).
+  - Tested implementation commit: `ffc771662e31e4665913fe407f8c0e0e934714e1`.
+  - Disposable integration rehearsal merge commit onto `origin/main` (`4be7f547f4919380a22abdd2122961d559d2f46f`): `0fb2c30a908cbd45191ac24f66aaffff57408776` (`0` conflicts; `249 passed, 0 failed, 2 warnings in 123.48s`; tracked in [`docs/verified-work/evidence/increment18-integration-rehearsal-20261104.json`](verified-work/evidence/increment18-integration-rehearsal-20261104.json)).
+- **Actual Controller / Worker Execution Chain**:
+  - `POST /api/v1/chat/deliberate` -> `execute_direct_response_turn` / `advance_deliberate_project` -> `execute_native_worker_inference` -> `model_router.select_node` -> `WorkerOllamaProvider` -> `worker.lease_task_for_worker` -> separately running authenticated `VPSWorkerAgent` polling `/api/worker/lease` -> local loopback Ollama (`qwen2.5:3b`) -> `/api/worker/tasks/{id}/complete` -> `execute_checkpointed_work_boundary` with controller-signed `TrustedVerificationReceipt`.
+- **Component/Fixture Tests vs. Autonomous Project Outcome**:
+  - The 20-task acceptance suite (`accept-01`..`accept-20`) is a component, deterministic tool, and developer-reference-fixture suite (`9 unit_or_schema_test`, `6 deterministic_tool_test`, `5 developer_reference_fixture_verification`; `counts_as_autonomous_capability = False` for 18 of 20 tasks ? not 20 autonomous projects).
+  - The 1 complete autonomous user-entry-point project outcome in Increment 18 is the 10-step live native supplier project E2E (`tests/test_increment18_live_native_project_e2e.py`).
+- **Supplier-Specific Coordinator Scope & Remaining Limitations**:
+  - In Increment 18 (`ffc771662e31e4665913fe407f8c0e0e934714e1`), `advance_deliberate_project` and `ensure_deliberate_task_contracts` contain supplier-specific task branches (`t1_reconcile_quotes -> t2_evaluate_constraints -> t3_synthesize_recommendation`) and constraint parsing (`extract_constraints_from_ledger`). Generalizing the coordinator to arbitrary domains via persisted action contracts and evidence-driven next-action selection is separated into Increment 19 (`feature/increment19-general-purpose-coordinator`).

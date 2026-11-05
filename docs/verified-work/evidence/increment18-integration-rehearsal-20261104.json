@@ -1,0 +1,73 @@
+{
+  "rehearsal_date": "2026-11-04",
+  "github_pr": {
+    "number": 2,
+    "url": "https://github.com/mattcallaway/qwen_cluster_interface/pull/2",
+    "state": "open",
+    "draft": true,
+    "base_ref": "main",
+    "base_sha": "4be7f547f4919380a22abdd2122961d559d2f46f",
+    "head_ref": "feature/increment18-deliberate-task-solving-loop"
+  },
+  "base_branch": "origin/main",
+  "base_main_sha": "4be7f547f4919380a22abdd2122961d559d2f46f",
+  "feature_branch": "feature/increment18-deliberate-task-solving-loop",
+  "pre_fix_baseline_sha": "2cc6dab4e9e4e1c539f024cfe062f55f36732e8b",
+  "tested_implementation_feature_sha": "ffc771662e31e4665913fe407f8c0e0e934714e1",
+  "prior_docs_sha": "03e671ae189254d7684a1234405af66f5160638f",
+  "tested_implementation_rehearsal_merge_sha": "0fb2c30a908cbd45191ac24f66aaffff57408776",
+  "tree_and_blob_correspondence": {
+    "root_tree_sha": "11bd92eba36ba217806dd2b86d4df58a2a018105",
+    "app_tree_sha": "764d6fd993b4945ec2269f6f09f184bbcdda6e02",
+    "tests_tree_sha": "03416c6825003f2b62163264cb05d7f58489a655",
+    "vps_agent_tree_sha": "c05d6253685bf6427f0bbcffb67250e868646ddc",
+    "scripts_tree_sha": "fa16ac38c99274c8b3df351045410f0328851300",
+    "matches_across_tested_and_rehearsed": true
+  },
+  "merge_strategy": "ort (--no-ff onto 4be7f547f4919380a22abdd2122961d559d2f46f; also fast-forward compatible as descendant of main)",
+  "merge_conflicts": 0,
+  "note_on_ancestry": "feature/increment18-deliberate-task-solving-loop was branched from feature/increment17-pipeline-parallelism-paged-kv (070680432dd12fd9bb43c9669d4d86e499623176), so merging into main (4be7f547f4919380a22abdd2122961d559d2f46f) includes Increment 17 commits unless PR #1 is merged first or PR #2 is stacked on PR #1.",
+  "disposable_worktree_path": "C:/Users/Matt C/AppData/Local/Temp/qwen_inc18_rehearsal",
+  "disposable_worktree_cleaned_up": true,
+  "main_branch_modified": false,
+  "other_worktrees_preserved": [
+    "C:/Users/Matt C/.gemini/antigravity-ide/scratch/qwen-collective (5d3d90a [remediation/production-recovery])",
+    "C:/Users/Matt C/.gemini/antigravity-ide/scratch/qwen-collective-dev (8bf0a22 [feature/autonomous-project-orchestrator])"
+  ],
+  "test_execution": {
+    "rehearsed_18_file_regression_suite": {
+      "command": "python -m pytest tests/test_increment18_repair_regressions.py tests/test_increment18_live_native_project_e2e.py tests/test_working_memory_adversarial.py tests/test_increment18_deliberate_assistant.py tests/test_inference.py tests/test_inference_and_observatory_widgets.py tests/test_observatory.py tests/test_metric_integrity.py tests/test_web_routes.py tests/test_worker_authorization_enforcement.py tests/test_script_authorization.py tests/test_certification_block_reporting.py tests/test_claim_contracts.py tests/test_financial_reasoning.py tests/test_code_proposals.py tests/test_migrations.py tests/test_migration_compatibility.py tests/test_migration_robustness_and_backup.py -q --tb=short",
+      "file_count": 18,
+      "passed": 249,
+      "failed": 0,
+      "skipped": 0,
+      "warnings": 2,
+      "duration_seconds": 123.48,
+      "breakdown": {
+        "tests/test_increment18_repair_regressions.py": 10,
+        "tests/test_increment18_live_native_project_e2e.py": 1,
+        "tests/test_working_memory_adversarial.py": 17,
+        "tests/test_increment18_deliberate_assistant.py": 8,
+        "broader_14_remediation_compatible_files": 213
+      }
+    },
+    "legacy_stage01_to_stage08_cross_check": {
+      "command": "python -m pytest tests/test_increment18_repair_regressions.py tests/test_increment18_live_native_project_e2e.py tests/test_working_memory_adversarial.py tests/test_increment18_deliberate_assistant.py tests/test_stage01_security.py tests/test_stage02_planning.py tests/test_stage03_execution.py tests/test_stage03_execution_safety.py tests/test_stage04_research_integrity.py tests/test_stage05_research_lifecycle.py tests/test_stage06_artifact_subsystem.py tests/test_stage07_knowledge_governance.py tests/test_stage08a_backup_recovery.py tests/test_stage08b_operational_reliability.py tests/test_stage08c1_loop_detection.py tests/test_stage08c2_browser_egress.py tests/test_stage08c3_upload_security.py tests/test_migration_robustness_and_backup.py -q --tb=short",
+      "passed": 270,
+      "failed": 11,
+      "skipped": 4,
+      "warnings": 1,
+      "duration_seconds": 144.51,
+      "findings_recorded": [
+        "1 failure in tests/test_stage02_planning.py::test_action_registry_and_dispatcher_bidirectional_drift_audit caused by tool_catalogue.py registering 9 tools into GLOBAL_ACTION_REGISTRY with ActionKind.CONTROLLER_STEP without adding them to task_graph.CONTROLLER_STEPS when imported in the same pytest process (remediated in Increment 19 / Milestone 2).",
+        "10 failures in historical pre-remediation tests (test_stage03_execution.py, test_stage03_execution_safety.py, test_stage04_research_integrity.py, test_stage06_artifact_subsystem.py) where Increment 1+ remediation safety holds return 'BLOCKED' / 'SOFTWARE_ACCEPTANCE_UNVERIFIED' instead of pre-remediation 'REJECTED' / 'COMPLETED'."
+      ]
+    }
+  },
+  "scope_and_limitations": {
+    "coordinator_scope": "Supplier-specific pilot coordinator (t1_reconcile_quotes -> t2_evaluate_constraints -> t3_synthesize_recommendation in app/services/orchestration/deliberate_loop.py).",
+    "acceptance_suite_20_tasks": "Component, deterministic tool, and developer-reference-fixture suite (9 unit_or_schema_test, 6 deterministic_tool_test, 5 developer_reference_fixture_verification; 2 native worker inference routing tasks). Does NOT represent 20 autonomous end-to-end projects completed.",
+    "autonomous_user_entry_point_projects": "1 complete 10-step live native supplier project E2E via /api/v1/chat/deliberate and a separately running authenticated VPSWorkerAgent subprocess (tests/test_increment18_live_native_project_e2e.py)."
+  },
+  "verdict": "Increment 18 (tested commit ffc771662e31e4665913fe407f8c0e0e934714e1, rehearsed integration merge 0fb2c30a908cbd45191ac24f66aaffff57408776) is integration-ready within its bounded supplier-pilot and working-memory scope, stacked on Increment 17 (PR #1) and pending independent operator merge approval."
+}
