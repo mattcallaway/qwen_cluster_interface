@@ -704,8 +704,16 @@ def register_task_contract(
     run_id: Optional[str] = None,
     status: str = "ready",
     next_action: str = "execute_task",
+    selected_tool: Optional[str] = None,
+    validated_arguments: Optional[Dict[str, Any]] = None,
+    expected_observation: Optional[str] = None,
+    verification_method: Optional[str] = None,
+    verifier_id: Optional[str] = None,
+    authority_scope: Optional[str] = None,
+    permitted_effects: Optional[List[str]] = None,
+    checkpoint_refs: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
-    """Create or update an explicit task contract bound to project objective and requirement revision."""
+    """Create or update an explicit persisted work-item/action contract bound to project objective and requirement revision."""
     ledger = intake_mod.load_durable_requirement_ledger(project_id)
     obj = bound_objective if bound_objective is not None else ledger.objective
     req_rev = int(bound_requirement_revision if bound_requirement_revision is not None else ledger.revision_number)
@@ -720,11 +728,20 @@ def register_task_contract(
     now = now_iso()
     with db_transaction() as c:
         existing = c.execute(
-            "SELECT id, contract_revision FROM project_task_contracts WHERE project_id = ? AND task_key = ?",
+            "SELECT * FROM project_task_contracts WHERE project_id = ? AND task_key = ?",
             (project_id, task_key),
         ).fetchone()
         if existing:
-            new_rev = int(existing["contract_revision"]) + 1
+            ex_d = dict(existing)
+            new_rev = int(ex_d["contract_revision"]) + 1
+            eff_tool = selected_tool if selected_tool is not None else ex_d.get("selected_tool", "")
+            eff_args = validated_arguments if validated_arguments is not None else jload(ex_d.get("validated_arguments_json"), {})
+            eff_obs = expected_observation if expected_observation is not None else ex_d.get("expected_observation", "")
+            eff_vm = verification_method if verification_method is not None else ex_d.get("verification_method", "")
+            eff_vid = verifier_id if verifier_id is not None else ex_d.get("verifier_id", "")
+            eff_auth = authority_scope if authority_scope is not None else (ex_d.get("authority_scope") or "controller_validated")
+            eff_effects = permitted_effects if permitted_effects is not None else jload(ex_d.get("permitted_effects_json"), ["read_only"])
+            eff_ckpts = checkpoint_refs if checkpoint_refs is not None else jload(ex_d.get("checkpoint_refs_json"), [])
             c.execute(
                 """UPDATE project_task_contracts
                    SET run_id = COALESCE(?, run_id),
@@ -747,6 +764,14 @@ def register_task_contract(
                        partial_result_definition = ?,
                        blocker_conditions_json = ?,
                        owned_fields_json = ?,
+                       selected_tool = ?,
+                       validated_arguments_json = ?,
+                       expected_observation = ?,
+                       verification_method = ?,
+                       verifier_id = ?,
+                       authority_scope = ?,
+                       permitted_effects_json = ?,
+                       checkpoint_refs_json = ?,
                        stale_reason = '',
                        contract_revision = ?,
                        updated_at = ?
@@ -772,12 +797,20 @@ def register_task_contract(
                     partial_result_definition,
                     jdump(blocker_conditions or []),
                     jdump(owned_fields or []),
+                    str(eff_tool),
+                    jdump(eff_args),
+                    str(eff_obs),
+                    str(eff_vm),
+                    str(eff_vid),
+                    str(eff_auth),
+                    jdump(eff_effects),
+                    jdump(eff_ckpts),
                     new_rev,
                     now,
-                    existing["id"],
+                    ex_d["id"],
                 ),
             )
-            cid = existing["id"]
+            cid = ex_d["id"]
         else:
             cid = new_id("tcon")
             c.execute(
@@ -787,9 +820,11 @@ def register_task_contract(
                     input_evidence_ids_json, constraints_json, exclusions_json, depends_on_task_keys_json,
                     interfaces_json, acceptance_checks_json, resource_budget_json, max_retries,
                     attempts_used, status, next_action, partial_result_definition, blocker_conditions_json,
-                    output_summary_json, output_artifact_ids_json, owned_fields_json, stale_reason,
-                    contract_revision, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, '{}', '[]', ?, '', 1, ?, ?)""",
+                    output_summary_json, output_artifact_ids_json, owned_fields_json,
+                    selected_tool, validated_arguments_json, expected_observation, verification_method,
+                    verifier_id, authority_scope, permitted_effects_json, checkpoint_refs_json,
+                    stale_reason, contract_revision, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, '{}', '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, '', 1, ?, ?)""",
                 (
                     cid,
                     project_id,
@@ -814,6 +849,14 @@ def register_task_contract(
                     partial_result_definition,
                     jdump(blocker_conditions or []),
                     jdump(owned_fields or []),
+                    str(selected_tool or ""),
+                    jdump(validated_arguments or {}),
+                    str(expected_observation or ""),
+                    str(verification_method or "independent_controller_verifier"),
+                    str(verifier_id or ""),
+                    str(authority_scope or "controller_validated"),
+                    jdump(permitted_effects or ["read_only"]),
+                    jdump(checkpoint_refs or []),
                     now,
                     now,
                 ),
@@ -851,6 +894,15 @@ def _row_to_contract_dict(row: Any) -> Dict[str, Any]:
         "output_summary": jload(d.get("output_summary_json"), {}),
         "output_artifact_ids": jload(d.get("output_artifact_ids_json"), []),
         "owned_fields": jload(d.get("owned_fields_json"), []),
+        "selected_tool": d.get("selected_tool", ""),
+        "validated_arguments": jload(d.get("validated_arguments_json"), {}),
+        "expected_observation": d.get("expected_observation", ""),
+        "verification_method": d.get("verification_method", ""),
+        "verifier_id": d.get("verifier_id", ""),
+        "authority_scope": d.get("authority_scope", "controller_validated"),
+        "permitted_effects": jload(d.get("permitted_effects_json"), ["read_only"]),
+        "checkpoint_refs": jload(d.get("checkpoint_refs_json"), []),
+        "verification_receipt": jload(d.get("verification_receipt_json"), {}),
         "stale_reason": d.get("stale_reason", ""),
         "contract_revision": int(d.get("contract_revision", 1)),
         "created_at": d.get("created_at"),
@@ -927,7 +979,7 @@ def verify_project_task_integration(project_id: str) -> Dict[str, Any]:
             # Check cross-task output compatibility on shared interface keys
             out_sum = tc.get("output_summary") or {}
             for k, val in out_sum.items():
-                if k in ("status", "notes", "timestamp"):
+                if k in ("status", "notes", "timestamp", "decision_summary", "lease_id", "producing_actor"):
                     continue
                 if k in interface_values:
                     prev_task, prev_val = interface_values[k]
@@ -2041,6 +2093,13 @@ def execute_checkpointed_work_boundary(
                     now,
                 ),
             )
+            prev_ckpts = list(before_snap["contract"].get("checkpoint_refs") or [])
+            if ckpt_id not in prev_ckpts:
+                prev_ckpts.append(ckpt_id)
+            c.execute(
+                "UPDATE project_task_contracts SET checkpoint_refs_json = ? WHERE project_id = ? AND task_key = ?",
+                (jdump(prev_ckpts), project_id, task_key),
+            )
             ckpt = {
                 "checkpoint_id": ckpt_id,
                 "project_id": project_id,
@@ -2323,6 +2382,7 @@ def invalidate_dependency_closure(
         "project_id": project_id,
         "reason": reason,
         "invalidated_tasks": sorted(invalidated_tasks),
+        "invalidated_task_keys": sorted(invalidated_tasks),
         "preserved_tasks": sorted(preserved_tasks),
         "invalidated_epistemic_ids": invalidated_epistemic_ids,
         "invalidated_artifact_ids": sorted(art_set),

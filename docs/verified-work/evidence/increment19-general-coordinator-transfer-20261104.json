@@ -1,0 +1,78 @@
+{
+  "schema": "qc.increment19_cross_domain_transfer_evidence.v1",
+  "generated_at_utc": "2026-11-04T19:20:00Z",
+  "model_identity": "qwen2.5:3b",
+  "worker_node_id": "node-inc19-live-worker",
+  "supplier_domain": {
+    "project_id": "prj-bf4afbab88714e30a9352ca964d3f9b1",
+    "domain": "supplier_option_evaluation",
+    "final_cycle_phase": "completed",
+    "native_worker_lease_ids": [
+      "lease_ac3848b02e5a"
+    ],
+    "tool_selection_stats": {
+      "total_proposals": 3,
+      "valid_selections": 3,
+      "rejected_proposals": 0,
+      "tool_selection_accuracy": 1.0
+    },
+    "integration_verified": true,
+    "artifacts": [
+      "quote_reconciliation_ledger.json",
+      "supplier_recommendation.json",
+      "supplier_recommendation.md"
+    ]
+  },
+  "repository_bugfix_domain": {
+    "project_id": "prj-d9ee29d10e644aeaa8c826f20c5d3783",
+    "domain": "repository_bugfix",
+    "initial_clarification_phase": "clarify",
+    "step1_inspection_status": "verified",
+    "park_and_restart_status": "verified_resumed_across_controller_restart",
+    "attempt1_natural_repair": {
+      "final_cycle_phase": "completed",
+      "native_worker_lease_ids": [
+        "lease_53491a5290a7"
+      ],
+      "tool_selection_stats": {
+        "total_proposals": 2,
+        "valid_selections": 2,
+        "rejected_proposals": 0,
+        "tool_selection_accuracy": 1.0
+      },
+      "integration_verified": true,
+      "untouched_reporting_sha256": "d66c879595e1c52ca8cda492c2282d574aee7a738dc664d5cf5e354265164074",
+      "untouched_public_test_sha256": "c29ea0aa89052a8de91b803a104d2436ff7545876e50a36630e1fc727857d18c",
+      "patched_allocator_sha256": "fa5170a0d18dd843cd0afd7b0ea16f7fccf8804425ae19fed09335cb90ccc689"
+    },
+    "mid_flight_steering_and_fault_injection_recovery": {
+      "invalidated_task_keys": [
+        "t2_propose_and_verify_patch",
+        "t3_publish_change_report"
+      ],
+      "preserved_task_keys": [
+        "t1_inspect_and_reproduce"
+      ],
+      "final_cycle_phase": "completed",
+      "native_worker_lease_ids": [
+        "lease_81fc249ecddc",
+        "lease_0a72c31774dd"
+      ],
+      "repair_events_count": 1,
+      "oracle_exposure_prevented": true
+    },
+    "epistemic_statuses_observed": [
+      "failed",
+      "observed",
+      "proposed",
+      "stale",
+      "verified_for_scope"
+    ],
+    "prompt_injection_stripped_in_repo": true,
+    "artifacts": [
+      "repo_inspection_and_reproduction.json",
+      "verified_bugfix_patch.diff",
+      "bugfix_verification_report.md"
+    ]
+  }
+}

@@ -175,3 +175,39 @@ Derived directly from SQLite tables (never from an unverified model summary), an
   - The 1 complete autonomous user-entry-point project outcome in Increment 18 is the 10-step live native supplier project E2E (`tests/test_increment18_live_native_project_e2e.py`).
 - **Supplier-Specific Coordinator Scope & Remaining Limitations**:
   - In Increment 18 (`ffc771662e31e4665913fe407f8c0e0e934714e1`), `advance_deliberate_project` and `ensure_deliberate_task_contracts` contain supplier-specific task branches (`t1_reconcile_quotes -> t2_evaluate_constraints -> t3_synthesize_recommendation`) and constraint parsing (`extract_constraints_from_ledger`). Generalizing the coordinator to arbitrary domains via persisted action contracts and evidence-driven next-action selection is separated into Increment 19 (`feature/increment19-general-purpose-coordinator`).
+
+---
+
+## 8. Generalized Task-Solving Coordinator & Cross-Domain Transfer (Increment 19 — `feature/increment19-general-purpose-coordinator`)
+
+Increment 19 advances the coordinator from the Increment 18 supplier-pilot workflow to a general-purpose task-solving coordinator while preserving all Increment 18 authority, working-memory, verification, and cleanup invariants.
+
+### 8.1 Mapping & Replacing Supplier-Specific Coordinator Branches
+1. **Supplier-Specific Logic Removed from `advance_deliberate_project`**:
+   - Mapped the three hardcoded Increment 18 task branches (`t1_reconcile_quotes`, `t2_evaluate_constraints`, `t3_synthesize_recommendation`) and moved all domain-specific behavior behind registered tools in [`app/services/orchestration/tool_catalogue.py`](../app/services/orchestration/tool_catalogue.py) and controller-owned verifiers in `REGISTERED_CONTROLLER_VERIFIERS` ([`app/services/orchestration/deliberate_loop.py`](../app/services/orchestration/deliberate_loop.py)).
+   - Remediated the `GLOBAL_ACTION_REGISTRY` drift (`test_stage02_planning.py::test_action_registry_and_dispatcher_bidirectional_drift_audit`) by keeping `ToolCatalogue` domain tools registered in `GLOBAL_TOOL_CATALOGUE` rather than injecting unmapped `ActionKind.CONTROLLER_STEP` entries into `GLOBAL_ACTION_REGISTRY` (`44 passed in 11.58s` on `tests/test_stage02_planning.py`).
+2. **General Persisted Action Contract (Schema Migration 23)**:
+   - Added Migration 23 (`_M23` in [`app/migrations.py`](../app/migrations.py)) extending `project_task_contracts` with:
+     - `selected_tool`, `validated_arguments_json`, `expected_observation`, `verification_method`, `verifier_id`, `authority_scope`, `permitted_effects_json`, and `checkpoint_refs_json`.
+   - Every work item executed by [`advance_deliberate_project`](../app/services/orchestration/deliberate_loop.py) persists and updates these contract fields and appends committed checkpoint IDs to `checkpoint_refs_json`.
+   - Trusted controller code (`validate_proposed_action`, `parse_and_validate_model_action_proposal`) validates every proposed action against `GLOBAL_TOOL_CATALOGUE`, `REGISTERED_CONTROLLER_VERIFIERS`, `authority_scope`, and `permitted_effects` before dispatch. Proposals attempting to set `verified`, `approved`, `grant_token`, `lease_id`, `verification_receipt`, `bypass_sandbox`, `override_policy`, or `permitted_effects` are rejected with `ActionValidationError`.
+
+### 8.2 Evidence-Driven Next-Action Selection (8-Step Bounded Cycle)
+For each step via `/api/v1/chat/deliberate`, `advance_deliberate_project` executes:
+1. **Inspect authoritative project state** (`derive_authoritative_project_state`).
+2. **Select the next ready task contract** whose `depends_on` contracts are `verified` (blocking with `unsatisfied_dependencies` if dependencies are incomplete).
+3. **Assemble a bounded context packet** (`assemble_scoped_work_packet` with `PER_INPUT_CHARS = 3600`, `MAX_EXPANDED_CONTEXT_CHARS = 7600`, preserving multi-line source files without single-line JSON-escaped truncation).
+4. **Propose & validate the next concrete action** (`parse_and_validate_model_action_proposal` / `validate_proposed_action`) and record a concise operational decision summary (`summarize_operational_decision`) while stripping any raw `<think>` blocks (`strip_private_chain_of_thought`).
+5. **Execute the tool or leased worker inference** through the normal authority-enforcing path (`execute_native_worker_inference` -> `WorkerOllamaProvider` -> `lease_task_for_worker`) and record `lease_id` when native inference occurs.
+6. **Verify results** with the independent controller verifier (`REGISTERED_CONTROLLER_VERIFIERS[verifier_id]`), issuing an HMAC-SHA256 `trusted_verification_receipt` only on pass.
+7. **Commit checkpointed working-memory updates** (`execute_checkpointed_work_boundary`) with revision fencing (`StaleWorkerResultError`) and append checkpoint references to `checkpoint_refs_json`.
+8. **Stop when complete, blocked, or unproductive** (`MAX_UNPRODUCTIVE_ATTEMPTS_PER_CONTRACT = 2`), returning structured diagnostics instead of looping indefinitely.
+
+### 8.3 Cross-Domain Transfer & Adversarial Verification
+- **New Repository Bug-Fix Domain (`batch_allocator`)**:
+  - Added registered repository tools (`inspect_repository_workspace`, `run_repository_test_suite`, `apply_and_verify_repository_patch`) with strict workspace path confinement (`_resolve_safe_workspace_path`) and Python-commented directive sanitization (`# [UNTRUSTED_DIRECTIVE_STRIPPED ...]`).
+  - Added controller verifiers `verifier:repo_inspection_and_reproduction_v1`, `verifier:protected_repo_bugfix_v1` (enforcing out-of-workspace holdout test verification and untouched unrelated files), and `verifier:repo_change_summary_v1`.
+  - Verified live end-to-end across **both** the fresh `batch_allocator` repository bug-fix domain and the existing supplier evaluation pilot through the **same generalized coordinator** in [`tests/test_increment19_general_coordinator_transfer_e2e.py`](../tests/test_increment19_general_coordinator_transfer_e2e.py) (`1 passed in 55.38s`; evidence in [`docs/verified-work/evidence/increment19-general-coordinator-transfer-20261104.json`](verified-work/evidence/increment19-general-coordinator-transfer-20261104.json)).
+- **10 Adversarial Coordinator Limit Tests**:
+  - Verified in [`tests/test_increment19_coordinator_adversarial_limits.py`](../tests/test_increment19_coordinator_adversarial_limits.py) (`10 passed in 4.01s`): unknown tool rejection, malformed arguments, unauthorized filesystem escape (`../`), prompt injection inside source comments, model self-verification rejected, unverified intermediate output blocked as dependency, mid-run requirement change invalidating dependent work while preserving unaffected verified work, repeated unproductive action stopping after 2 attempts, crash recovery before artifact publication, and worker lease expiry/disconnect (`cleanup_unknown`) blocking project park until resolved.
+

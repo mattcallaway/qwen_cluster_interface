@@ -170,3 +170,40 @@ Updated 2026-11-04. Architecture documented in [Increment 18 Deliberate Task-Sol
   4. **Controller-Signed Verification Receipts (`F-34`)**: Removed `raw_result.get("verified", True)` self-certification. Added HMAC-SHA256 `issue_trusted_verification_receipt` and `validate_trusted_verification_receipt` bound to `project_id`, `task_key`, `requirement_revision`, `contract_revision`, `artifact_id`, `artifact_version`, `artifact_sha256`, `verification_method`, and `declared_scope`.
   5. **Atomic Revision-Fenced Publication (`F-35`)**: Staged artifacts as `'pending'` outside the commit lock, then performed a single atomic compare-and-swap (`BEGIN IMMEDIATE`) verifying `requirement_revision`, bound requirement versions, `contract_revision`, `state_revision`, input artifact versions/hashes, and lease authority before authoritative publication (with identical checks in `reconcile_crash_publication_journal` and `idempotency_key` deduplication).
   6. **Connected Conversational Execution Path (`F-36`)**: Wired `/api/v1/chat/deliberate` to `execute_direct_response_turn` and supplier-scoped `advance_deliberate_project`.
+
+## Increment 19: General-Purpose Task-Solving Coordinator, Persisted Action Contracts & Cross-Domain Transfer
+
+Updated 2026-11-04. Architecture documented in [Deliberate Task-Solving & Working Memory Architecture (Section 8)](../DELIBERATE_TASK_SOLVING_AND_WORKING_MEMORY_ARCHITECTURE.md); live cross-domain transfer evidence preserved in [`evidence/increment19-general-coordinator-transfer-20261104.json`](evidence/increment19-general-coordinator-transfer-20261104.json).
+
+### 1. Coordinator Generalization & Persisted Action Contracts (`F-37`, Schema Migration 23)
+- **Removed Supplier-Specific Coordinator Hardcoding**:
+  - Replaced the supplier-only task branches in [`app/services/orchestration/deliberate_loop.py`](../../app/services/orchestration/deliberate_loop.py) with a domain-agnostic coordinator (`ensure_deliberate_task_contracts`, `advance_deliberate_project`) driven by persisted `project_task_contracts` and registered tools/verifiers.
+  - Remediated the `GLOBAL_ACTION_REGISTRY` drift in [`app/services/orchestration/tool_catalogue.py`](../../app/services/orchestration/tool_catalogue.py) (`test_stage02_planning.py`: `44 passed in 11.58s`).
+- **Schema Migration 23 (`project_task_contracts` Action Contract Columns)**:
+  - Added `selected_tool`, `validated_arguments_json`, `expected_observation`, `verification_method`, `verifier_id`, `authority_scope`, `permitted_effects_json`, and `checkpoint_refs_json` in [`app/migrations.py`](../../app/migrations.py) (`_M23`) and [`app/services/orchestration/working_memory.py`](../../app/services/orchestration/working_memory.py).
+  - Enforced pre-dispatch controller validation (`validate_proposed_action`, `parse_and_validate_model_action_proposal`) against `GLOBAL_TOOL_CATALOGUE`, `REGISTERED_CONTROLLER_VERIFIERS`, `authority_scope`, and `permitted_effects`, rejecting any model attempt to self-grant `verified`, `approved`, `grant_token`, `lease_id`, or `verification_receipt`.
+
+### 2. Live Cross-Domain Transfer E2E (`batch_allocator` Repository Bug-Fix + Supplier Pilot Regression)
+- **Verified in [`tests/test_increment19_general_coordinator_transfer_e2e.py`](../../tests/test_increment19_general_coordinator_transfer_e2e.py) (`1 passed in 55.38s`)**:
+  - Executed against an isolated `uvicorn` controller subprocess and a separately running, enrolled and authenticated `VPSWorkerAgent` subprocess (`dev-inc19-worker-01`, `qwen2.5:3b`) via `/api/v1/chat/deliberate`.
+  - **Domain 1 (`repository_bugfix` — `batch_allocator` FEFO & reserved-stock defect)**:
+    1. `t1_inspect_and_reproduce`: Inspected repository workspace (stripping injected source comment directive `# [UNTRUSTED_DIRECTIVE_STRIPPED ...]`), ran `tests/test_allocator_public.py`, and reproduced the 2 failing tests (`passed=1, failed=2`).
+    2. `t2_generate_and_verify_fix`: Dispatched native worker lease (`lease_53491a5290a7`) to `qwen2.5:3b` without solution hints in prompt or coordinator code; model repaired both FEFO expiry sorting and `available = on_hand - reserved` on Attempt 1, passing both public tests (`3 passed`) and out-of-workspace protected holdout tests (`holdout_tests/test_allocator_holdout.py`: `3 passed`) while preserving `batch_allocator/reporting.py` and `README.md` byte-for-byte.
+    3. **Labeled Fault-Injection Recovery Case**: Forced a broken model candidate on a separate project (`failed_attempts_before_success = 1`), verified controller rejection without publishing an authoritative artifact, and verified recovery on Attempt 2 (`lease_81fc249ecddc` -> `lease_0a72c31774dd`).
+    4. **Mid-Flight Requirement Steering**: Added `REQ-AUDIT-TRAIL` mid-flight via `/api/v1/chat/deliberate`, selectively invalidating `t3_publish_change_summary` while preserving verified `t1_inspect_and_reproduce` and `t2_generate_and_verify_fix`, then re-synthesized `t3_publish_change_summary` (`lease_854d75b916ba`) and published `repo_bugfix_patch_report.md`.
+  - **Domain 2 (`supplier_option_evaluation` — Regression Pilot through Generalized Coordinator)**:
+    - Executed `t1_reconcile_quotes -> t2_evaluate_constraints -> t3_synthesize_recommendation` (`lease_3f6f47de285d`) through the same generalized coordinator (`completed=True`, `cross_task_conflicts=[]`, `tool_selection_accuracy=1.0`).
+
+### 3. Adversarial Coordinator Limits (`10 passed in 4.01s`)
+- Verified in [`tests/test_increment19_coordinator_adversarial_limits.py`](../../tests/test_increment19_coordinator_adversarial_limits.py):
+  1. Unknown tool proposal rejected (`unknown_tool`).
+  2. Malformed tool arguments rejected (`invalid_tool_arguments`).
+  3. Unauthorized file path traversal (`../outside_secret.txt`) rejected (`PathEscapeError`).
+  4. Prompt injection inside repository comments stripped (`# [UNTRUSTED_DIRECTIVE_STRIPPED ...]`) and ignored.
+  5. Model self-verification (`verified=True`, `grant_token`) rejected at proposal and execution boundaries.
+  6. Unverified intermediate output blocked from downstream consumption (`unsatisfied_dependencies`).
+  7. Mid-run requirement change invalidates dependent work while preserving unaffected verified work.
+  8. Repeated unproductive action stops after 2 attempts (`stopped_unproductive_loop=True`).
+  9. Crash before artifact publication reconciled cleanly (`reconcile_crash_publication_journal`).
+  10. Worker lease expiry/disconnect (`cleanup_unknown`) blocks project park (`ParkOrCancelCleanupError`) until resolved.
+

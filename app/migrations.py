@@ -2498,6 +2498,17 @@ _M22: List[str] = [
     "ALTER TABLE project_artifact_publication_journal ADD COLUMN lease_id TEXT;",
 ]
 
+_M23: List[str] = [
+    "ALTER TABLE project_task_contracts ADD COLUMN selected_tool TEXT NOT NULL DEFAULT '';",
+    "ALTER TABLE project_task_contracts ADD COLUMN validated_arguments_json TEXT NOT NULL DEFAULT '{}';",
+    "ALTER TABLE project_task_contracts ADD COLUMN expected_observation TEXT NOT NULL DEFAULT '';",
+    "ALTER TABLE project_task_contracts ADD COLUMN verification_method TEXT NOT NULL DEFAULT '';",
+    "ALTER TABLE project_task_contracts ADD COLUMN verifier_id TEXT NOT NULL DEFAULT '';",
+    "ALTER TABLE project_task_contracts ADD COLUMN authority_scope TEXT NOT NULL DEFAULT 'controller_validated';",
+    "ALTER TABLE project_task_contracts ADD COLUMN permitted_effects_json TEXT NOT NULL DEFAULT '[\"read_only\"]';",
+    "ALTER TABLE project_task_contracts ADD COLUMN checkpoint_refs_json TEXT NOT NULL DEFAULT '[]';",
+]
+
 MIGRATIONS: List[Migration] = [
     (1, "project intelligence foundation", _M1),
     (2, "execution and evidence", _M2),
@@ -2521,6 +2532,7 @@ MIGRATIONS: List[Migration] = [
     (20, "deliberate task-solving loop, durable requirement ledger, and project memory", _M20),
     (21, "live operational working memory, task contracts, epistemic items, checkpoints, and publication journal", _M21),
     (22, "authoritative cleanup lifecycle, verification receipts, and atomic publication fencing", _M22),
+    (23, "generalized coordinator persisted action contract fields and checkpoint references", _M23),
 ]
 
 

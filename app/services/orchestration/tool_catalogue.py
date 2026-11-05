@@ -48,6 +48,7 @@ class ToolSpec:
     permissions: List[str]
     side_effects: bool
     verification_requirement: str
+    required_effects: Tuple[str, ...] = ("read_only",)
     version: str = "1.0.0"
 
     def to_dict(self) -> Dict[str, Any]:
@@ -60,6 +61,7 @@ class ToolSpec:
             "output_schema": self.output_schema,
             "permissions": self.permissions,
             "side_effects": self.side_effects,
+            "required_effects": list(self.required_effects),
             "verification_requirement": self.verification_requirement,
         }
 
@@ -552,6 +554,314 @@ def run_bounded_python_verification(
 
 
 # ---------------------------------------------------------------------------
+# 2b. Scoped Repository Inspection, Isolated Test Runner & Patch Verifier (Increment 19)
+# ---------------------------------------------------------------------------
+
+def _resolve_safe_workspace_path(workspace_path: str, relative_path: str) -> Path:
+    """Resolve `relative_path` inside `workspace_path`, rejecting traversal (`..`) or outside-workspace access."""
+    root = Path(workspace_path).resolve()
+    if not root.exists() or not root.is_dir():
+        raise ValueError(f"Workspace directory does not exist: {workspace_path}")
+    rel = str(relative_path or "").replace("\\", "/").lstrip("/")
+    if ".." in Path(rel).parts:
+        raise PermissionError(f"Path traversal rejected in workspace path: {relative_path}")
+    target = (root / rel).resolve()
+    if root != target and root not in target.parents:
+        raise PermissionError(f"Target path '{relative_path}' escapes workspace root '{root}'")
+    return target
+
+
+def inspect_repository_workspace(
+    workspace_path: str,
+    include_globs: Optional[List[str]] = None,
+    max_file_chars: int = 8000,
+) -> Dict[str, Any]:
+    """Inspect a scoped repository workspace with prompt-injection stripping and SHA-256 file inventory."""
+    root = Path(workspace_path).resolve()
+    if not root.exists() or not root.is_dir():
+        return {
+            "schema": "qc.repo_inspection.v1",
+            "status": "failed",
+            "error": f"Workspace not found: {workspace_path}",
+            "files": {},
+        }
+
+    patterns = include_globs or ["*.py", "*.md", "*.json", "*.txt", "*.toml"]
+    file_entries: Dict[str, Dict[str, Any]] = {}
+    flagged_injections: List[Dict[str, Any]] = []
+
+    all_paths: List[Path] = []
+    for p in sorted(root.rglob("*")):
+        if not p.is_file():
+            continue
+        if any(part.startswith(".") or part == "__pycache__" for part in p.relative_to(root).parts):
+            continue
+        if any(p.match(pat) for pat in patterns):
+            all_paths.append(p)
+
+    for p in all_paths:
+        rel_str = p.relative_to(root).as_posix()
+        raw_bytes = p.read_bytes()
+        sha = hashlib.sha256(raw_bytes).hexdigest()
+        raw_text = raw_bytes.decode("utf-8", errors="replace")
+        guard = inspect_untrusted_source_for_directive_injection(raw_text, source_id=rel_str)
+        if guard["contains_injection_attempt"]:
+            flagged_injections.append({
+                "file": rel_str,
+                "flagged_directives": guard["flagged_directives"],
+            })
+        sanitized_text = guard["sanitized_text"]
+        if p.suffix.lower() == ".py":
+            sanitized_text = re.sub(
+                r"(?m)^(\s*)(\[UNTRUSTED_DIRECTIVE_STRIPPED[^\n]*\])",
+                r"\1# \2",
+                sanitized_text,
+            )
+        file_entries[rel_str] = {
+            "path": rel_str,
+            "sha256": sha,
+            "size_bytes": len(raw_bytes),
+            "contains_injection_attempt": guard["contains_injection_attempt"],
+            "flagged_directives": guard["flagged_directives"],
+            "sanitized_content": sanitized_text[:max_file_chars],
+        }
+
+    return {
+        "schema": "qc.repo_inspection.v1",
+        "status": "observed",
+        "workspace_root": str(root),
+        "file_count": len(file_entries),
+        "files": file_entries,
+        "contains_injection_attempt": len(flagged_injections) > 0,
+        "flagged_injections": flagged_injections,
+    }
+
+
+def run_repository_test_suite(
+    workspace_path: str,
+    test_rel_path: Optional[str] = None,
+    extra_test_dir: Optional[str] = None,
+    timeout_seconds: float = 15.0,
+) -> Dict[str, Any]:
+    """Run repository unit tests inside a WindowsJob-bounded isolated process (`run_bounded_process`).
+
+    Supports running in-workspace public tests (`test_rel_path`) or out-of-workspace protected
+    holdout tests (`extra_test_dir`) without copying holdout test code into the repository or prompts.
+    """
+    import sys
+    import tempfile
+    from vps_agent.bounded_process import run_bounded_process
+    from app.services.orchestration.code_sandbox import build_sanitized_environment
+
+    root = Path(workspace_path).resolve()
+    if not root.exists() or not root.is_dir():
+        return {
+            "schema": "qc.repo_test_run.v1",
+            "passed": False,
+            "status": "failed",
+            "error": f"Workspace not found: {workspace_path}",
+        }
+
+    if extra_test_dir:
+        test_target = Path(extra_test_dir).resolve()
+        if not test_target.exists():
+            return {
+                "schema": "qc.repo_test_run.v1",
+                "passed": False,
+                "status": "failed",
+                "error": f"Holdout test directory not found: {extra_test_dir}",
+            }
+    elif test_rel_path:
+        test_target = _resolve_safe_workspace_path(workspace_path, test_rel_path)
+    else:
+        test_target = root / "tests"
+
+    runner_code = (
+        "import os, sys, socket, unittest\n"
+        f"sys.path.insert(0, {repr(str(root))})\n"
+        "def _deny(*a, **k): raise PermissionError('Network disabled in bounded test runner')\n"
+        "socket.socket = _deny\n"
+        f"target = {repr(str(test_target))}\n"
+        "loader = unittest.TestLoader()\n"
+        "if os.path.isfile(target):\n"
+        "    suite = loader.discover(start_dir=os.path.dirname(target), pattern=os.path.basename(target))\n"
+        "else:\n"
+        "    suite = loader.discover(start_dir=target, pattern='test*.py')\n"
+        "runner = unittest.TextTestRunner(verbosity=2)\n"
+        "res = runner.run(suite)\n"
+        "print(f'SUMMARY: ran={res.testsRun} failures={len(res.failures)} errors={len(res.errors)}')\n"
+        "sys.exit(0 if (res.wasSuccessful() and res.testsRun > 0) else 1)\n"
+    )
+
+    with tempfile.TemporaryDirectory(prefix="qc_repo_test_") as tmpdir:
+        runner_file = Path(tmpdir) / "_run_repo_tests.py"
+        runner_file.write_text(runner_code, encoding="utf-8")
+        env = build_sanitized_environment()
+        env["PYTHONPATH"] = str(root)
+        py_exe = getattr(sys, "_base_executable", None) or sys.executable
+        proc = run_bounded_process(
+            [py_exe, "-I", "-B", str(runner_file)],
+            cwd=str(root),
+            env=env,
+            timeout_seconds=min(float(timeout_seconds), 25.0),
+        )
+
+    combined_out = (proc.stdout or "") + "\n" + (proc.stderr or "")
+    m_sum = re.search(r"SUMMARY:\s*ran=(\d+)\s+failures=(\d+)\s+errors=(\d+)", combined_out)
+    tests_run = int(m_sum.group(1)) if m_sum else 0
+    failures = int(m_sum.group(2)) if m_sum else (0 if proc.returncode == 0 else 1)
+    errors = int(m_sum.group(3)) if m_sum else 0
+
+    passed = (
+        proc.reason == "completed"
+        and proc.returncode == 0
+        and proc.cleanup_confirmed is True
+        and tests_run > 0
+        and failures == 0
+        and errors == 0
+    )
+
+    return {
+        "schema": "qc.repo_test_run.v1",
+        "passed": passed,
+        "status": "verified_for_scope" if passed else "failed",
+        "tests_run": tests_run,
+        "failures": failures,
+        "errors": errors,
+        "returncode": proc.returncode,
+        "reason": proc.reason,
+        "boundary": proc.boundary,
+        "cleanup_confirmed": proc.cleanup_confirmed,
+        "output_excerpt": combined_out.strip()[-1200:],
+    }
+
+
+def apply_and_verify_repository_patch(
+    workspace_path: str,
+    target_file: str,
+    patched_content: str,
+    public_test_rel_path: Optional[str] = None,
+    holdout_test_dir: Optional[str] = None,
+    revert_on_failure: bool = True,
+    timeout_seconds: float = 15.0,
+) -> Dict[str, Any]:
+    """Apply a candidate patch to a scoped repository file and verify against public + protected holdout tests."""
+    import difflib
+
+    target_path = _resolve_safe_workspace_path(workspace_path, target_file)
+    if not target_path.exists():
+        return {
+            "schema": "qc.repo_patch_verification.v1",
+            "accepted": False,
+            "status": "failed",
+            "error": f"Target file does not exist in workspace: {target_file}",
+            "checks": [{"name": "target_file_exists", "passed": False, "detail": f"Missing {target_file}"}],
+        }
+
+    root = Path(workspace_path).resolve()
+    before_hashes: Dict[str, str] = {}
+    for p in sorted(root.rglob("*")):
+        if p.is_file() and "__pycache__" not in p.parts:
+            before_hashes[p.relative_to(root).as_posix()] = hashlib.sha256(p.read_bytes()).hexdigest()
+
+    original_text = target_path.read_text(encoding="utf-8")
+    checks: List[Dict[str, Any]] = []
+
+    try:
+        ast.parse(patched_content, filename=target_file)
+        checks.append({"name": "python_syntax_valid", "passed": True, "detail": "ast.parse succeeded"})
+    except SyntaxError as se:
+        checks.append({"name": "python_syntax_valid", "passed": False, "detail": f"SyntaxError line {se.lineno}: {se.msg}"})
+        return {
+            "schema": "qc.repo_patch_verification.v1",
+            "accepted": False,
+            "status": "failed",
+            "checks": checks,
+            "public_tests": None,
+            "holdout_tests": None,
+        }
+
+    unified_diff = "".join(
+        difflib.unified_diff(
+            original_text.splitlines(keepends=True),
+            patched_content.splitlines(keepends=True),
+            fromfile=f"a/{target_file}",
+            tofile=f"b/{target_file}",
+        )
+    )
+
+    target_path.write_text(patched_content, encoding="utf-8")
+    public_res = run_repository_test_suite(
+        workspace_path=workspace_path,
+        test_rel_path=public_test_rel_path,
+        timeout_seconds=timeout_seconds,
+    )
+    checks.append({
+        "name": "public_test_suite_passed",
+        "passed": bool(public_res["passed"]),
+        "detail": f"ran={public_res.get('tests_run')} failures={public_res.get('failures')} errors={public_res.get('errors')}",
+    })
+
+    holdout_res: Optional[Dict[str, Any]] = None
+    if holdout_test_dir:
+        holdout_res = run_repository_test_suite(
+            workspace_path=workspace_path,
+            extra_test_dir=holdout_test_dir,
+            timeout_seconds=timeout_seconds,
+        )
+        checks.append({
+            "name": "protected_holdout_suite_passed",
+            "passed": bool(holdout_res["passed"]),
+            "detail": (
+                f"Holdout tests passed (ran={holdout_res.get('tests_run')})"
+                if holdout_res["passed"]
+                else f"Holdout tests failed (failures={holdout_res.get('failures')}, errors={holdout_res.get('errors')})"
+            ),
+        })
+
+    after_hashes: Dict[str, str] = {}
+    for p in sorted(root.rglob("*")):
+        if p.is_file() and "__pycache__" not in p.parts:
+            after_hashes[p.relative_to(root).as_posix()] = hashlib.sha256(p.read_bytes()).hexdigest()
+
+    norm_target = Path(target_file).as_posix().lstrip("/")
+    unrelated_modified = [
+        k for k in set(before_hashes.keys()) | set(after_hashes.keys())
+        if k != norm_target and before_hashes.get(k) != after_hashes.get(k)
+    ]
+    checks.append({
+        "name": "unrelated_files_preserved",
+        "passed": len(unrelated_modified) == 0,
+        "detail": "All non-target workspace files preserved intact" if not unrelated_modified else f"Modified unrelated files: {unrelated_modified}",
+    })
+
+    accepted = all(c["passed"] for c in checks)
+    if not accepted and revert_on_failure:
+        target_path.write_text(original_text, encoding="utf-8")
+
+    return {
+        "schema": "qc.repo_patch_verification.v1",
+        "accepted": accepted,
+        "status": "verified_for_scope" if accepted else "failed",
+        "target_file": norm_target,
+        "before_sha256": before_hashes.get(norm_target),
+        "after_sha256": hashlib.sha256(patched_content.encode("utf-8")).hexdigest() if accepted else before_hashes.get(norm_target),
+        "unrelated_files_preserved": len(unrelated_modified) == 0,
+        "unrelated_file_hashes": {k: v for k, v in after_hashes.items() if k != norm_target},
+        "unified_diff": unified_diff,
+        "checks": checks,
+        "public_tests": public_res,
+        "holdout_tests": {
+            "passed": holdout_res["passed"],
+            "tests_run": holdout_res["tests_run"],
+            "failures": holdout_res["failures"],
+            "errors": holdout_res["errors"],
+            "cleanup_confirmed": holdout_res["cleanup_confirmed"],
+        } if holdout_res else None,
+    }
+
+
+# ---------------------------------------------------------------------------
 # 3. Typed Tool Catalogue Registry
 # ---------------------------------------------------------------------------
 
@@ -572,7 +882,52 @@ class ToolCatalogue:
                 output_schema={"sanitized_text": "str", "contains_injection_attempt": "bool", "sha256": "str"},
                 permissions=["read_scoped_workspace"],
                 side_effects=False,
+                required_effects=("read_only",),
                 verification_requirement="sha256_and_directive_strip_check",
+            ),
+            ToolSpec(
+                tool_id="inspect_repository_workspace",
+                category="inspection",
+                description="Inspect all source and test files inside a scoped repository workspace with directive-injection stripping and SHA-256 digests.",
+                input_schema={"workspace_path": "str", "include_globs": "list[str]|None", "max_file_chars": "int"},
+                output_schema={"files": "dict", "file_count": "int", "contains_injection_attempt": "bool"},
+                permissions=["read_scoped_workspace"],
+                side_effects=False,
+                required_effects=("read_only", "read_scoped_workspace"),
+                verification_requirement="workspace_sha256_and_directive_strip_check",
+            ),
+            ToolSpec(
+                tool_id="run_repository_test_suite",
+                category="coding",
+                description="Run a repository's unit test suite inside a WindowsJob-bounded isolated process with network disabled.",
+                input_schema={"workspace_path": "str", "test_rel_path": "str|None", "timeout_seconds": "float"},
+                output_schema={"passed": "bool", "tests_run": "int", "failures": "int", "errors": "int", "output_excerpt": "str"},
+                permissions=["read_scoped_workspace", "isolated_code_sandbox"],
+                side_effects=False,
+                required_effects=("read_only", "isolated_code_sandbox"),
+                verification_requirement="bounded_process_test_execution",
+            ),
+            ToolSpec(
+                tool_id="apply_and_verify_repository_patch",
+                category="coding",
+                description="Apply a candidate code patch to a scoped repository file and verify against public unit tests and protected holdout tests.",
+                input_schema={"workspace_path": "str", "target_file": "str", "patched_content": "str", "public_test_rel_path": "str|None", "holdout_test_dir": "str|None"},
+                output_schema={"accepted": "bool", "status": "str", "unified_diff": "str", "checks": "list[dict]"},
+                permissions=["write_scoped_workspace", "isolated_code_sandbox"],
+                side_effects=True,
+                required_effects=("write_scoped_workspace", "isolated_code_sandbox"),
+                verification_requirement="public_and_protected_holdout_test_suite_pass",
+            ),
+            ToolSpec(
+                tool_id="resolve_quote_revisions",
+                category="calculation",
+                description="Resolve conflicting or superseded supplier quote revisions deterministically.",
+                input_schema={"quotes": "list[dict]", "as_of_date": "str|None"},
+                output_schema={"resolved_quotes": "dict", "superseded_revisions": "list[dict]", "contradictions": "list[dict]"},
+                permissions=["deterministic_compute"],
+                side_effects=False,
+                required_effects=("read_only", "deterministic_compute"),
+                verification_requirement="quote_revision_resolution_check",
             ),
             ToolSpec(
                 tool_id="search_and_retrieve_sources",
@@ -582,6 +937,7 @@ class ToolCatalogue:
                 output_schema={"sources": "list[dict]", "claims": "list[dict]", "contradictions": "list[dict]"},
                 permissions=["controller_research_runner"],
                 side_effects=False,
+                required_effects=("read_only",),
                 verification_requirement="source_scope_and_citation_audit",
             ),
             ToolSpec(
@@ -592,6 +948,7 @@ class ToolCatalogue:
                 output_schema={"valid": "bool", "total_cost": "str", "derivations": "dict", "errors": "list[str]"},
                 permissions=["deterministic_compute"],
                 side_effects=False,
+                required_effects=("read_only", "deterministic_compute"),
                 verification_requirement="exact_decimal_verification",
             ),
             ToolSpec(
@@ -602,6 +959,7 @@ class ToolCatalogue:
                 output_schema={"status": "str", "recommended_option": "dict|None", "evaluated_options": "list[dict]", "blocker": "str|None"},
                 permissions=["deterministic_compute"],
                 side_effects=False,
+                required_effects=("read_only", "deterministic_compute"),
                 verification_requirement="constraint_satisfaction_matrix",
             ),
             ToolSpec(
@@ -612,6 +970,7 @@ class ToolCatalogue:
                 output_schema={"summary": "dict", "groups": "dict", "anomalies": "list[dict]", "malformed_rows": "list[dict]"},
                 permissions=["deterministic_compute"],
                 side_effects=False,
+                required_effects=("read_only", "deterministic_compute"),
                 verification_requirement="schema_and_decimal_invariants",
             ),
             ToolSpec(
@@ -622,6 +981,7 @@ class ToolCatalogue:
                 output_schema={"accepted": "bool", "decision": "str", "checks": "list[dict]"},
                 permissions=["isolated_code_sandbox"],
                 side_effects=False,
+                required_effects=("isolated_code_sandbox",),
                 verification_requirement="independent_test_suite_pass",
             ),
             ToolSpec(
@@ -632,6 +992,7 @@ class ToolCatalogue:
                 output_schema={"verified": "bool", "status": "str", "checks": "list[dict]"},
                 permissions=["deterministic_compute"],
                 side_effects=False,
+                required_effects=("read_only", "deterministic_compute"),
                 verification_requirement="dom_and_interaction_checks",
             ),
             ToolSpec(
@@ -642,6 +1003,7 @@ class ToolCatalogue:
                 output_schema={"artifact_id": "str", "sha256": "str", "version": "int"},
                 permissions=["write_project_artifact"],
                 side_effects=True,
+                required_effects=("write_project_artifact",),
                 verification_requirement="cas_sha256_and_contract_validation",
             ),
             ToolSpec(
@@ -652,28 +1014,23 @@ class ToolCatalogue:
                 output_schema={"nodes": "list[dict]", "models": "list[dict]", "budget": "dict|None"},
                 permissions=["read_cluster_telemetry"],
                 side_effects=False,
+                required_effects=("read_only",),
                 verification_requirement="measured_telemetry_receipt",
+            ),
+            ToolSpec(
+                tool_id="worker_model_inference",
+                category="inference",
+                description="Dispatch bounded model generation or synthesis through an authenticated, capability-verified worker lease.",
+                input_schema={"purpose": "str", "prompt": "str", "role": "str", "max_tokens": "int"},
+                output_schema={"status": "str", "response": "str", "lease_id": "str|None", "model": "str"},
+                permissions=["authenticated_worker_lease"],
+                side_effects=False,
+                required_effects=("worker_inference",),
+                verification_requirement="independent_acceptance_verifier",
             ),
         ]
         for s in specs:
             self._tools[s.tool_id] = s
-            # Also register controller-side actions in GLOBAL_ACTION_REGISTRY so plans can reference them
-            if not GLOBAL_ACTION_REGISTRY.is_registered(s.tool_id):
-                GLOBAL_ACTION_REGISTRY.register(
-                    ActionManifest(
-                        action_id=s.tool_id,
-                        version=s.version,
-                        kind=ActionKind.CONTROLLER_STEP,
-                        description=s.description,
-                        input_schema=s.input_schema,
-                        output_schema=s.output_schema,
-                        required_capabilities=[],
-                        risk_level="low",
-                        timeout_budget=120,
-                        side_effects=s.side_effects,
-                        handler=f"app.services.orchestration.tool_catalogue.{s.tool_id}",
-                    )
-                )
 
     def list_tools(self) -> List[Dict[str, Any]]:
         return [t.to_dict() for t in self._tools.values()]
@@ -707,6 +1064,63 @@ class ToolCatalogue:
                 "flagged_directives": guard["flagged_directives"],
                 "sanitized_text": sanitized,
                 "sha256": hashlib.sha256(raw_text.encode("utf-8")).hexdigest(),
+            }
+
+        if tool_id == "inspect_repository_workspace":
+            res = inspect_repository_workspace(
+                workspace_path=str(arguments.get("workspace_path") or ""),
+                include_globs=arguments.get("include_globs"),
+                max_file_chars=int(arguments.get("max_file_chars") or 8000),
+            )
+            return {
+                "tool_id": tool_id,
+                "status": res["status"],
+                "provenance": "retrieved_document",
+                "contains_injection_attempt": res.get("contains_injection_attempt", False),
+                "result": res,
+            }
+
+        if tool_id == "run_repository_test_suite":
+            res = run_repository_test_suite(
+                workspace_path=str(arguments.get("workspace_path") or ""),
+                test_rel_path=arguments.get("test_rel_path"),
+                extra_test_dir=arguments.get("extra_test_dir"),
+                timeout_seconds=float(arguments.get("timeout_seconds") or 15.0),
+            )
+            return {
+                "tool_id": tool_id,
+                "status": res["status"],
+                "provenance": "tool_observation",
+                "result": res,
+            }
+
+        if tool_id == "apply_and_verify_repository_patch":
+            res = apply_and_verify_repository_patch(
+                workspace_path=str(arguments.get("workspace_path") or ""),
+                target_file=str(arguments.get("target_file") or ""),
+                patched_content=str(arguments.get("patched_content") or ""),
+                public_test_rel_path=arguments.get("public_test_rel_path"),
+                holdout_test_dir=arguments.get("holdout_test_dir"),
+                revert_on_failure=bool(arguments.get("revert_on_failure", True)),
+                timeout_seconds=float(arguments.get("timeout_seconds") or 15.0),
+            )
+            return {
+                "tool_id": tool_id,
+                "status": res["status"],
+                "provenance": "tool_observation",
+                "result": res,
+            }
+
+        if tool_id == "resolve_quote_revisions":
+            res = resolve_quote_revisions(
+                quotes=arguments.get("quotes") or [],
+                as_of_date=arguments.get("as_of_date"),
+            )
+            return {
+                "tool_id": tool_id,
+                "status": "observed",
+                "provenance": "tool_observation",
+                "result": res,
             }
 
         if tool_id == "decimal_calculate_and_reconcile":

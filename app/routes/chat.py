@@ -599,6 +599,8 @@ async def chat_deliberate_api(request: Request):
                 use_live_worker=use_live_worker,
                 preferred_model=str(body.get("preferred_model") or "qwen2.5:3b"),
                 quotes_data=body.get("quotes"),
+                workspace_path=body.get("workspace_path"),
+                holdout_test_dir=body.get("holdout_test_dir"),
                 simulate_first_attempt_defect=bool(body.get("simulate_first_attempt_defect", False)),
             )
         return {
@@ -640,6 +642,8 @@ async def chat_deliberate_api(request: Request):
                 use_live_worker=use_live_worker,
                 preferred_model=str(body.get("preferred_model") or "qwen2.5:3b"),
                 quotes_data=body.get("quotes"),
+                workspace_path=body.get("workspace_path"),
+                holdout_test_dir=body.get("holdout_test_dir"),
                 simulate_first_attempt_defect=bool(body.get("simulate_first_attempt_defect", False)),
             )
         return {
@@ -660,6 +664,8 @@ async def chat_deliberate_api(request: Request):
             use_live_worker=use_live_worker,
             preferred_model=str(body.get("preferred_model") or "qwen2.5:3b"),
             quotes_data=body.get("quotes"),
+            workspace_path=body.get("workspace_path"),
+            holdout_test_dir=body.get("holdout_test_dir"),
             simulate_first_attempt_defect=bool(body.get("simulate_first_attempt_defect", False)),
         )
         return {
@@ -699,6 +705,19 @@ async def chat_deliberate_api(request: Request):
     elif isinstance(body.get("quotes"), list):
         quotes_from_intake = body["quotes"]
 
+    workspace_from_intake = (
+        (intake_override.get("workspace_path") if isinstance(intake_override, dict) else None)
+        or body.get("workspace_path")
+    )
+    holdout_from_intake = (
+        (intake_override.get("holdout_test_dir") if isinstance(intake_override, dict) else None)
+        or body.get("holdout_test_dir")
+    )
+    explicit_contracts = (
+        (intake_override.get("task_contracts") if isinstance(intake_override, dict) else None)
+        or body.get("task_contracts")
+    )
+
     if not project_id:
         intake_payload = dict(intake_override or {"objective": message})
         if isinstance(intake_payload.get("constraints"), list):
@@ -732,8 +751,6 @@ async def chat_deliberate_api(request: Request):
             contradictions=conflict_info["conflicts"],
             next_action={"action": "await_clarification" if phase == "clarify" else "execute_plan"},
         )
-        if phase != "clarify":
-            deliberate_loop.ensure_deliberate_task_contracts(project_id, run_id=run_id)
         if quotes_from_intake:
             wm.record_epistemic_item(
                 project_id,
@@ -743,6 +760,25 @@ async def chat_deliberate_api(request: Request):
                 run_id=run_id,
                 qualifiers={"raw_quotes": quotes_from_intake},
                 idempotency_key=f"intake:raw_quotes:{project_id}",
+            )
+        if workspace_from_intake or holdout_from_intake:
+            wm.record_epistemic_item(
+                project_id,
+                epistemic_category="source_observation",
+                statement=f"Bound scoped repository workspace '{workspace_from_intake}' at intake.",
+                verification_status="observed",
+                run_id=run_id,
+                qualifiers={
+                    "workspace_path": workspace_from_intake,
+                    "holdout_test_dir": holdout_from_intake,
+                },
+                idempotency_key=f"intake:workspace_config:{project_id}",
+            )
+        if phase != "clarify":
+            deliberate_loop.ensure_deliberate_task_contracts(
+                project_id,
+                run_id=run_id,
+                explicit_contracts=explicit_contracts,
             )
 
     adv_out = None
@@ -754,6 +790,8 @@ async def chat_deliberate_api(request: Request):
             use_live_worker=use_live_worker,
             preferred_model=str(body.get("preferred_model") or "qwen2.5:3b"),
             quotes_data=quotes_from_intake,
+            workspace_path=workspace_from_intake,
+            holdout_test_dir=holdout_from_intake,
             simulate_first_attempt_defect=bool(body.get("simulate_first_attempt_defect", False)),
         )
 
