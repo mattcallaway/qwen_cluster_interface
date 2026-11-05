@@ -1,4 +1,4 @@
-> **Development review overlay â€” 2026-10-27.** [Verified implementation overlay and capability map](docs/verified-work/TECHMAP.md). Candidate changes are not deployed. Existing production-readiness claims below are historical; they do not override the current holds or evidence limitations.
+> **Development review overlay — 2026-11-05.** [Verified implementation overlay and capability map](docs/verified-work/TECHMAP.md) | [Comprehensive Code, Function & Theory Audit](docs/verified-work/COMPREHENSIVE_CODE_FUNCTION_AND_THEORY_AUDIT.md) | [Capability & Evidence Matrix](docs/verified-work/AUDIT_CAPABILITY_AND_EVIDENCE_MATRIX.md) | [Prioritized Remediation Plan](docs/verified-work/AUDIT_REMEDIATION_PLAN.md). Candidate changes are not deployed. Existing production-readiness claims below are historical; they do not override the current holds, audit findings, or evidence limitations.
 
 # Qwen Collective: Technical Architecture Map (TECHMAP)
 

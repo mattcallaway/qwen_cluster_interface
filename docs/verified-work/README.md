@@ -1,6 +1,6 @@
 # Verified work register
 
-Updated 2026-11-04. Development review candidate; **not deployed**. This register supplements the existing [README](../../README.md), canonical [technical map](../../TECHMAP.md), and [remediation program](../remediation/README.md). Earlier remediation stage statuses are preserved; this increment numbering is a separate development evidence sequence, not a claim that historical stages passed.
+Updated 2026-11-05. Development review candidate; **not deployed**. This register supplements the existing [README](../../README.md), canonical [technical map](../../TECHMAP.md), and [remediation program](../remediation/README.md). Earlier remediation stage statuses are preserved; this increment numbering is a separate development evidence sequence, not a claim that historical stages passed. See the 2026-11-05 [Comprehensive Code, Function & Theory Audit](COMPREHENSIVE_CODE_FUNCTION_AND_THEORY_AUDIT.md), [Audit Findings Register (`AUD-01`–`AUD-12`)](AUDIT_FINDINGS_REGISTER.json), [Capability & Evidence Matrix](AUDIT_CAPABILITY_AND_EVIDENCE_MATRIX.md), [Prioritized Remediation Plan (`R1`–`R4`)](AUDIT_REMEDIATION_PLAN.md), and [Reproducible Audit Evidence](evidence/comprehensive-audit-20261105.json).
 
 ## Operating rules
 

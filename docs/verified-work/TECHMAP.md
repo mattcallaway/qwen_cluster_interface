@@ -1,6 +1,6 @@
 # Verified implementation overlay
 
-Supplement to the canonical [TECHMAP](../../TECHMAP.md), its [legacy pointer](../../TECH_MAP.md), and [work register](README.md). Status: development candidate, 2026-11-04; not deployed. Existing diagrams describe intended architecture and must not be read as proof of current operational capability.
+Supplement to the canonical [TECHMAP](../../TECHMAP.md), its [legacy pointer](../../TECH_MAP.md), and [work register](README.md). Status: development candidate, 2026-11-05; not deployed. Existing diagrams describe intended architecture and must not be read as proof of current operational capability. For the complete 61-module audit across code, runtime behavior, and architectural theory, see [COMPREHENSIVE_CODE_FUNCTION_AND_THEORY_AUDIT.md](COMPREHENSIVE_CODE_FUNCTION_AND_THEORY_AUDIT.md), [AUDIT_CAPABILITY_AND_EVIDENCE_MATRIX.md](AUDIT_CAPABILITY_AND_EVIDENCE_MATRIX.md), [AUDIT_FINDINGS_REGISTER.json](AUDIT_FINDINGS_REGISTER.json), and [AUDIT_REMEDIATION_PLAN.md](AUDIT_REMEDIATION_PLAN.md).
 
 ## Implementation and evidence boundaries
 

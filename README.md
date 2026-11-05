@@ -1,4 +1,4 @@
-> **Development review overlay â€” 2026-10-27.** [Verified development work and operational limits](docs/verified-work/README.md). Candidate changes are not deployed. Existing production-readiness claims below are historical; they do not override the current holds or evidence limitations.
+> **Development review overlay — 2026-11-05.** [Verified development work and operational limits](docs/verified-work/README.md) | [Comprehensive Code, Function & Theory Audit](docs/verified-work/COMPREHENSIVE_CODE_FUNCTION_AND_THEORY_AUDIT.md) | [Audit Findings Register (`AUD-01`–`AUD-12`)](docs/verified-work/AUDIT_FINDINGS_REGISTER.json) | [Capability & Evidence Matrix](docs/verified-work/AUDIT_CAPABILITY_AND_EVIDENCE_MATRIX.md) | [Prioritized Remediation Plan (`R1`–`R4`)](docs/verified-work/AUDIT_REMEDIATION_PLAN.md). Candidate changes are not deployed. Existing production-readiness claims below are historical; they do not override the current holds, audit findings, or evidence limitations.
 
 # Qwen Collective
 ### A Sovereign, Distributed AI Coordination & Autonomous Execution Platform
