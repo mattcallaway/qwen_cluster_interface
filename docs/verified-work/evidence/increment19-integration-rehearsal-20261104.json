@@ -1,49 +1,56 @@
 {
-  "schema_version": "qc.increment19.integration_rehearsal.v1",
-  "recorded_at_utc": "2026-11-05T04:27:33Z",
+  "schema_version": "qc.increment19.integration_rehearsal.v2",
+  "recorded_at_utc": "2026-11-05T07:14:00Z",
   "feature_branch": "feature/increment19-general-purpose-coordinator",
   "base_branch": "main",
   "rehearsed_main_base_sha": "4be7f547f4919380a22abdd2122961d559d2f46f",
   "pre_fix_review_baseline_sha": "301c15ddb6cf487df9d1d73547cbe9f8def7c5bf",
-  "tested_implementation_sha": "267abc1905e3af2218332a7e5e55466de2648a44",
-  "tested_implementation_tree_sha": "dcdfde52d57356c7c1c1e1579b86dec36763ceb7",
-  "documentation_reconciliation_sha": "3501573cea9bc9f1c40e717ff3802630bb53eb03",
-  "documentation_reconciliation_tree_sha": "2230317f7900df7f840adf6039d437cef05fac56",
-  "rehearsed_integration_merge_sha": "82a8fd268791098fa913c6903364537f38f8ac3d",
-  "rehearsed_integration_merge_tree_sha": "2230317f7900df7f840adf6039d437cef05fac56",
+  "pre_gap_remediation_baseline_sha": "d26cc639ac3f3927956de578cafbe503702425de",
+  "tested_implementation_sha": "745dc27eff9c3931f1f0a24b18f1876c9528a98d",
+  "tested_implementation_tree_sha": "f2762447c1c1bcef0e039697d19a4a6688898063",
+  "rehearsed_integration_merge_sha": "93e5d2ac8fce3289615e413b2cd294988db1049f",
+  "rehearsed_integration_merge_tree_sha": "f2762447c1c1bcef0e039697d19a4a6688898063",
   "merge_conflict_count": 0,
   "draft_pr_url": "https://github.com/mattcallaway/qwen_cluster_interface/pull/3",
+  "tested_source_file_sha256": {
+    "app/services/orchestration/protected_repo_verifier.py": "b8039699c521f53d3b113176837a2dfd8ed81280f6d35a7af75c01225f853101",
+    "app/services/orchestration/tool_catalogue.py": "27678463a7061af7de576a0537821761c746656324ba5a55224a1816bf1bc274",
+    "app/services/orchestration/deliberate_loop.py": "3b147641897deb4345cc8dc83ab3c840312e8b6993a146b3d9253a426538490f",
+    "app/services/orchestration/acceptance_harness.py": "7eae422f6433fe5f61fd56c3a9e3f9c1800ea73385449dc50264435c7c40ca4e",
+    "tests/test_increment19_public_holdout_and_containment.py": "69ce1ffd88d604218d50b9efa8f8b8091fd17f979a2659528d90561df621882a",
+    "tests/test_increment19_coordinator_adversarial_limits.py": "5cbc92d426d28dbc9437753fc241383bcdc3a329381e4855f7b4e201ed0aecc7"
+  },
   "test_suites_verified": {
-    "pre_fix_remediation_regressions_before_fix": {
-      "command": "python -m pytest tests/test_increment19_review_remediation.py -v --tb=short",
-      "commit_sha": "301c15ddb6cf487df9d1d73547cbe9f8def7c5bf",
-      "passed": 0,
-      "failed": 4,
-      "evidence_file": "docs/verified-work/evidence/increment19-pre-fix-failures-20261104.json"
+    "gap_reproductions_before_fix": {
+      "commit_sha": "d26cc639ac3f3927956de578cafbe503702425de",
+      "gap_1_linux_public_suite_derived_from_holdouts_reproduced": true,
+      "gap_2_uncontained_host_execution_without_holdouts_reproduced": true,
+      "evidence_file": "docs/verified-work/evidence/increment19-gap-reproductions-20261104.json"
     },
-    "post_fix_remediation_regressions": {
-      "command": "python -m pytest tests/test_increment19_review_remediation.py -v --tb=short",
-      "commit_sha": "267abc1905e3af2218332a7e5e55466de2648a44",
-      "passed": 4,
-      "failed": 0
-    },
-    "protected_boundary_adversarial_live": {
-      "command": "python -m pytest tests/test_increment19_protected_boundary_adversarial.py -v --tb=short",
-      "commit_sha": "267abc1905e3af2218332a7e5e55466de2648a44",
-      "passed": 2,
+    "public_holdout_and_containment_suite": {
+      "command": "python -m pytest tests/test_increment19_public_holdout_and_containment.py -v --tb=short",
+      "commit_sha": "745dc27eff9c3931f1f0a24b18f1876c9528a98d",
+      "passed": 10,
       "failed": 0,
-      "duration_seconds": 31.64,
+      "duration_seconds": 23.98,
       "live_linux_host": "emceemcee@100.101.187.115",
       "sandbox_root_image_sha256": "43b057aa6a7133de2bbed57a8caaeecd07aea9228fa7cb6bec1608286b967b61",
-      "cases_verified": 11,
+      "evidence_file": "docs/verified-work/evidence/increment19-public-holdout-containment-20261104.json"
+    },
+    "remediation_and_adversarial_suites": {
+      "command": "python -m pytest tests/test_increment19_review_remediation.py tests/test_increment19_coordinator_adversarial_limits.py tests/test_increment19_protected_boundary_adversarial.py -v --tb=short",
+      "commit_sha": "745dc27eff9c3931f1f0a24b18f1876c9528a98d",
+      "passed": 16,
+      "failed": 0,
+      "duration_seconds": 70.22,
       "evidence_file": "docs/verified-work/evidence/increment19-protected-boundary-live-20261104.json"
     },
     "fresh_variants_transfer_live_e2e": {
       "command": "python -m pytest tests/test_increment19_fresh_variants_transfer_e2e.py -v --tb=short",
-      "commit_sha": "267abc1905e3af2218332a7e5e55466de2648a44",
+      "commit_sha": "745dc27eff9c3931f1f0a24b18f1876c9528a98d",
       "passed": 1,
       "failed": 0,
-      "duration_seconds": 62.88,
+      "duration_seconds": 105.76,
       "variants_verified": [
         "variant_a_boundary_handling (sla_credit_calculator/credits.py)",
         "variant_b_ordering_selection (incident_router/router.py)",
@@ -53,25 +60,25 @@
     },
     "general_coordinator_transfer_live_e2e": {
       "command": "python -m pytest tests/test_increment19_general_coordinator_transfer_e2e.py -v --tb=short",
-      "commit_sha": "267abc1905e3af2218332a7e5e55466de2648a44",
+      "commit_sha": "745dc27eff9c3931f1f0a24b18f1876c9528a98d",
       "passed": 1,
       "failed": 0,
-      "duration_seconds": 58.55,
+      "duration_seconds": 75.66,
       "evidence_file": "docs/verified-work/evidence/increment19-general-coordinator-transfer-20261104.json"
     },
-    "regression_selection_21_files": {
-      "command": "python -m pytest tests/test_increment19_review_remediation.py tests/test_increment19_coordinator_adversarial_limits.py tests/test_increment18_repair_regressions.py tests/test_working_memory_adversarial.py tests/test_increment18_deliberate_assistant.py tests/test_stage02_planning.py tests/test_inference.py tests/test_inference_and_observatory_widgets.py tests/test_observatory.py tests/test_metric_integrity.py tests/test_web_routes.py tests/test_worker_authorization_enforcement.py tests/test_script_authorization.py tests/test_certification_block_reporting.py tests/test_claim_contracts.py tests/test_financial_reasoning.py tests/test_code_proposals.py tests/test_protected_verification.py tests/test_migrations.py tests/test_migration_compatibility.py tests/test_migration_robustness_and_backup.py -q --tb=short",
-      "commit_sha": "267abc1905e3af2218332a7e5e55466de2648a44",
-      "passed": 352,
+    "broader_regression_suite_feature_branch_23_files": {
+      "command": "python -m pytest tests/test_increment19_public_holdout_and_containment.py tests/test_increment19_review_remediation.py tests/test_increment19_coordinator_adversarial_limits.py tests/test_increment18_repair_regressions.py tests/test_working_memory_adversarial.py tests/test_increment18_deliberate_assistant.py tests/test_stage02_planning.py tests/test_inference.py tests/test_inference_and_observatory_widgets.py tests/test_observatory.py tests/test_metric_integrity.py tests/test_web_routes.py tests/test_worker_authorization_enforcement.py tests/test_script_authorization.py tests/test_certification_block_reporting.py tests/test_claim_contracts.py tests/test_financial_reasoning.py tests/test_code_proposals.py tests/test_protected_verification.py tests/test_migrations.py tests/test_migration_compatibility.py tests/test_migration_robustness_and_backup.py tests/test_paged_kv_authority_and_app_behavior.py -q --tb=short",
+      "commit_sha": "745dc27eff9c3931f1f0a24b18f1876c9528a98d",
+      "passed": 385,
       "failed": 0,
-      "duration_seconds": 118.45
+      "duration_seconds": 143.38
     },
-    "disposable_worktree_merge_rehearsal_smoke": {
-      "command": "python -m pytest tests/test_increment19_review_remediation.py tests/test_increment19_coordinator_adversarial_limits.py -q --tb=short",
-      "commit_sha": "82a8fd268791098fa913c6903364537f38f8ac3d",
-      "passed": 14,
+    "broader_regression_suite_disposable_integration_merge_23_files": {
+      "command": "python -m pytest tests/test_increment19_public_holdout_and_containment.py tests/test_increment19_review_remediation.py tests/test_increment19_coordinator_adversarial_limits.py tests/test_increment18_repair_regressions.py tests/test_working_memory_adversarial.py tests/test_increment18_deliberate_assistant.py tests/test_stage02_planning.py tests/test_inference.py tests/test_inference_and_observatory_widgets.py tests/test_observatory.py tests/test_metric_integrity.py tests/test_web_routes.py tests/test_worker_authorization_enforcement.py tests/test_script_authorization.py tests/test_certification_block_reporting.py tests/test_claim_contracts.py tests/test_financial_reasoning.py tests/test_code_proposals.py tests/test_protected_verification.py tests/test_migrations.py tests/test_migration_compatibility.py tests/test_migration_robustness_and_backup.py tests/test_paged_kv_authority_and_app_behavior.py -q --tb=short",
+      "commit_sha": "93e5d2ac8fce3289615e413b2cd294988db1049f",
+      "passed": 385,
       "failed": 0,
-      "duration_seconds": 6.22
+      "duration_seconds": 147.86
     }
   }
 }
