@@ -241,13 +241,59 @@ def update_project(project_id: str, user: str, **fields) -> Dict[str, Any]:
     return get_project(project_id)  # type: ignore[return-value]
 
 
-def change_project_status(project_id: str, new_status: str, user: str, reason: str = "") -> Dict[str, Any]:
+def change_project_status(
+    project_id: str,
+    new_status: str,
+    user: str = "operator",
+    reason: str = "",
+    *,
+    actor: Optional[str] = None,
+) -> Dict[str, Any]:
+    if actor and user == "operator":
+        user = actor
     if new_status not in PROJECT_STATUSES:
         raise ValidationError("Invalid project status.")
     with db_transaction() as conn:
         p = _load_project(conn, project_id)
         if new_status not in PROJECT_TRANSITIONS[p["status"]]:
             raise ValidationError(f"Cannot change project status from {p['status']} to {new_status}.")
+        if new_status == "completed" and user != "orchestrator":
+            # AUD-04: Project completion requires at least one accepted deliverable or verified task contract,
+            # and no unaccepted deliverables or incomplete task contracts.
+            unaccepted_deliv = conn.execute(
+                "SELECT id FROM deliverables WHERE project_id = ? AND status != 'accepted' LIMIT 1",
+                (project_id,),
+            ).fetchone()
+            if unaccepted_deliv:
+                raise ValidationError(
+                    f"Cannot mark project '{project_id}' as 'completed' while unaccepted deliverables exist."
+                )
+            try:
+                incomplete_tc = conn.execute(
+                    "SELECT id FROM project_task_contracts WHERE project_id = ? AND status != 'verified' LIMIT 1",
+                    (project_id,),
+                ).fetchone()
+            except sqlite3.OperationalError:
+                incomplete_tc = None
+            if incomplete_tc:
+                raise ValidationError(
+                    f"Cannot mark project '{project_id}' as 'completed' while unverified task contracts exist."
+                )
+            accepted_deliv = conn.execute(
+                "SELECT id FROM deliverables WHERE project_id = ? AND status = 'accepted' LIMIT 1",
+                (project_id,),
+            ).fetchone()
+            try:
+                verified_tc = conn.execute(
+                    "SELECT id FROM project_task_contracts WHERE project_id = ? AND status = 'verified' LIMIT 1",
+                    (project_id,),
+                ).fetchone()
+            except sqlite3.OperationalError:
+                verified_tc = None
+            if not accepted_deliv and not verified_tc:
+                raise ValidationError(
+                    f"Cannot mark project '{project_id}' as 'completed' without verified deliverables or completed verification contracts."
+                )
         today = date.today().isoformat()
         start = p["start_date"] or (today if new_status == "active" else None)
         completed = today if new_status == "completed" else p["completed_date"]

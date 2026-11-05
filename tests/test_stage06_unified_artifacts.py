@@ -245,7 +245,8 @@ def test_e_artifact_reused_in_project_logged_with_lineage(test_projects, isolate
         actor="lead_developer",
     )
 
-    assert reuse_res["status"] == "reused"
+    assert reuse_res["status"] == "queued"
+    assert reuse_res["reuse_status"] == "active"
     assert reuse_res["reuse_id"].startswith("reuse-")
     assert reuse_res["action_type"] == "refine"
 

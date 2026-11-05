@@ -40,19 +40,13 @@ def _now_iso() -> str:
 
 
 class ReuseStatus(str):
-    """String subclass that satisfies both queued task semantics and reused lineage assertions."""
-    def __eq__(self, other: Any) -> bool:
-        if other in ("queued", "reused", "active"):
-            return True
-        return super().__eq__(other)
+    """Truthful string type for artifact reuse status (AUD-10c)."""
+    pass
 
 
 class ReuseId(str):
-    """String subclass that satisfies both legacy 'ar-' and 'reuse-' prefix assertions."""
-    def startswith(self, prefix: Any, *args: Any) -> bool:
-        if prefix in ("ar-", "reuse-"):
-            return True
-        return super().startswith(prefix, *args)
+    """Truthful string type for artifact reuse identifiers (AUD-10c)."""
+    pass
 
 
 def _detect_artifact_type(filename: str, mime_type: str) -> str:
@@ -1107,6 +1101,16 @@ class ArtifactService:
 
         created_records = []
         with db_transaction() as conn:
+            # AUD-04: Only mark extracted knowledge 'supported' if source artifact is valid and backed by verified provenance
+            has_verified_prov = art.get("validation_status") in ("valid", "verified") and bool(
+                art.get("origin_task_id")
+                or art.get("origin_run_id")
+                or conn.execute(
+                    "SELECT id FROM project_task_contracts WHERE project_id = ? AND status = 'verified' LIMIT 1",
+                    (art.get("origin_project_id"),),
+                ).fetchone()
+            )
+            extracted_verif_status = "supported" if has_verified_prov else "unverified"
             for item in extracted_claims:
                 kid = f"know-{uuid.uuid4().hex[:16]}"
                 source_meta = {
@@ -1124,7 +1128,7 @@ class ArtifactService:
                         statement, summary, source_ids_json, evidence_ids_json,
                         verification_status, verification_method, confidence_assessment,
                         created_at, updated_at
-                    ) VALUES (?, 'project', ?, ?, ?, ?, ?, ?, ?, ?, 'supported', 'artifact_extraction', ?, ?, ?)
+                    ) VALUES (?, 'project', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'artifact_extraction', ?, ?, ?)
                     """,
                     (
                         kid,
@@ -1136,6 +1140,7 @@ class ArtifactService:
                         f"Extracted from {art['display_name']} v{target_version}",
                         json.dumps([artifact_id]),
                         json.dumps([source_meta]),
+                        extracted_verif_status,
                         item["confidence"],
                         now,
                         now,
@@ -1327,6 +1332,8 @@ class ArtifactService:
             "target_project_id": project_id,
             "project_id": project_id,
             "task_id": task_id,
+            "task_status": "queued",
+            "reuse_status": "active",
             "action_type": action_type,
             "status": ReuseStatus("queued"),
             "lineage_persisted": True,

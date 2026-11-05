@@ -258,6 +258,39 @@ def archive_metric(metric_id: str) -> Dict[str, Any]:
 # Actual Observations (Immutable & Auditable Corrections)
 # ---------------------------------------------------------------------------
 
+def _has_verified_metric_evidence(conn: sqlite3.Connection, evidence_ref: str) -> bool:
+    """AUD-04: Verify whether an evidence_reference points to an existing verified artifact or execution."""
+    ref = (evidence_ref or "").strip()
+    if not ref:
+        return False
+    if ref.startswith("execution:"):
+        key = ref.split("execution:", 1)[1].strip()
+        if not key:
+            return False
+        row = conn.execute(
+            "SELECT id FROM worker_executions WHERE (id = ? OR idempotency_key = ? OR task_id = ?) AND status = 'success' AND exit_code = 0 LIMIT 1",
+            (key, key, key),
+        ).fetchone()
+        return row is not None
+    if ref.startswith("art-") or ref.startswith("artifact:"):
+        art_id = ref.split("artifact:", 1)[1].strip() if ref.startswith("artifact:") else ref
+        row = conn.execute(
+            "SELECT id FROM artifacts WHERE id = ? AND validation_status IN ('valid', 'verified') LIMIT 1",
+            (art_id,),
+        ).fetchone()
+        if row:
+            return True
+        row_orch = conn.execute(
+            "SELECT id FROM orchestration_artifacts WHERE id = ? AND validation_state = 'valid' LIMIT 1",
+            (art_id,),
+        ).fetchone()
+        return row_orch is not None
+    p = Path(ref)
+    if p.exists() and p.is_file():
+        return True
+    return False
+
+
 def record_observation(
     metric_id: str,
     value: float,
@@ -268,6 +301,8 @@ def record_observation(
     evidence_reference: str = "",
     notes: str = "",
     created_by: str = "admin",
+    *,
+    project_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Record an immutable actual measurement for a metric.
     
@@ -312,6 +347,16 @@ def record_observation(
         metric = conn.execute("SELECT id, status FROM project_metrics WHERE id = ?", (metric_id,)).fetchone()
         if not metric:
             raise NotFound("Metric not found.")
+
+        # AUD-04: Downgrade caller-supplied 'verified' to 'unverified' when an evidence_reference is supplied
+        # that does not resolve to a verified artifact/execution, or when submitted by an automated worker without evidence.
+        if db_status == "verified":
+            if clean_evidence and not _has_verified_metric_evidence(conn, clean_evidence):
+                db_status = "unverified"
+                clean_notes = ("[Downgraded: Unverified evidence reference] " + clean_notes).strip()
+            elif not clean_evidence and clean_creator.startswith(("vps_worker", "worker", "node-")):
+                db_status = "unverified"
+                clean_notes = ("[Downgraded: Worker observation requires verified evidence] " + clean_notes).strip()
 
         conn.execute(
             """
@@ -387,6 +432,14 @@ def record_observation_correction(
             raise NotFound("Original observation to supersede not found.")
         if orig["metric_id"] != metric_id:
             raise ValidationError("supersedes_id must belong to the same metric.")
+
+        if db_status == "verified":
+            if clean_evidence and not _has_verified_metric_evidence(conn, clean_evidence):
+                db_status = "unverified"
+                clean_notes = ("[Downgraded: Unverified evidence reference] " + clean_notes).strip()
+            elif not clean_evidence and clean_creator.startswith(("vps_worker", "worker", "node-")):
+                db_status = "unverified"
+                clean_notes = ("[Downgraded: Worker observation requires verified evidence] " + clean_notes).strip()
 
         conn.execute(
             """

@@ -327,6 +327,21 @@ class WorkerOllamaProvider(InferenceProvider):
             return self._finish(req, "failed", error_class="network_interruption")
         st = t["status"]
         if st == "completed":
+            # AUD-04: Verify worker lease and execution provenance before trusting completed inference output
+            conn_prov = get_db_connection()
+            try:
+                has_lease = conn_prov.execute(
+                    "SELECT id FROM worker_task_leases WHERE task_id = ? AND status = 'completed' LIMIT 1",
+                    (req["task_id"],),
+                ).fetchone()
+                has_exec = conn_prov.execute(
+                    "SELECT id FROM worker_executions WHERE task_id = ? AND status = 'success' AND exit_code = 0 LIMIT 1",
+                    (req["task_id"],),
+                ).fetchone()
+            finally:
+                conn_prov.close()
+            if not has_lease or not has_exec:
+                return self._finish(req, "failed", error_class="unverified_worker_provenance")
             r = t.get("result_data") or {}
             text = r.get("response")
             if not isinstance(text, str) or not text.strip():

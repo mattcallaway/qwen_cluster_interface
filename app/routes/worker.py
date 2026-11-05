@@ -163,6 +163,12 @@ def get_authenticated_worker(
             detail="Invalid or revoked worker authentication token.",
         )
 
+    if not worker_info.get("is_enabled", True) or worker_info.get("node_id") == "node-d35568f5" or str(worker_info.get("notes") or "").startswith("[RETIRED"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Worker '{worker_info.get('node_id')}' is administratively disabled or retired.",
+        )
+
     return worker_info
 
 

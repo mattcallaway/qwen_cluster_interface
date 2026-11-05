@@ -1417,13 +1417,13 @@ def ensure_deliberate_task_contracts(
             bound_requirement_ids=t3_reqs or del_ids or obj_ids,
             depends_on_task_keys=["t2_propose_and_verify_patch"],
             acceptance_checks=["cites_target_file", "cites_public_and_holdout_pass", "cites_unrelated_files_preserved"],
-            selected_tool="worker_model_inference",
+            selected_tool="create_or_revise_artifact",
             validated_arguments={"action_origin": "template"},
             expected_observation="qc.repo_change_summary.v1",
             verification_method="independent_acceptance_verifier",
             verifier_id="verifier:repo_change_summary_v1",
             authority_scope="artifact_publication",
-            permitted_effects=["read_only", "worker_inference", "write_project_artifact"],
+            permitted_effects=["read_only", "write_project_artifact"],
         )
         wm.create_working_checkpoint(
             project_id,
@@ -2902,6 +2902,8 @@ def advance_deliberate_project(
                         "after_sha256": patch_res.get("after_sha256"),
                         "public_tests_run": patch_res["public_tests"]["tests_run"],
                         "holdout_tests_run": (patch_res.get("holdout_tests") or {}).get("tests_run", 0),
+                        "verification_scope": patch_res.get("status", "public_diagnostics_passed"),
+                        "protected_verification": bool(patch_res.get("protected_verification", False)),
                         "containment_backend": patch_res.get("containment_backend"),
                         "filesystem_and_network_containment": patch_res.get("filesystem_and_network_containment", False),
                         "unrelated_files_preserved": patch_res["unrelated_files_preserved"],
@@ -2936,6 +2938,9 @@ def advance_deliberate_project(
             t2_out = (t2_tc or {}).get("output_summary") or {}
             target_file = str(t2_out.get("target_file") or "batch_allocator/allocator.py")
             lease_from_t2 = t2_out.get("lease_id")
+            holdout_tests_run = int(t2_out.get("holdout_tests_run") or 0)
+            public_tests_run = int(t2_out.get("public_tests_run") or 0)
+            t2_scope = str(t2_out.get("verification_scope") or ("verified_for_scope" if holdout_tests_run > 0 else "public_diagnostics_passed"))
 
             report_md = (
                 f"# Repository Bug-Fix Verification Report (Requirement Revision {ledger.revision_number})\n\n"
@@ -2943,19 +2948,27 @@ def advance_deliberate_project(
                 f"- **Target Module**: `{target_file}`\n"
                 f"- **Before SHA-256**: `{t2_out.get('before_sha256')}`\n"
                 f"- **After SHA-256**: `{t2_out.get('after_sha256')}`\n"
-                f"- **Producing Actor**: `{t2_out.get('producing_actor', 'authenticated_worker_model')}` (Lease `{lease_from_t2}`)\n\n"
+                f"- **Report Producing Actor**: `deterministic_controller` (Referenced Patch Lease `{lease_from_t2}`)\n"
+                f"- **Patch Producing Actor**: `{t2_out.get('producing_actor', 'authenticated_worker_model')}`\n\n"
                 f"## Independent Test Suite Verification\n"
+                f"- **Verification Scope**: `{t2_scope}`\n"
                 f"- **Initial Failing Public Tests Reproduced**: `{t1_out.get('initial_failures', 1)}` failure(s) across `{t1_out.get('initial_tests_run', 0)}` test(s)\n"
-                f"- **Post-Patch Public Tests Passed**: `{t2_out.get('public_tests_run', 0)}` passed, `0` failed\n"
-                f"- **Protected Holdout Tests Passed**: `{t2_out.get('holdout_tests_run', 0)}` passed, `0` failed\n"
+                f"- **Post-Patch Public Tests Passed**: `{public_tests_run}` passed, `0` failed\n"
+                f"- **Protected Holdout Tests Passed**: `{holdout_tests_run}` passed, `0` failed\n"
                 f"- **Containment Backend**: `{t2_out.get('containment_backend', 'held')}`\n"
                 f"- **Unrelated Files Preserved**: `{t2_out.get('unrelated_files_preserved', True)}`\n"
                 f"- **Untouched File SHA-256 Digests**: `{json.dumps(t2_out.get('unrelated_file_hashes') or {}, sort_keys=True)}`\n"
             )
             report_bytes = report_md.encode("utf-8")
+            holdout_required = bool(eff_holdout)
+            suite_check_ok = (
+                (public_tests_run > 0 and holdout_tests_run > 0)
+                if holdout_required
+                else (public_tests_run > 0 and t2_scope == "public_diagnostics_passed")
+            )
             report_checks = [
                 {"name": "cites_target_file", "passed": target_file in report_md},
-                {"name": "cites_public_and_holdout_pass", "passed": int(t2_out.get("public_tests_run") or 0) > 0 and int(t2_out.get("holdout_tests_run") or 0) > 0},
+                {"name": "cites_public_and_holdout_pass", "passed": suite_check_ok},
                 {"name": "cites_unrelated_files_preserved", "passed": bool(t2_out.get("unrelated_files_preserved") is True)},
             ]
 
@@ -2964,8 +2977,8 @@ def advance_deliberate_project(
                 tkey,
                 lambda _pkt: {
                     "epistemic_category": "verified_artifact",
-                    "statement": f"Published verified repository bug-fix report for '{target_file}' (Revision {ledger.revision_number}).",
-                    "lease_id": lease_from_t2,
+                    "statement": f"Published repository bug-fix report for '{target_file}' (Revision {ledger.revision_number}, scope={t2_scope}).",
+                    "lease_id": None,
                     "report_checks": report_checks,
                     "publish_artifact": {
                         "filename": next_tc["expected_output"],
@@ -2973,10 +2986,13 @@ def advance_deliberate_project(
                     },
                     "output_summary": {
                         "target_file": target_file,
-                        "public_tests_run": t2_out.get("public_tests_run", 0),
-                        "holdout_tests_run": t2_out.get("holdout_tests_run", 0),
+                        "public_tests_run": public_tests_run,
+                        "holdout_tests_run": holdout_tests_run,
+                        "verification_scope": t2_scope,
                         "unrelated_files_preserved": t2_out.get("unrelated_files_preserved", True),
-                        "lease_id": lease_from_t2,
+                        "producing_actor": "deterministic_controller",
+                        "lease_id": None,
+                        "referenced_patch_lease_id": lease_from_t2,
                         "decision_summary": op_summary,
                     },
                     "next_action": "deliver",
@@ -2987,7 +3003,9 @@ def advance_deliberate_project(
                 "task_key": tkey,
                 "status": res_repo_t3["task_status"],
                 "artifact_id": res_repo_t3["published_artifact_id"],
-                "lease_id": lease_from_t2,
+                "lease_id": None,
+                "producing_actor": "deterministic_controller",
+                "referenced_patch_lease_id": lease_from_t2,
                 "selected_tool": val_gate["selected_tool"],
                 "action_origin": action_origin,
                 "proposal_validity": True,
@@ -3012,27 +3030,54 @@ def advance_deliberate_project(
 
     integ = wm.verify_project_task_integration(project_id)
     all_tcs = wm.list_task_contracts(project_id)
+    verification_scope = "verified_for_scope"
+    establishes_protected_acceptance = True
+    if domain == "repository_bugfix":
+        t2_contract_final = wm.get_task_contract(project_id, "t2_propose_and_verify_patch")
+        t2_summary_final = (t2_contract_final or {}).get("output_summary") or {}
+        if int(t2_summary_final.get("holdout_tests_run") or 0) == 0 or not eff_holdout:
+            verification_scope = "public_diagnostics_passed"
+            establishes_protected_acceptance = False
+
     if integ["integration_verified"] and all_tcs and all(tc["status"] == "verified" for tc in all_tcs):
-        context_manager.save_project_memory_state(
-            project_id,
-            run_id=run_id,
-            current_cycle_phase="completed",
-            escalation_step=4 if not repair_events else 5,
-            failed_approaches=repair_events,
-            next_action={"action": "delivered", "status": "verified_for_scope"},
-        )
-        final_phase = "completed"
-        record_procedure_outcome(
-            task_category=domain,
-            procedure_key=f"{domain}:rev{ledger.revision_number}",
-            outcome_status="verified_success",
-            procedure_summary=f"Completed {len(all_tcs)} verified contracts in domain '{domain}'.",
-            project_id=project_id,
-            model_id=preferred_model,
-            evidence_run_id=run_id,
-        )
+        if domain == "repository_bugfix" and not establishes_protected_acceptance:
+            # AUD-07: Public-only repository runs must never be promoted into protected acceptance (verified_for_scope / completed)
+            context_manager.save_project_memory_state(
+                project_id,
+                run_id=run_id,
+                current_cycle_phase="verify",
+                escalation_step=4 if not repair_events else 5,
+                failed_approaches=repair_events,
+                next_action={
+                    "action": "diagnostic_report_published",
+                    "status": "public_diagnostics_passed",
+                    "establishes_protected_acceptance": False,
+                },
+            )
+            final_phase = "verify"
+        else:
+            context_manager.save_project_memory_state(
+                project_id,
+                run_id=run_id,
+                current_cycle_phase="completed",
+                escalation_step=4 if not repair_events else 5,
+                failed_approaches=repair_events,
+                next_action={"action": "delivered", "status": "verified_for_scope"},
+            )
+            final_phase = "completed"
+            record_procedure_outcome(
+                task_category=domain,
+                procedure_key=f"{domain}:rev{ledger.revision_number}",
+                outcome_status="verified_success",
+                procedure_summary=f"Completed {len(all_tcs)} verified contracts in domain '{domain}'.",
+                project_id=project_id,
+                model_id=preferred_model,
+                evidence_run_id=run_id,
+            )
     elif any(tc["status"] == "blocked" for tc in all_tcs) or any(s.get("status") == "blocked" for s in steps_executed):
         final_phase = "blocked"
+        verification_scope = "blocked"
+        establishes_protected_acceptance = False
     else:
         final_phase = "execute"
 
@@ -3064,6 +3109,8 @@ def advance_deliberate_project(
         "domain": domain,
         "requirement_revision": ledger.revision_number,
         "final_cycle_phase": final_phase,
+        "verification_scope": verification_scope,
+        "establishes_protected_acceptance": establishes_protected_acceptance,
         "steps_executed": steps_executed,
         "native_worker_lease_ids": native_leases,
         "repair_events": repair_events,

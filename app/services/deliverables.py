@@ -238,11 +238,18 @@ def submit_deliverable(
 def review_deliverable(
     deliverable_id: str,
     new_status: str,
-    reviewer: str,
-    rationale: str,
-    verification_results: Optional[str] = None
+    reviewer: str = "operator",
+    rationale: str = "",
+    verification_results: Optional[str] = None,
+    *,
+    actor: Optional[str] = None,
+    review_notes: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Human review decision for a submitted or in-review deliverable."""
+    if actor and reviewer == "operator":
+        reviewer = actor
+    if review_notes and not rationale:
+        rationale = review_notes
     if new_status not in DELIVERABLE_STATUSES:
         raise ValidationError(f"Invalid deliverable status: '{new_status}'.")
     clean_rat = _clean(rationale, "Decision rationale", required=True)
@@ -251,6 +258,39 @@ def review_deliverable(
         cur = _load_deliverable(conn, deliverable_id)
         if new_status not in DELIVERABLE_TRANSITIONS.get(cur["status"], set()):
             raise ValidationError(f"Cannot transition deliverable from '{cur['status']}' to '{new_status}'.")
+
+        # AUD-04: Deliverable acceptance requires verified artifact provenance or evaluated orchestration approval
+        if new_status == "accepted" and reviewer != "orchestrator (auto)":
+            target_art_id = cur.get("primary_artifact_id")
+            has_valid_art = False
+            if target_art_id:
+                art_row = conn.execute(
+                    "SELECT id, validation_status FROM artifacts WHERE id = ?",
+                    (target_art_id,),
+                ).fetchone()
+                if art_row and art_row["validation_status"] in ("valid", "verified"):
+                    has_valid_art = True
+            if not has_valid_art:
+                try:
+                    orch_art = conn.execute(
+                        "SELECT id FROM orchestration_artifacts WHERE project_id = ? AND validation_state = 'valid' LIMIT 1",
+                        (cur["project_id"],),
+                    ).fetchone()
+                except sqlite3.OperationalError:
+                    orch_art = None
+                try:
+                    ver_tc = conn.execute(
+                        "SELECT id FROM project_task_contracts WHERE project_id = ? AND status = 'verified' LIMIT 1",
+                        (cur["project_id"],),
+                    ).fetchone()
+                except sqlite3.OperationalError:
+                    ver_tc = None
+                if orch_art or ver_tc:
+                    has_valid_art = True
+            if not has_valid_art:
+                raise ValidationError(
+                    f"Cannot mark deliverable '{deliverable_id}' as 'accepted' without a verified backing artifact or completed verification contract."
+                )
 
         now = _now()
         verif = _clean(verification_results, "Verification results") if verification_results is not None else cur["verification_results"]

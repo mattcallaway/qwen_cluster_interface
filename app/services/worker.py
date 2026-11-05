@@ -176,47 +176,13 @@ def verify_worker_task_authorization(
         lease_row = c.execute(lease_query, tuple(params)).fetchone()
         lease = dict(lease_row) if lease_row else None
 
-        # F-10: Worker cannot obtain execution authority solely because a task has no lease record.
-        # Unassigned tasks strictly require a valid lease.
+        # F-10 / AUD-04: Worker cannot obtain execution authority without an explicit database lease record.
         if not lease:
-            if assigned_worker is None:
-                raise TaskAuthorizationError(
-                    f"Task '{task_id}' is unassigned. Worker '{worker_id}' cannot obtain execution authority without a valid lease.",
-                    status_code=403,
-                )
-
-            # Explicit legacy direct assignment rules:
-            # 1. assigned_worker must explicitly match worker_id
-            # 2. Uploads strictly require an active DB lease record (reject unleased uploads)
-            # 3. Submit is permitted only if NO lease was ever created for this task
-            if assigned_worker == worker_id:
-                if operation == "upload":
-                    raise TaskAuthorizationError(
-                        f"Task '{task_id}' has no active lease record. Artifact uploads require an active task lease.",
-                        status_code=409,
-                    )
-                any_leases = c.execute(
-                    "SELECT count(*) FROM worker_task_leases WHERE task_id = ?",
-                    (task_id,),
-                ).fetchone()[0]
-                if any_leases > 0:
-                    raise TaskAuthorizationError(
-                        f"Task '{task_id}' requires lease-based execution; no active lease found for worker '{worker_id}'.",
-                        status_code=403,
-                    )
-                lease = {
-                    "id": lease_id or f"direct_{worker_id}",
-                    "worker_id": worker_id,
-                    "task_id": task_id,
-                    "status": "active",
-                    "lease_expires_at": "9999-12-31T23:59:59Z",
-                    "attempt_count": task.get("attempt_count") or 1,
-                }
-            else:
-                raise TaskAuthorizationError(
-                    f"No active lease found for worker '{worker_id}' on task '{task_id}'.",
-                    status_code=403,
-                )
+            raise TaskAuthorizationError(
+                f"No active lease found for worker '{worker_id}' on task '{task_id}'. "
+                "Direct unleased task execution and synthetic leases are not permitted.",
+                status_code=403,
+            )
 
         # F-10: Check fencing generation — reject stale lease if newer execution attempt exists
         if lease_row:
@@ -238,7 +204,7 @@ def verify_worker_task_authorization(
             lease_status in ("leased", "active") and lease_expires_at <= now_iso
         )
 
-        if is_expired and lease_status in ("leased", "active") and not str(lease["id"]).startswith("direct_"):
+        if is_expired and lease_status in ("leased", "active"):
             c.execute(
                 "UPDATE worker_task_leases SET status = 'expired', updated_at = ? WHERE id = ?",
                 (now_iso, lease["id"]),
@@ -262,18 +228,11 @@ def verify_worker_task_authorization(
                     status_code=409,
                 )
         elif operation == "submit":
-            if is_expired:
-                # Expired lease submitting: verify task was not reacquired by another worker
-                reacquired = c.execute(
-                    "SELECT worker_id FROM worker_task_leases WHERE task_id = ? AND worker_id != ? AND status IN ('leased', 'active', 'completed')",
-                    (task_id, worker_id),
-                ).fetchone()
-                if reacquired or (assigned_worker and assigned_worker != worker_id):
-                    reassigned_to = reacquired['worker_id'] if reacquired else assigned_worker
-                    raise TaskAuthorizationError(
-                        f"Task '{task_id}' was reacquired by worker '{reassigned_to}' after lease expiration. Stale submission rejected.",
-                        status_code=409,
-                    )
+            if is_expired or lease_status in ("expired", "cancelled", "failed"):
+                raise TaskAuthorizationError(
+                    f"Task lease '{lease['id']}' for task '{task_id}' is expired or inactive (status='{lease_status}'). Stale submission rejected.",
+                    status_code=409,
+                )
             if task_status in ("cancelled", "failed"):
                 raise TaskAuthorizationError(
                     f"Cannot submit results to task '{task_id}' in terminal state '{task_status}'.",
@@ -338,10 +297,10 @@ def verify_worker_token(raw_token: str) -> Optional[Dict[str, Any]]:
     try:
         row = conn.execute(
             """
-            SELECT t.id, t.node_id, t.revoked, n.name, n.role, n.health_status
+            SELECT t.id, t.node_id, t.revoked, n.name, n.role, n.health_status, n.is_enabled, n.notes
             FROM worker_auth_tokens t
             JOIN infrastructure_nodes n ON t.node_id = n.id
-            WHERE t.token_hash = ? AND t.revoked = 0 AND COALESCE(n.is_enabled, 1) != 0 AND n.id != 'node-d35568f5'
+            WHERE t.token_hash = ? AND t.revoked = 0
             """,
             (token_hash,),
         ).fetchone()
@@ -362,6 +321,8 @@ def verify_worker_token(raw_token: str) -> Optional[Dict[str, Any]]:
             "node_name": row["name"],
             "role": row["role"],
             "health_state": row["health_status"],
+            "is_enabled": bool(row["is_enabled"]),
+            "notes": row["notes"] or "",
         }
     finally:
         conn.close()
@@ -1661,18 +1622,14 @@ def _evaluate_and_record_metric_observation(
                 verification_status = "unverified"
                 notes += " [Reported: Checksum provided without retrievable artifact file on controller]"
 
-    # Rule 3: Deliverable or trusted evidence linkage
+    # Rule 3: Deliverable or trusted evidence linkage (AUD-04: never auto-verify on 'execution:' prefix alone!)
     elif evidence_ref:
-        if evidence_ref.startswith("execution:"):
-            # Controller execution telemetry
-            verification_status = "verified"
-            notes += " [Verified: Controller execution telemetry]"
-        elif task_row and task_row["deliverable_id"]:
+        if task_row and task_row["deliverable_id"]:
             # Shortcut B eliminated: Deliverable linkage alone does NOT verify!
             verification_status = "unverified"
             notes += f" [Reported: Linked to deliverable '{task_row['deliverable_id']}', awaiting independent artifact validation]"
         else:
-            # Evidence reference provided but no independent checksum
+            # Evidence reference provided (including 'execution:...') without independent artifact checksum cannot self-verify
             verification_status = "unverified"
             notes += " [Reported: Evidence reference provided, pending checksum verification]"
     else:

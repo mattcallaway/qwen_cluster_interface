@@ -354,7 +354,7 @@ def test_g_reused_artifact_creates_lineage_and_preserves_original():
         actor="alice",
     )
     assert reuse_res["status"] == "queued"
-    assert reuse_res["reuse_id"].startswith("ar-")
+    assert reuse_res["reuse_id"].startswith("reuse-")
 
     # In Project 2, create a new derived version for the original artifact
     derived_content = b"DATASET V2: 950 clean rows\n"

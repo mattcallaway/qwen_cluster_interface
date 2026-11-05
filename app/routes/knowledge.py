@@ -142,18 +142,22 @@ def create_record_submit(
         return RedirectResponse(url="/knowledge", status_code=status.HTTP_302_FOUND)
 
     top_list = [t.strip() for t in topics.split(",") if t.strip()] if topics else []
+    # AUD-04: Direct form creation cannot bypass promotion governance or self-certify without linked evidence.
+    safe_scope = "project" if project_id else "project"
+    safe_verif = "unverified"
     try:
-        create_knowledge_record(
-            subject=subject,
-            statement=statement,
-            summary=summary,
-            knowledge_type=knowledge_type,
-            scope=scope,
-            project_id=project_id if scope == "project" else None,
-            verification_status=verification_status,
-            topics=top_list,
-            promoted_by=(user if isinstance(user, str) else user.get("username")) if scope == "collective" else None,
-        )
+        if project_id:
+            create_knowledge_record(
+                subject=subject,
+                statement=statement,
+                summary=summary,
+                knowledge_type=knowledge_type,
+                scope=safe_scope,
+                project_id=project_id,
+                verification_status=safe_verif,
+                topics=top_list,
+                promoted_by=None,
+            )
     except Exception:
         pass
     return RedirectResponse(url="/knowledge?view=records", status_code=status.HTTP_302_FOUND)

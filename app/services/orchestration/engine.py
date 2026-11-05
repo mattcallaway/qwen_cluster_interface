@@ -1397,8 +1397,9 @@ def _block_deliverable_evaluation(run, deliverable_key, reason, reason_code, eva
             "recorded_at": now_iso(),
         }
         meta["substantive_evaluation"] = finding
+        expected_st = current["state"] if current["state"] in ("EVALUATING", "RUNNING") else "EVALUATING"
         return states.transition(run["id"], "BLOCKED", "deliverable_validation_blocked",
-            "orchestrator-evaluator", reason, expected_state="EVALUATING", conn=c,
+            "orchestrator-evaluator", reason, expected_state=expected_st, conn=c,
             set_fields={"block_reason": reason, "analysis_json": jdump(meta)}, detail=finding)
 
 
@@ -1453,8 +1454,6 @@ def _evaluate_deliverables(run: Dict[str, Any]) -> None:
         producer = rows.get(d["produced_by"])
         if not dd or not producer or producer["state"] != "accepted":
             all_accepted = False
-            continue
-        if dd["status"] == "accepted":
             continue
 
         pres = jload(producer.get("accepted_result_json")) if producer.get("accepted_result_json") else {}
