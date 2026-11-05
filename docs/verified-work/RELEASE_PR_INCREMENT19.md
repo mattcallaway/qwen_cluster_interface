@@ -3,7 +3,9 @@
 **Draft PR**: [PR #3 (`https://github.com/mattcallaway/qwen_cluster_interface/pull/3`)](https://github.com/mattcallaway/qwen_cluster_interface/pull/3)  
 **Feature Branch**: `feature/increment19-general-purpose-coordinator`  
 **Base Branch**: `main` (`4be7f547f4919380a22abdd2122961d559d2f46f`; stacked on Increment 18 `269dc8ec5017c1b3033d0aa2e3d035162ca4739b` / Draft PR #2 and Increment 17 `070680432dd12fd9bb43c9669d4d86e499623176` / Draft PR #1)  
-**Pre-Fix Independent Review Baseline Commit**: `301c15ddb6cf487df9d1d73547cbe9f8def7c5bf` (`4 failed` in [`evidence/increment19-pre-fix-failures-20261104.json`](evidence/increment19-pre-fix-failures-20261104.json))
+**Pre-Fix Independent Review Baseline Commit**: `301c15ddb6cf487df9d1d73547cbe9f8def7c5bf` (`4 failed` in [`evidence/increment19-pre-fix-failures-20261104.json`](evidence/increment19-pre-fix-failures-20261104.json))  
+**Tested Implementation Commit**: `267abc1905e3af2218332a7e5e55466de2648a44` (tree `dcdfde52d57356c7c1c1e1579b86dec36763ceb7`)  
+**Rehearsed Integration Merge Commit (onto `main`)**: `82a8fd268791098fa913c6903364537f38f8ac3d` (tree `2230317f7900df7f840adf6039d437cef05fac56`; details in [`evidence/increment19-integration-rehearsal-20261104.json`](evidence/increment19-integration-rehearsal-20261104.json))
 
 ---
 
