@@ -500,6 +500,7 @@ def test_live_linux_root_image_sandbox_all_10_adversarial_behaviors() -> None:
             "results": results_summary,
         }
         EVIDENCE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        EVIDENCE_PATH.write_text(json.dumps(evidence_doc, indent=2), encoding="utf-8")
+        if os.environ.get("QC_RERUN_PROTECTED_BOUNDARY_EVIDENCE_PATH", "").strip(): Path(os.environ["QC_RERUN_PROTECTED_BOUNDARY_EVIDENCE_PATH"].strip()).write_text(json.dumps(evidence_doc, indent=2), encoding="utf-8")
+        elif not EVIDENCE_PATH.exists() or os.environ.get("QC_OVERWRITE_HISTORICAL_EVIDENCE") == "1": EVIDENCE_PATH.write_text(json.dumps(evidence_doc, indent=2), encoding="utf-8")
     finally:
         protected_repo_verifier.configure_protected_repo_verifier(None)

@@ -35,7 +35,7 @@ logger = logging.getLogger("qwen_collective.worker_agent")
 
 def _run_lease_heartbeats(agent: "VPSWorkerAgent", lease_id: str, stop_event: threading.Event, cancel_execution=None) -> None:
     """Maintain per-task lease renewal and node heartbeat in background during execution."""
-    interval = min(15, max(5, agent.config.heartbeat_interval))
+    interval = min(15.0, max(0.05, float(agent.config.heartbeat_interval)))
     while not stop_event.wait(interval):
         # 1. Renew per-task lease heartbeat
         renew_url = f"{agent.config.controller_url}/api/v1/worker/tasks/{lease_id}/heartbeat"
@@ -387,6 +387,13 @@ class VPSWorkerAgent:
             stop_heartbeat.set()
             hb_thread.join(timeout=2.0)
 
+        if cancel_execution.is_set():
+            exec_outcome["status"] = "error"
+            exec_outcome["exit_code"] = exec_outcome.get("exit_code") or 1
+            exec_outcome["stdout_summary"] = ""
+            exec_outcome["error_category"] = exec_outcome.get("error_category") or "lease_cancelled"
+            if isinstance(exec_outcome.get("result_payload"), dict):
+                exec_outcome["result_payload"]["artifacts"] = []
         # Prepare submission payload
         submission = {
             "task_id": task_id,
@@ -433,6 +440,9 @@ class VPSWorkerAgent:
                     idempotency_key=idempotency_key,
                     submission_payload=submission,
                 )
+                return exec_outcome
+            elif submit_resp.status_code == 409:
+                logger.warning("Controller rejected task %s submission due to lease/state conflict (HTTP 409); dropping stale result without buffering.", task_id)
                 return exec_outcome
             elif submit_resp.status_code in (400, 422):
                 logger.error("Controller rejected task %s submission as invalid (HTTP %s); buffering and quarantining", task_id, submit_resp.status_code)

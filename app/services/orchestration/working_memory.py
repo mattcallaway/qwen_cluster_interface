@@ -1577,13 +1577,21 @@ def _evaluate_fence_against_snapshot(
 
     if lease_id:
         lease_row = conn.execute(
-            "SELECT id, status, lease_expires_at FROM worker_task_leases WHERE id = ?",
+            """SELECT l.id, l.status, l.lease_expires_at, t.project_id
+               FROM worker_task_leases l
+               LEFT JOIN tasks t ON t.id = l.task_id
+               WHERE l.id = ?""",
             (lease_id,),
         ).fetchone()
         if not lease_row:
             return f"Lease authority check failed for task '{task_key}': lease '{lease_id}' does not exist."
         if str(lease_row["status"]) in ("expired", "cancelled", "revoked"):
             return f"Lease authority check failed for task '{task_key}': lease '{lease_id}' has status '{lease_row['status']}'."
+        if lease_row["project_id"] and str(lease_row["project_id"]) != str(project_id):
+            return (
+                f"Lease authority check failed for task '{task_key}': lease '{lease_id}' belongs to project "
+                f"'{lease_row['project_id']}', not '{project_id}'."
+            )
 
     return None
 

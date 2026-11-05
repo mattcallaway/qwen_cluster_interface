@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 import pytest
@@ -766,5 +767,6 @@ def test_10_live_linux_root_image_independent_public_and_holdout_containment(iso
         "all_nonce_replays_denied": all(r.get("nonce_replay_denied") is True for r in recorded_runs),
     }
     EVIDENCE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    EVIDENCE_PATH.write_text(json.dumps(evidence_doc, indent=2), encoding="utf-8")
+    if os.environ.get("QC_RERUN_PUBLIC_HOLDOUT_EVIDENCE_PATH", "").strip(): Path(os.environ["QC_RERUN_PUBLIC_HOLDOUT_EVIDENCE_PATH"].strip()).write_text(json.dumps(evidence_doc, indent=2), encoding="utf-8")
+    elif not EVIDENCE_PATH.exists() or os.environ.get("QC_OVERWRITE_HISTORICAL_EVIDENCE") == "1": EVIDENCE_PATH.write_text(json.dumps(evidence_doc, indent=2), encoding="utf-8")
 

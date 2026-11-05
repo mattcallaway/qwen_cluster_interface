@@ -18,31 +18,62 @@ import threading
 class RetrievalDeadlineExceeded(TimeoutError): pass
 
 
+class RetrievalCancelled(RuntimeError): pass
+
+
 def _process_args():
     root=str(Path(__file__).resolve().parents[1])
     return [sys.executable,'-I','-c',
         'import sys,runpy;sys.path.insert(0,sys.argv[1]);runpy.run_module("vps_agent.research_job",run_name="__main__")',root]
 
 
-def run_bounded_retrieval(url,seconds=8):
+def run_bounded_retrieval(url,seconds=8,cancel_event=None):
     if not isinstance(url,str) or len(url)>2048 or not math.isfinite(float(seconds)) or not 0<float(seconds)<=8:
         raise ValueError('Invalid bounded retrieval request')
+    if cancel_event is not None and cancel_event.is_set():
+        raise RetrievalCancelled('Retrieval aborted before process start due to cancellation')
     started=time.monotonic(); deadline=started+float(seconds)
     env={k:v for k,v in os.environ.items() if k.upper() in {'PATH','SYSTEMROOT','WINDIR','TEMP','TMP'}}
     process=subprocess.Popen(_process_args(),stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
         env=env,creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
+    payload_bytes=json.dumps({'url':url,'seconds':seconds,'deadline_monotonic':deadline}).encode()
+    first_call=True
+    out=b''; err=b''
     try:
-        out,err=process.communicate(json.dumps({'url':url,'seconds':seconds,'deadline_monotonic':deadline}).encode(),
-            timeout=max(.001,deadline-time.monotonic()))
+        while True:
+            if cancel_event is not None and cancel_event.is_set():
+                process.kill()
+                try:
+                    process.communicate(timeout=2)
+                except Exception:
+                    pass
+                raise RetrievalCancelled('Retrieval subprocess terminated on cancellation')
+            rem=deadline-time.monotonic()
+            if rem<=0:
+                raise subprocess.TimeoutExpired(cmd=_process_args(),timeout=seconds)
+            step_timeout= rem if cancel_event is None else min(0.03,max(0.001,rem))
+            try:
+                out,err=process.communicate(payload_bytes if first_call else None,timeout=step_timeout)
+                first_call=False
+                break
+            except subprocess.TimeoutExpired:
+                first_call=False
+                if cancel_event is None:
+                    raise
+                continue
     except subprocess.TimeoutExpired:
         process.kill()
         process.communicate(timeout=2)
         raise RetrievalDeadlineExceeded('Retrieval/extraction process exceeded its hard deadline')
+    if cancel_event is not None and cancel_event.is_set():
+        raise RetrievalCancelled('Retrieval completed concurrently with cancellation; output rejected')
     if process.returncode==124 or time.monotonic()>deadline:
         raise RetrievalDeadlineExceeded('Retrieval result arrived after the hard deadline')
     if process.returncode!=0 or len(out)>8_000_000:
         raise ValueError('Retrieval child failed or exceeded output limits')
     result=json.loads(out)
+    if cancel_event is not None and cancel_event.is_set():
+        raise RetrievalCancelled('Retrieval cancelled after decode; output rejected')
     if time.monotonic()>deadline:
         raise RetrievalDeadlineExceeded('Retrieval decoding exceeded the hard deadline')
     return result

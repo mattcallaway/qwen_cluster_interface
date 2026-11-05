@@ -139,6 +139,90 @@ def test_aud04_no_synthetic_direct_lease_or_expired_submit_or_unleased_inference
     assert resp["status"] == "failed"
     assert resp["error_class"] == "unverified_worker_provenance"
 
+    # 1e. Checkpointed work boundary and worker authorization must reject:
+    # - synthetic `lease-direct-*` lease IDs,
+    # - revoked/cancelled leases,
+    # - mismatched idempotency keys / worker IDs, and
+    # - cross-project lease replay (valid lease belonging to another project).
+    wm.register_task_contract(
+        project_id,
+        run_id=None,
+        task_key="t_r2_lease_fence",
+        purpose="Test authentic lease enforcement at work boundary",
+        expected_output="out.json",
+    )
+    with pytest.raises(wm.StaleWorkerResultError, match="lease-direct-synthetic-bypass"):
+        wm.execute_checkpointed_work_boundary(
+            project_id,
+            "t_r2_lease_fence",
+            lambda _pkt: {
+                "statement": "Synthetic direct lease attempt",
+                "lease_id": "lease-direct-synthetic-bypass",
+            },
+        )
+
+    other_proj = projects_service.create_project(
+        name="Other R2 Project",
+        owner="operator",
+        objective="Cross-project replay test",
+        status="active",
+        actor="operator",
+    )
+    conn = get_db_connection()
+    conn.execute("UPDATE project_task_contracts SET status = 'pending', stale_reason = '' WHERE project_id = ? AND task_key = 't_r2_lease_fence'", (project_id,))
+    conn.execute(
+        """INSERT INTO tasks (
+               id, project_id, title, description, task_type, status,
+               assigned_worker, idempotency_key, created_at, updated_at
+           ) VALUES ('task-other-proj', ?, 'Other Task', 'Valid in other proj', 'inference', 'running', 'node-w1', 'idem-other-1', ?, ?)""",
+        (other_proj["id"], now, now),
+    )
+    conn.execute(
+        """INSERT INTO worker_task_leases (
+               id, task_id, worker_id, idempotency_key, status,
+               leased_at, lease_expires_at, heartbeat_at, created_at, updated_at
+           ) VALUES ('lease-other-proj', 'task-other-proj', 'node-w1', 'idem-other-1', 'active', ?, '2099-01-01T00:00:00Z', ?, ?, ?)""",
+        (now, now, now, now),
+    )
+    conn.commit()
+
+    # Mismatched worker_id and mismatched idempotency key must be rejected
+    with pytest.raises(worker_service.TaskAuthorizationError) as exc_worker:
+        worker_service.verify_worker_task_authorization(
+            "node-wrong-worker",
+            "task-other-proj",
+            operation="submit",
+            lease_id="lease-other-proj",
+            conn=conn,
+        )
+    assert exc_worker.value.status_code in (401, 403, 409)
+    conn.close()
+
+    with pytest.raises(worker_service.TaskAuthorizationError) as exc_idem:
+        worker_service.submit_task_result(
+            worker_id="node-w1",
+            task_id="task-other-proj",
+            lease_id="lease-other-proj",
+            idempotency_key="idem-wrong-key",
+            status="success",
+            exit_code=0,
+            runtime_seconds=0.5,
+            stdout_summary="mismatched idem",
+            stderr_summary="",
+        )
+    assert exc_idem.value.status_code == 409
+
+    # Replaying `lease-other-proj` (which belongs to `other_proj`) at `project_id`'s work boundary must fail closed!
+    with pytest.raises(wm.StaleWorkerResultError, match="belongs to project"):
+        wm.execute_checkpointed_work_boundary(
+            project_id,
+            "t_r2_lease_fence",
+            lambda _pkt: {
+                "statement": "Cross-project lease replay attempt",
+                "lease_id": "lease-other-proj",
+            },
+        )
+
 
 def test_aud04_no_unverified_deliverable_metric_project_or_knowledge_acceptance(isolated_db: Path):
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")

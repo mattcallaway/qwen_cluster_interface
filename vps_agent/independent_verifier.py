@@ -4,7 +4,7 @@ The controller provisions an authenticated grant and a private per-run key over
 a trusted transport. Only the public input is mounted inside each service.
 This process and the controller, not submitted stdout, decide case outcomes.
 """
-import hashlib,hmac,json,math,os,re,stat,uuid
+import hashlib,hmac,json,math,os,re,shutil,stat,uuid
 from datetime import datetime,timezone
 from pathlib import Path
 from .linux_sandbox import LinuxSpec,run_linux_candidate,hex_digest
@@ -233,7 +233,7 @@ def immutable_file(path,content):
         with os.fdopen(fd,'wb') as stream: stream.write(content)
 
 
-def run_protected(grant,key):
+def run_protected(grant,key,*,cancel_event=None):
     """Called only by root on an explicitly authorized test host, never by code.
 
     Root's private audit directory consumes the nonce BEFORE any execution. A
@@ -247,24 +247,49 @@ def run_protected(grant,key):
     audit=base/'verifier-audit'/grant['nonce']; audit.mkdir(mode=0o700)
     immutable_file(audit/'grant.json',encoded(grant))
     source=base/'inputs'/grant['binding']['proposal']['sha256']
-    source.mkdir(mode=0o755,exist_ok=True); protected_directory(source)
-    for path,content in files.items():
-        parent=source/Path(path).parent
-        parent.mkdir(mode=0o755,parents=True,exist_ok=True); protected_directory(parent)
-        immutable_file(source/path,content)
-    observations=[]
-    for case in cases:
-        # Recheck expiry before every start, not just upon receiving the grant.
-        validate_grant(grant)
-        request=encoded(case['input']); request_sha=digest(request)
-        immutable_file(base/'requests'/(request_sha+'.json'),request)
-        spec=LinuxSpec(uuid.uuid4().hex,grant['binding']['proposal']['sha256'],grant['binding']['image_sha256'],
-            tuple((p,digest(b)) for p,b in sorted(files.items())),seconds=grant['seconds'],request_sha256=request_sha)
-        result=run_linux_candidate(spec)
-        observations.append({'case_id':case['id'],**{k:result.get(k) for k in
-            ('executed','reason','exit_code','cleanup_confirmed','stdout','unit')}})
-        # Never start another case after unconfirmed process cleanup.
-        if result.get('cleanup_confirmed') is not True: raise RuntimeError('Unconfirmed cleanup; verifier stopped')
-    receipt=receipt_for(grant,observations,key)
-    immutable_file(audit/'receipt.json',encoded(receipt))
-    return receipt
+    staged_requests=[]
+    all_clean=True
+    try:
+        source.mkdir(mode=0o755,exist_ok=True); protected_directory(source)
+        for path,content in files.items():
+            parent=source/Path(path).parent
+            parent.mkdir(mode=0o755,parents=True,exist_ok=True); protected_directory(parent)
+            immutable_file(source/path,content)
+        observations=[]
+        for case in cases:
+            if cancel_event is not None and cancel_event.is_set():
+                raise RuntimeError('Protected verification aborted due to controller or SSH disconnection')
+            # Recheck expiry before every start, not just upon receiving the grant.
+            validate_grant(grant)
+            request=encoded(case['input']); request_sha=digest(request)
+            req_path=base/'requests'/(request_sha+'.json')
+            immutable_file(req_path,request)
+            staged_requests.append(req_path)
+            spec=LinuxSpec(uuid.uuid4().hex,grant['binding']['proposal']['sha256'],grant['binding']['image_sha256'],
+                tuple((p,digest(b)) for p,b in sorted(files.items())),seconds=grant['seconds'],request_sha256=request_sha)
+            try:
+                with open(audit/'units.txt','a',encoding='utf-8') as uf:
+                    uf.write(spec.unit+'\n'); uf.flush()
+            except Exception:
+                pass
+            result=run_linux_candidate(spec,cancel_event=cancel_event)
+            observations.append({'case_id':case['id'],**{k:result.get(k) for k in
+                ('executed','reason','exit_code','cleanup_confirmed','stdout','unit')}})
+            # Never start another case after unconfirmed process cleanup.
+            if result.get('cleanup_confirmed') is not True:
+                if result.get('executed') is True:
+                    all_clean=False
+                raise RuntimeError('Unconfirmed cleanup; verifier stopped')
+            if cancel_event is not None and cancel_event.is_set():
+                raise RuntimeError('Protected verification interrupted; child unit cleaned up')
+        receipt=receipt_for(grant,observations,key)
+        immutable_file(audit/'receipt.json',encoded(receipt))
+        return receipt
+    finally:
+        if all_clean:
+            for req_p in staged_requests:
+                try: req_p.unlink()
+                except FileNotFoundError: pass
+                except Exception: pass
+            try: shutil.rmtree(source,ignore_errors=True)
+            except Exception: pass

@@ -377,3 +377,22 @@ def test_aud11c_ssrf_ipv6_zone_and_dns_rebinding_blocked(monkeypatch: pytest.Mon
     res = fetcher.fetch("https://rebind.example.com/data")
     assert res.error is not None
     assert "rebind" in res.error.lower() or "address change" in res.error.lower()
+
+    # 3. Worker HttpsRetrievalPolicy and redirect target re-validation:
+    # Any non-HTTPS redirect target or redirect to loopback/metadata/CGNAT must be rejected.
+    from vps_agent.research_fetch import HttpsRetrievalPolicy
+
+    worker_policy = HttpsRetrievalPolicy()
+    for bad_redirect_target in (
+        "http://example.com/downgrade",
+        "https://127.0.0.1:11434/api/tags",
+        "https://169.254.169.254/latest/meta-data/",
+        "https://[::ffff:127.0.0.1]:8000/",
+        "https://100.101.187.115:8000/",
+    ):
+        u_ok, _, u_host = worker_policy.validate_url(bad_redirect_target)
+        if u_ok and u_host:
+            d_ok, _, _ = worker_policy.resolve_and_verify_destination(u_host)
+        else:
+            d_ok = False
+        assert not (u_ok and d_ok), f"Expected worker redirect target {bad_redirect_target} to be rejected"

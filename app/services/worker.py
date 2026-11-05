@@ -216,6 +216,13 @@ def verify_worker_task_authorization(
 
         # 4. Operation-specific checks
         task_status = task.get("status")
+        if task.get("project_id"):
+            try:
+                pwm_row = c.execute("SELECT dispatch_stopped, cleanup_lifecycle_state, current_cycle_phase FROM project_memory_state WHERE project_id = ?", (task["project_id"],)).fetchone()
+                if pwm_row and (bool(pwm_row["dispatch_stopped"]) or pwm_row["current_cycle_phase"] == "cancelled"):
+                    task_status = "cancelled"
+            except Exception:
+                pass
         if operation == "upload":
             if is_expired or lease_status in ("expired", "cancelled", "failed"):
                 raise TaskAuthorizationError(
@@ -225,6 +232,12 @@ def verify_worker_task_authorization(
             if task_status in ("completed", "cancelled", "failed"):
                 raise TaskAuthorizationError(
                     f"Cannot upload artifacts to task '{task_id}' in terminal state '{task_status}'.",
+                    status_code=409,
+                )
+        elif operation == "submit_cancel_ack":
+            if is_expired or lease_status in ("expired", "failed") or task_status in ("completed", "failed"):
+                raise TaskAuthorizationError(
+                    f"Task lease '{lease['id']}' cannot record cancellation ack in state lease='{lease_status}', task='{task_status}'.",
                     status_code=409,
                 )
         elif operation == "submit":
@@ -1407,6 +1420,19 @@ def renew_task_lease(
             return False
 
         task=conn.execute('SELECT * FROM tasks WHERE id=?',(row['task_id'],)).fetchone()
+        if not task or task['status'] in ('cancelled', 'failed', 'completed') or (task['assigned_worker'] and task['assigned_worker'] != worker_id):
+            conn.execute("UPDATE worker_task_leases SET status = 'cancelled', updated_at = ? WHERE id = ?", (now_iso, lease_id))
+            conn.commit()
+            return False
+        if task['project_id']:
+            try:
+                pwm_row = conn.execute("SELECT dispatch_stopped, cleanup_lifecycle_state, current_cycle_phase FROM project_memory_state WHERE project_id = ?", (task['project_id'],)).fetchone()
+                if pwm_row and (bool(pwm_row['dispatch_stopped']) or pwm_row['current_cycle_phase'] == 'cancelled'):
+                    conn.execute("UPDATE worker_task_leases SET status = 'cancelled', updated_at = ? WHERE id = ?", (now_iso, lease_id))
+                    conn.commit()
+                    return False
+            except Exception:
+                pass
         if task and task['task_type']=='python_execution':
             context=check_worker_leasing_authority(conn,worker_id,requested_categories=['python_execution'])
             policy=context['restrictions']
@@ -1741,11 +1767,12 @@ def submit_task_result(
                 "completed_at": existing["completed_at"],
             }
 
+        is_cancel_ack = bool(status == "error" and error_category in ("lease_cancelled", "cancelled"))
         # 2. Authoritative policy verification (F-10)
         auth_context = verify_worker_task_authorization(
             worker_id=worker_id,
             task_id=task_id,
-            operation="submit",
+            operation="submit_cancel_ack" if is_cancel_ack else "submit",
             lease_id=lease_id,
             conn=conn,
         )
@@ -1794,7 +1821,7 @@ def submit_task_result(
             }
 
         # 1. Update lease status if exists
-        lease_status = "completed" if status == "success" else "failed"
+        lease_status = "cancelled" if is_cancel_ack else ("completed" if status == "success" else "failed")
         if actual_lease_id:
             conn.execute(
                 """
@@ -1818,7 +1845,7 @@ def submit_task_result(
                 )
 
         # 2. Update task record if exists with compare-and-swap (CAS)
-        task_status = "completed" if status == "success" else "failed"
+        task_status = "cancelled" if is_cancel_ack else ("completed" if status == "success" else "failed")
         if actual_task_id:
             cursor = conn.execute(
                 """
@@ -1874,7 +1901,7 @@ def submit_task_result(
 
             # Process physical artifacts submitted by worker
             processed_artifacts = []
-            raw_artifacts = artifacts or (result_payload.get("artifacts") if isinstance(result_payload, dict) else None)
+            raw_artifacts = None if error_category in ("lease_cancelled", "cancellation_termination_unconfirmed", "cancelled") else (artifacts or (result_payload.get("artifacts") if isinstance(result_payload, dict) else None))
             if not raw_artifacts and isinstance(result_payload, dict) and "artifact" in result_payload:
                 raw_artifacts = [result_payload["artifact"]]
 

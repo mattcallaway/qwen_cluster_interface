@@ -934,7 +934,8 @@ def test_fresh_variants_repair_transfer_live_e2e(tmp_path: Path, monkeypatch: py
                 "variants": variant_results,
             }
             EVIDENCE_PATH.parent.mkdir(parents=True, exist_ok=True)
-            EVIDENCE_PATH.write_text(json.dumps(evidence_payload, indent=2), encoding="utf-8")
+            if os.environ.get("QC_RERUN_FRESH_VARIANTS_EVIDENCE_PATH", "").strip(): Path(os.environ["QC_RERUN_FRESH_VARIANTS_EVIDENCE_PATH"].strip()).write_text(json.dumps(evidence_payload, indent=2), encoding="utf-8")
+            elif not EVIDENCE_PATH.exists() or os.environ.get("QC_OVERWRITE_HISTORICAL_EVIDENCE") == "1": EVIDENCE_PATH.write_text(json.dumps(evidence_payload, indent=2), encoding="utf-8")
     finally:
         if worker_proc is not None:
             worker_proc.terminate()

@@ -36,7 +36,7 @@ class AgentConfig(BaseModel):
 
     # Polling & Heartbeat Intervals (Seconds)
     poll_interval: int = Field(default_factory=lambda: int(os.getenv("QC_POLL_INTERVAL", "5")))
-    heartbeat_interval: int = Field(default_factory=lambda: int(os.getenv("QC_HEARTBEAT_INTERVAL", "15")))
+    heartbeat_interval: float = Field(default_factory=lambda: float(os.getenv("QC_HEARTBEAT_INTERVAL", "15")))
     lease_duration: int = Field(default_factory=lambda: int(os.getenv("QC_LEASE_DURATION", "300")))
 
     # Execution Bounds

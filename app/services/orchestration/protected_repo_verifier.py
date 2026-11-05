@@ -1365,15 +1365,64 @@ def make_local_blackbox_isolated_transport(
 
 
 REMOTE_LINUX_VERIFIER_DRIVER = r"""
-import datetime, hashlib, json, os, pathlib, sys
-sys.path.insert(0, "/opt/qwen-collective/source")
-from vps_agent.independent_verifier import run_protected
-from vps_agent.linux_sandbox import sha
+import datetime, hashlib, json, os, pathlib, select, shutil, signal, subprocess, sys, threading, time, types
+
+try:
+    signal.signal(signal.SIGHUP, signal.SIG_IGN)
+    signal.signal(signal.SIGPIPE, signal.SIG_IGN)
+except Exception:
+    pass
 
 payload = json.loads(sys.stdin.read())
+modules = payload.get("modules")
+if isinstance(modules, dict) and "linux_sandbox" in modules and "independent_verifier" in modules:
+    pkg = types.ModuleType("vps_agent")
+    pkg.__path__ = []
+    sys.modules["vps_agent"] = pkg
+    ls_mod = types.ModuleType("vps_agent.linux_sandbox")
+    ls_mod.__package__ = "vps_agent"
+    sys.modules["vps_agent.linux_sandbox"] = ls_mod
+    exec(compile(modules["linux_sandbox"], "vps_agent/linux_sandbox.py", "exec"), ls_mod.__dict__)
+    setattr(pkg, "linux_sandbox", ls_mod)
+    iv_mod = types.ModuleType("vps_agent.independent_verifier")
+    iv_mod.__package__ = "vps_agent"
+    sys.modules["vps_agent.independent_verifier"] = iv_mod
+    exec(compile(modules["independent_verifier"], "vps_agent/independent_verifier.py", "exec"), iv_mod.__dict__)
+    setattr(pkg, "independent_verifier", iv_mod)
+    run_protected = iv_mod.run_protected
+    sha = ls_mod.sha
+else:
+    sys.path.insert(0, "/opt/qwen-collective/source")
+    from vps_agent.independent_verifier import run_protected
+    from vps_agent.linux_sandbox import sha
+
 grant = payload["grant"]
 key = bytes.fromhex(payload["key_hex"])
 image_sha = grant["binding"]["image_sha256"]
+proposal_sha = grant["binding"]["proposal"]["sha256"]
+nonce = grant["nonce"]
+
+cancel_ev = threading.Event()
+stop_watch = threading.Event()
+
+
+def _watch_ssh_stdout_pipe():
+    try:
+        fd = sys.stdout.fileno()
+        poller = select.poll()
+        poller.register(fd, select.POLLHUP | select.POLLERR)
+        while not stop_watch.is_set():
+            events = poller.poll(40)
+            for _fd, mask in events:
+                if mask & (select.POLLHUP | select.POLLERR):
+                    cancel_ev.set()
+                    return
+    except Exception:
+        pass
+
+
+watch_thread = threading.Thread(target=_watch_ssh_stdout_pipe, daemon=True)
+watch_thread.start()
 
 policy_dir = pathlib.Path("/etc/qwen-sandbox")
 policy_dir.mkdir(mode=0o755, exist_ok=True)
@@ -1394,21 +1443,48 @@ policy_path.write_bytes(json.dumps(policy).encode("utf-8"))
 os.chown(policy_path, 0, 0)
 os.chmod(policy_path, 0o644)
 
-# Register a detached, connection-independent systemd transient timer/cleanup unit so that
-# even if the SSH connection drops mid-run, test-host authorization and any /var/tmp/qc_verify_*
-# staging artifacts are cleaned up automatically by systemd on the remote host.
+# Register a detached, connection-independent systemd transient cleanup unit (`systemd-run`)
+# that monitors this driver PID and enforces bounded lifetime + staging/unit cleanup even if
+# the SSH connection drops or the remote driver is forcibly killed.
+max_wait = max(10, min(120, int(grant.get("seconds", 15)) * 8 + 8))
+guard_script = "\n".join([
+    "import os, pathlib, shutil, subprocess, time",
+    f"driver_pid = {os.getpid()}",
+    f"deadline = time.monotonic() + {max_wait}",
+    "while time.monotonic() < deadline:",
+    "    if not os.path.exists(f'/proc/{driver_pid}'):",
+    "        break",
+    "    time.sleep(0.1)",
+    "time.sleep(0.15)",
+    f"units_file = pathlib.Path('/var/lib/qwen-sandbox/verifier-audit/{nonce}/units.txt')",
+    "if units_file.exists():",
+    "    for line in units_file.read_text(encoding='utf-8', errors='ignore').splitlines():",
+    "        u = line.strip()",
+    "        if u.startswith('qc-sandbox-') and u.endswith('.service'):",
+    "            subprocess.run(['/usr/bin/systemctl', 'kill', '--kill-who=all', '--signal=SIGKILL', u], check=False)",
+    "            subprocess.run(['/usr/bin/systemctl', 'stop', u], check=False)",
+    f"shutil.rmtree('/var/lib/qwen-sandbox/inputs/{proposal_sha}', ignore_errors=True)",
+    "shutil.rmtree('/var/tmp/qc_verify_staging', ignore_errors=True)",
+    "try:",
+    "    pathlib.Path('/etc/qwen-sandbox/test-host.json').unlink()",
+    "except FileNotFoundError:",
+    "    pass",
+    "subprocess.run(['/usr/bin/systemctl', 'reset-failed'], check=False)",
+])
 try:
-    __import__("subprocess").run(
+    subprocess.run(
         [
             "/usr/bin/systemd-run",
             "--system",
             "--quiet",
-            f"--unit=qc-verifier-cleanup-{grant['nonce'][:16]}",
-            "--on-active=120s",
-            "/bin/rm",
-            "-rf",
-            "/etc/qwen-sandbox/test-host.json",
-            "/var/tmp/qc_verify_staging",
+            "--collect",
+            f"--unit=qc-verifier-cleanup-{nonce[:16]}.service",
+            "--property=RuntimeMaxSec=130",
+            "/usr/bin/python3",
+            "-I",
+            "-B",
+            "-c",
+            guard_script,
         ],
         check=False,
     )
@@ -1416,25 +1492,42 @@ except Exception:
     pass
 
 try:
-    receipt = run_protected(grant, key)
+    receipt = run_protected(grant, key, cancel_event=cancel_ev)
     res = {"ok": True, "receipt": receipt}
-    if payload.get("test_nonce_replay"):
+    if payload.get("test_nonce_replay") and not cancel_ev.is_set():
         try:
-            run_protected(grant, key)
+            run_protected(grant, key, cancel_event=cancel_ev)
             res["nonce_replay_denied"] = False
         except FileExistsError:
             res["nonce_replay_denied"] = True
 finally:
+    stop_watch.set()
+    try:
+        units_file = pathlib.Path(f"/var/lib/qwen-sandbox/verifier-audit/{nonce}/units.txt")
+        if units_file.exists():
+            for line in units_file.read_text(encoding="utf-8", errors="ignore").splitlines():
+                u = line.strip()
+                if u.startswith("qc-sandbox-") and u.endswith(".service"):
+                    subprocess.run(["/usr/bin/systemctl", "kill", "--kill-who=all", "--signal=SIGKILL", u], check=False)
+                    subprocess.run(["/usr/bin/systemctl", "stop", u], check=False)
+    except Exception:
+        pass
+    try:
+        shutil.rmtree(f"/var/lib/qwen-sandbox/inputs/{proposal_sha}", ignore_errors=True)
+    except Exception:
+        pass
     try:
         policy_path.unlink()
     except FileNotFoundError:
         pass
     try:
-        __import__("subprocess").run(["/usr/bin/systemctl", "reset-failed"], check=False)
+        subprocess.run(["/usr/bin/systemctl", "stop", f"qc-verifier-cleanup-{nonce[:16]}.service"], check=False)
+        subprocess.run(["/usr/bin/systemctl", "reset-failed"], check=False)
     except Exception:
         pass
 
-print("QC_RECEIPT_JSON:" + json.dumps(res, sort_keys=True, separators=(",", ":")))
+if not cancel_ev.is_set():
+    print("QC_RECEIPT_JSON:" + json.dumps(res, sort_keys=True, separators=(",", ":")), flush=True)
 """
 
 
@@ -1443,6 +1536,7 @@ def make_laptop_ssh_verifier_transport(
     user: str = "emceemcee",
     key_filename: Optional[str] = None,
     record_runs: Optional[List[Dict[str, Any]]] = None,
+    on_channel_opened: Optional[Callable[[Any, Any], None]] = None,
 ) -> Callable[[Dict[str, Any], bytes], Dict[str, Any]]:
     """Create a live SSH transport that executes `vps_agent.independent_verifier.run_protected`
     as root on `qwen-laptop` (`100.101.187.115`) inside the pinned squashfs root image
@@ -1453,6 +1547,9 @@ def make_laptop_ssh_verifier_transport(
 
     resolved_key = key_filename or str(Path.home() / ".ssh" / "id_ed25519")
     b64_driver = base64.b64encode(REMOTE_LINUX_VERIFIER_DRIVER.encode("utf-8")).decode("ascii")
+    repo_root = Path(__file__).resolve().parents[3]
+    linux_sandbox_src = (repo_root / "vps_agent" / "linux_sandbox.py").read_text(encoding="utf-8")
+    independent_verifier_src = (repo_root / "vps_agent" / "independent_verifier.py").read_text(encoding="utf-8")
     cached_client: List[Any] = []
 
     def _get_client() -> Any:
@@ -1478,11 +1575,17 @@ def make_laptop_ssh_verifier_transport(
             "grant": grant,
             "key_hex": key.hex(),
             "test_nonce_replay": True,
+            "modules": {
+                "linux_sandbox": linux_sandbox_src,
+                "independent_verifier": independent_verifier_src,
+            },
         })
         cmd = f"sudo python3 -I -B -c \"import base64; exec(base64.b64decode('{b64_driver}').decode('utf-8'))\""
         stdin, stdout, stderr = client.exec_command(cmd, timeout=90)
         stdin.write(stdin_payload)
         stdin.channel.shutdown_write()
+        if on_channel_opened is not None:
+            on_channel_opened(client, stdout.channel)
         out_text = stdout.read().decode("utf-8", errors="replace")
         err_text = stderr.read().decode("utf-8", errors="replace")
         rc = stdout.channel.recv_exit_status()
