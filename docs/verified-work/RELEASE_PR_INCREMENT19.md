@@ -79,3 +79,20 @@
   # 5. Full 23-File Increment 18, Increment 19 & Application Regression Selection (385 tests)
   python -m pytest tests/test_increment19_public_holdout_and_containment.py tests/test_increment19_review_remediation.py tests/test_increment19_coordinator_adversarial_limits.py tests/test_increment18_repair_regressions.py tests/test_working_memory_adversarial.py tests/test_increment18_deliberate_assistant.py tests/test_stage02_planning.py tests/test_inference.py tests/test_inference_and_observatory_widgets.py tests/test_observatory.py tests/test_metric_integrity.py tests/test_web_routes.py tests/test_worker_authorization_enforcement.py tests/test_script_authorization.py tests/test_certification_block_reporting.py tests/test_claim_contracts.py tests/test_financial_reasoning.py tests/test_code_proposals.py tests/test_protected_verification.py tests/test_migrations.py tests/test_migration_compatibility.py tests/test_migration_robustness_and_backup.py tests/test_paged_kv_authority_and_app_behavior.py -q --tb=short
   ```
+
+---
+
+## 3. November 5, 2026 Audit Remediation (`R1`?`R4`) & Independent Verification Pass
+
+- **Tested Implementation Commit SHA**: `7cd9a91141a60d9582fee7bd4421ba1241403cb4` (stacked on `R1` `d268819dfb1d6298a6f7165b091d41bd03ba733f`, `R2` `8e15335828a125ff3cb0a2d56b02d230e521e543`, `R3` `acec0e3e3ebc04c6a5d54087c321c26660409075`, `R4` `3c5af4ab81cb386dedf8394c36f85219ec9bc2c9`)
+- **Rehearsed Integration Merge Commit SHA (onto `origin/main` `4be7f547f4919380a22abdd2122961d559d2f46f`)**: `ae2d418a419701cf44a2cd5b576aa6bc10c31d63` (`0` conflicts, `287 passed, 0 failed in 219.83s`)
+- **Independent Verification & Live Interruption Evidence Bundles**:
+  - [`docs/verified-work/evidence/audit-r1-r4-independent-verification-20261105.json`](evidence/audit-r1-r4-independent-verification-20261105.json)
+  - [`docs/verified-work/evidence/audit-live-interruption-checks-20261105.json`](evidence/audit-live-interruption-checks-20261105.json)
+  - [`docs/verified-work/evidence/increment19-public-holdout-containment-rerun-20261105.json`](evidence/increment19-public-holdout-containment-rerun-20261105.json)
+  - [`docs/verified-work/evidence/increment19-protected-boundary-live-rerun-20261105.json`](evidence/increment19-protected-boundary-live-rerun-20261105.json)
+- **Finding Status Breakdown**:
+  - **14 Verified**: `AUD-01`, `AUD-02`, `AUD-03`, `AUD-04`, `AUD-05`, `AUD-06`, `AUD-07`, `AUD-08`, `AUD-10a`, `AUD-10b`, `AUD-10c`, `AUD-11b`, `AUD-11c`, `AUD-12`.
+  - **2 Partial (Retained Open for Production Release; Not Presented as Closed)**:
+    - `AUD-11a` (`partial`): Client HTTP socket shutdown (`SHUT_RDWR` + `close()`), owned worker request thread/subprocess termination within `<= 0.5s`, lease-revocation abort, late-result rejection (`409`), controllable HTTP server generation stop, and fail-closed rejection of unconfirmed termination (`error_category="cancellation_termination_unconfirmed"`) are verified; uninstrumented Ollama (`100.101.187.115:11434`) backend generation stop is reported as `"unconfirmed"`.
+    - `AUD-09` (`partial`): `QC_PAGED_KV_ENABLED=false` by default and truthful telemetry-only sidecar / pipeline capability reporting are verified; external Ollama HTTP KV tensor injection and multi-host split-weight execution remain unimplemented/held.

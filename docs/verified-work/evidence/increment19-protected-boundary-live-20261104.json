@@ -18,7 +18,7 @@
       "hidden_oracle_separated": true,
       "independent_result_authority": true,
       "cleanup_confirmed": true,
-      "grant_nonce": "31b18c82b6d646848ed15b58cc5b8b43",
+      "grant_nonce": "e07cfc5eeefa475b85b428e2a518dfc5",
       "observations": [
         {
           "case_id": "case_public_equiv",
@@ -26,7 +26,7 @@
           "reason": "service_failure",
           "exit_code": 1,
           "cleanup_confirmed": true,
-          "unit": "qc-sandbox-7d0ce66044d743488d0c97dfca8c3a50.service"
+          "unit": "qc-sandbox-adcd5eb615e048638dc36b16541a3e9a.service"
         },
         {
           "case_id": "case_hidden_holdout",
@@ -34,7 +34,7 @@
           "reason": "service_failure",
           "exit_code": 1,
           "cleanup_confirmed": true,
-          "unit": "qc-sandbox-f7166ffc2bdc4c8b8ce7ab30eb3c24c3.service"
+          "unit": "qc-sandbox-eb367673aa004884845b159bb6c538e9.service"
         }
       ]
     },
@@ -49,7 +49,7 @@
       "hidden_oracle_separated": true,
       "independent_result_authority": true,
       "cleanup_confirmed": true,
-      "grant_nonce": "a1d766684c1041318efd353bbcd7feb8",
+      "grant_nonce": "4289584851b040098a57bec416ae1c80",
       "observations": [
         {
           "case_id": "case_public_equiv",
@@ -57,7 +57,7 @@
           "reason": "service_failure",
           "exit_code": 1,
           "cleanup_confirmed": true,
-          "unit": "qc-sandbox-db4fa25cffd54d6ea36f6e117a059061.service"
+          "unit": "qc-sandbox-8ce9142ad4c44ef98b4e5de55c5d0e06.service"
         },
         {
           "case_id": "case_hidden_holdout",
@@ -65,7 +65,7 @@
           "reason": "service_failure",
           "exit_code": 1,
           "cleanup_confirmed": true,
-          "unit": "qc-sandbox-04ebc7a6fb4d44e493ecbf5556dafa07.service"
+          "unit": "qc-sandbox-6d5b4f80856e481f83a25fcfc5bae058.service"
         }
       ]
     },
@@ -80,7 +80,7 @@
       "hidden_oracle_separated": true,
       "independent_result_authority": true,
       "cleanup_confirmed": true,
-      "grant_nonce": "9e40e2d5d5ae4ceb8cd2b5dc2eb4272d",
+      "grant_nonce": "9d34d23c8e1f4891beff1e787e9e600d",
       "observations": [
         {
           "case_id": "case_public_equiv",
@@ -88,7 +88,7 @@
           "reason": "service_failure",
           "exit_code": 1,
           "cleanup_confirmed": true,
-          "unit": "qc-sandbox-9762d6b6998f42e28ce4dda19f212f0f.service"
+          "unit": "qc-sandbox-09ea83ecdfb444f88ca82316d8dd4093.service"
         },
         {
           "case_id": "case_hidden_holdout",
@@ -96,7 +96,7 @@
           "reason": "service_failure",
           "exit_code": 1,
           "cleanup_confirmed": true,
-          "unit": "qc-sandbox-63203b59006148e9abd38940149a62e4.service"
+          "unit": "qc-sandbox-680009e453184f368c47c1921a8a4ce0.service"
         }
       ]
     },
@@ -111,7 +111,7 @@
       "hidden_oracle_separated": true,
       "independent_result_authority": true,
       "cleanup_confirmed": true,
-      "grant_nonce": "ef7db2b76a59443780ab357c9288e31f",
+      "grant_nonce": "894f366b93e54562a4444aff1ce2c794",
       "observations": [
         {
           "case_id": "case_public_equiv",
@@ -119,7 +119,7 @@
           "reason": "completed",
           "exit_code": 0,
           "cleanup_confirmed": true,
-          "unit": "qc-sandbox-5e5c286988584b8ab13bfa95a617f661.service"
+          "unit": "qc-sandbox-354523369bc54be6aba29519046e4ad3.service"
         },
         {
           "case_id": "case_hidden_holdout",
@@ -127,7 +127,7 @@
           "reason": "completed",
           "exit_code": 0,
           "cleanup_confirmed": true,
-          "unit": "qc-sandbox-2da0790815a04ca8bb0e9857da5c3215.service"
+          "unit": "qc-sandbox-f5d8be2a268c49b1b1de73603c1460ab.service"
         }
       ]
     },
@@ -142,7 +142,7 @@
       "hidden_oracle_separated": true,
       "independent_result_authority": true,
       "cleanup_confirmed": true,
-      "grant_nonce": "0cb9a4ff3ac2454390102097d4f3283f",
+      "grant_nonce": "ddb5fa8ba30e4a749e37dbba2ae7b899",
       "observations": [
         {
           "case_id": "case_public_equiv",
@@ -150,7 +150,7 @@
           "reason": "completed",
           "exit_code": 0,
           "cleanup_confirmed": true,
-          "unit": "qc-sandbox-8804f71f0162454898a04fb328be3225.service"
+          "unit": "qc-sandbox-335560fcf26247a694a6f09a5c75e033.service"
         },
         {
           "case_id": "case_hidden_holdout",
@@ -158,7 +158,7 @@
           "reason": "completed",
           "exit_code": 0,
           "cleanup_confirmed": true,
-          "unit": "qc-sandbox-03732a4e58ed4176b0b668df8e9c5211.service"
+          "unit": "qc-sandbox-9fb3a71a206347d98e6c830e607ccddc.service"
         }
       ]
     },
@@ -173,7 +173,7 @@
       "hidden_oracle_separated": true,
       "independent_result_authority": true,
       "cleanup_confirmed": true,
-      "grant_nonce": "b20e762863524878a69dc5e3fc409ecf",
+      "grant_nonce": "d623269afb3d40ee92818871b5f357a3",
       "observations": [
         {
           "case_id": "case_public_equiv",
@@ -181,7 +181,7 @@
           "reason": "service_failure",
           "exit_code": 1,
           "cleanup_confirmed": true,
-          "unit": "qc-sandbox-c264b842c77340ffb3209a6e081b45b2.service"
+          "unit": "qc-sandbox-0dc23e5809f144a6834c7578da5d4206.service"
         },
         {
           "case_id": "case_hidden_holdout",
@@ -189,7 +189,7 @@
           "reason": "service_failure",
           "exit_code": 1,
           "cleanup_confirmed": true,
-          "unit": "qc-sandbox-1a1f3d2ada454f5abdabde42f79d294e.service"
+          "unit": "qc-sandbox-9dc5dd91a6f145868e42dd15b2b3b61b.service"
         }
       ]
     },
@@ -204,7 +204,7 @@
       "hidden_oracle_separated": true,
       "independent_result_authority": true,
       "cleanup_confirmed": true,
-      "grant_nonce": "54c83db8c93b4802a10b3d2e53ad827d",
+      "grant_nonce": "fa1c0120f7ea42d380d6f4de1d884b6c",
       "observations": [
         {
           "case_id": "case_public_equiv",
@@ -212,7 +212,7 @@
           "reason": "service_failure",
           "exit_code": 1,
           "cleanup_confirmed": true,
-          "unit": "qc-sandbox-1b910e85b6d2487a8b537ca6ee7a836a.service"
+          "unit": "qc-sandbox-6bbcb3ae71354f40aa3cb318e8706815.service"
         },
         {
           "case_id": "case_hidden_holdout",
@@ -220,7 +220,7 @@
           "reason": "service_failure",
           "exit_code": 1,
           "cleanup_confirmed": true,
-          "unit": "qc-sandbox-aaf88420b66340cc82d25e122f79acd9.service"
+          "unit": "qc-sandbox-be9f668d3ee5470a920788356dc65337.service"
         }
       ]
     },
@@ -235,7 +235,7 @@
       "hidden_oracle_separated": true,
       "independent_result_authority": true,
       "cleanup_confirmed": true,
-      "grant_nonce": "f1a819404271446895c48395a500f655",
+      "grant_nonce": "6e4268de79be4304871d4ee42b9d1c68",
       "observations": [
         {
           "case_id": "case_public_equiv",
@@ -243,7 +243,7 @@
           "reason": "orphaned_descendant",
           "exit_code": 0,
           "cleanup_confirmed": true,
-          "unit": "qc-sandbox-57eb8858c0f04dd2aa1398545065ccd0.service"
+          "unit": "qc-sandbox-0feb3b703a6d4036b466f0de0f8cdd8a.service"
         },
         {
           "case_id": "case_hidden_holdout",
@@ -251,7 +251,7 @@
           "reason": "orphaned_descendant",
           "exit_code": 0,
           "cleanup_confirmed": true,
-          "unit": "qc-sandbox-f7e09a8760424656abe2bd46ddc4b429.service"
+          "unit": "qc-sandbox-2538f7251ccc4b98a77b2dcebf20a91c.service"
         }
       ]
     },
@@ -266,7 +266,7 @@
       "hidden_oracle_separated": true,
       "independent_result_authority": true,
       "cleanup_confirmed": true,
-      "grant_nonce": "3e0b582e86764f15b24d1c2760862257",
+      "grant_nonce": "c05da9e4c68343eba61136488b9b4a8a",
       "observations": [
         {
           "case_id": "case_public_equiv",
@@ -274,7 +274,7 @@
           "reason": "output_limit",
           "exit_code": null,
           "cleanup_confirmed": true,
-          "unit": "qc-sandbox-f57da61d66da49f4b8e810aca2305966.service"
+          "unit": "qc-sandbox-baeaa942122f4214b755dec463660a5b.service"
         },
         {
           "case_id": "case_hidden_holdout",
@@ -282,7 +282,7 @@
           "reason": "output_limit",
           "exit_code": null,
           "cleanup_confirmed": true,
-          "unit": "qc-sandbox-5867955899e04e8f8fb0a947fbe036e7.service"
+          "unit": "qc-sandbox-b8f5c96ebce1455ca378d179353c1637.service"
         }
       ]
     },
@@ -297,7 +297,7 @@
       "hidden_oracle_separated": true,
       "independent_result_authority": true,
       "cleanup_confirmed": true,
-      "grant_nonce": "1ae62929c75040c2b88df90acb8e0d5c",
+      "grant_nonce": "980e1ba8b6b64c59bfcd3597fcfb3721",
       "observations": [
         {
           "case_id": "case_public_equiv",
@@ -305,7 +305,7 @@
           "reason": "timeout",
           "exit_code": null,
           "cleanup_confirmed": true,
-          "unit": "qc-sandbox-e4573600eeb14b7ca3111c003a0aa1dc.service"
+          "unit": "qc-sandbox-5883c8114898444c970086ee0543c587.service"
         },
         {
           "case_id": "case_hidden_holdout",
@@ -313,7 +313,7 @@
           "reason": "timeout",
           "exit_code": null,
           "cleanup_confirmed": true,
-          "unit": "qc-sandbox-994f7603ecfe475da3f4539b5dadb3b9.service"
+          "unit": "qc-sandbox-c80139394a5c478a802feed9bb27423b.service"
         }
       ]
     },
@@ -328,7 +328,7 @@
       "hidden_oracle_separated": true,
       "independent_result_authority": true,
       "cleanup_confirmed": true,
-      "grant_nonce": "09b03ff7e432402ba6f07cd0a26ef7be",
+      "grant_nonce": "851bfb72322d4df9bbc572f6b451b68d",
       "observations": [
         {
           "case_id": "case_public_equiv",
@@ -336,7 +336,7 @@
           "reason": "completed",
           "exit_code": 0,
           "cleanup_confirmed": true,
-          "unit": "qc-sandbox-3721a30e9a7545b086c15d356a2b6f83.service"
+          "unit": "qc-sandbox-1aff4445ecce4703848fc498ed152768.service"
         },
         {
           "case_id": "case_hidden_holdout",
@@ -344,7 +344,7 @@
           "reason": "completed",
           "exit_code": 0,
           "cleanup_confirmed": true,
-          "unit": "qc-sandbox-60557e44351a4c098fdfc47e80d25ccd.service"
+          "unit": "qc-sandbox-7bf0838e345a4b86a465886aed2f77e4.service"
         }
       ]
     },

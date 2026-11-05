@@ -1,0 +1,147 @@
+{
+  "schema": "qc.audit_r1_r4_independent_verification.v1",
+  "recorded_at_utc": "2026-11-05T22:42:00Z",
+  "repository": "C:/Users/Matt C/.gemini/antigravity-ide/scratch/qwen-collective-integration",
+  "branch": "feature/increment19-general-purpose-coordinator",
+  "base_main_sha": "4be7f547f4919380a22abdd2122961d559d2f46f",
+  "starting_branch_head_sha": "1d8a07facf1c5c21e44d54ab8cba10cb93bfb82f",
+  "previous_tested_implementation_sha": "3c5af4ab81cb386dedf8394c36f85219ec9bc2c9",
+  "previous_rehearsed_merge_sha": "5d6984de602ef543fb7c277cba3c40e6a4fe369b",
+  "tested_implementation_sha": "7cd9a91141a60d9582fee7bd4421ba1241403cb4",
+  "rehearsed_integration_merge_sha": "ae2d418a419701cf44a2cd5b576aa6bc10c31d63",
+  "historical_evidence_preservation": {
+    "dirty_file_path": "docs/verified-work/evidence/increment19-public-holdout-containment-20261104.json",
+    "committed_sha256": "511e463c23d6ca6a2f49daf685f086f9ce165f7e1514b98c2abad2dee32edf26",
+    "classification": "unintended_test_rerun_overwrite_restored",
+    "origin_explanation": "tests/test_increment19_public_holdout_and_containment.py line 769 unconditionally executed EVIDENCE_PATH.write_text(...) at the end of test_10_live_linux_root_image_public_and_holdout_and_evidence_bundle, overwriting the tracked 2026-11-04 evidence file with fresh random grant_nonce and suite_id UUIDs during an earlier pytest run. The original 2026-11-04 file was restored to its exact committed SHA-256 (3652409d20f6f0351bfec113c557ec4a14965f228ae521b551048e97a90d2314), and tests/test_increment19_public_holdout_and_containment.py, tests/test_increment19_protected_boundary_adversarial.py, and tests/test_increment19_fresh_variants_transfer_e2e.py were updated so reruns only write when an explicit QC_RERUN_*_EVIDENCE_PATH environment variable is provided.",
+    "distinct_rerun_evidence_records": {
+      "docs/verified-work/evidence/increment19-public-holdout-containment-rerun-20261105.json": "f55e0da20af748f858b36de4b294ddc6a09db8e3f8afc486541947d0c5d608f3",
+      "docs/verified-work/evidence/increment19-protected-boundary-live-rerun-20261105.json": "5ce7efa6e9d9a76e9c42cd42a87fc5b66c9334558897c1a382163b1fe4a96b02",
+      "docs/verified-work/evidence/audit-live-interruption-checks-20261105.json": "1973c496222adeb31c18b01ee14b2ebc44aa699731134ca19d74631ffde920ab"
+    },
+    "protected_boundary_20261104_sha256": "14f8a8192838f15e1849f2b0b0255e0932092c5aefc46c9b12e078ec90267c75"
+  },
+  "candidate_and_suite_sha256": {
+    "app/services/orchestration/protected_repo_verifier.py": "eddb5dbb4ed7fa6ccdbe67dedb2f09952f4ac235e61a2621af637b720db1bdd7",
+    "app/services/orchestration/working_memory.py": "147621ec39affa879ad22c2b6d351c22ef21a5c8a6c81b1e3c03d4f3ee6d1993",
+    "app/services/worker.py": "ab934521acbb0ab9ff11720a2c32f61943259695a6d501dcd63d80625a6c52c7",
+    "vps_agent/agent.py": "7836a36c566e9145ff9ef68bb76c1c4b8b7d77b2d59a5da13a264a2969656866",
+    "vps_agent/config.py": "36b21cad338eb6ea462e7948e2d1542e05cc551b7a6a01c466cb0577afae65b9",
+    "vps_agent/executor.py": "39b57896488fdcddaca807f4b704acac7fa08de8b0700141adcbdd055704789c",
+    "vps_agent/independent_verifier.py": "58fbc48b8961579e5577201d091efa87bad91fb78bb7af45f837ccc07c7a00ae",
+    "vps_agent/research_fetch.py": "b336f8a69f5466d329c57519bbcf169821936d67c47a4b4791bfb5517c989ebe",
+    "vps_agent/research_job.py": "b217355030a8e2ec6894c0ca14f45e1592ad05bf4ad77bf23d4ed5f89a64189c",
+    "tests/test_audit_r1_security_and_containment.py": "754d58429baa0db8a6e6fdc629f988187f005c186bffbb49dda51f017835ce7e",
+    "tests/test_audit_r2_provenance_and_status.py": "72dd5ec82e0eae193196e2d18bfe62274ff7f2e67c7800f51d5d9da84e026756",
+    "tests/test_audit_r3_grounding_tools_finance_memory.py": "c0dd3cf20cd96edd1e101fcb31cca6b89112fa93c25abbf01a5f72a3bf96db58",
+    "tests/test_audit_r4_lifecycle_and_recovery.py": "39dac1ce3129602723ad2b5fd747b191ac9f28e8b312ae1982efaabb36713242",
+    "tests/test_audit_r4_live_interruption_checks.py": "a4ed5a134f70dbf4f2b70dffafd3bb6e1b322ac147f0aae1164367a7cb20cdc7"
+  },
+  "runtime_and_backend_identity": {
+    "controller_host": {
+      "os": "Windows 10.0.19045",
+      "python": "3.12.10",
+      "pytest": "9.0.3",
+      "torch_installed": false
+    },
+    "non_production_remote_linux_host": {
+      "host": "100.101.187.115",
+      "hostname": "qwen-laptop",
+      "os": "Ubuntu Linux 7.0.0-38-generic",
+      "python": "3.12.3",
+      "pinned_root_image_sha256": "43b057aa6a7133de2bbed57a8caaeecd07aea9228fa7cb6bec1608286b967b61",
+      "preserved_service_pids": {
+        "ollama.service": "1432",
+        "qwen-worker.service": "1561866",
+        "qc-ollama-ts.service": "519545"
+      }
+    }
+  },
+  "independent_test_runs": {
+    "focused_r1_r4_and_live_interruption_suite": {
+      "tested_commit_sha": "7cd9a91141a60d9582fee7bd4421ba1241403cb4",
+      "command": "python -m pytest -v tests/test_audit_r1_security_and_containment.py tests/test_audit_r2_provenance_and_status.py tests/test_audit_r3_grounding_tools_finance_memory.py tests/test_audit_r4_lifecycle_and_recovery.py tests/test_audit_r4_live_interruption_checks.py",
+      "exit_code": 0,
+      "passed": 21,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "duration_seconds": 33.91
+    },
+    "candidate_commit_21_file_regression_suite": {
+      "tested_commit_sha": "7cd9a91141a60d9582fee7bd4421ba1241403cb4",
+      "command": "python -m pytest -q tests/test_audit_r1_security_and_containment.py tests/test_audit_r2_provenance_and_status.py tests/test_audit_r3_grounding_tools_finance_memory.py tests/test_audit_r4_lifecycle_and_recovery.py tests/test_audit_r4_live_interruption_checks.py tests/test_increment19_public_holdout_and_containment.py tests/test_increment19_protected_boundary_adversarial.py tests/test_increment19_review_remediation.py tests/test_increment19_coordinator_adversarial_limits.py tests/test_linux_sandbox.py tests/test_protected_verification.py tests/test_code_proposals.py tests/test_bounded_process.py tests/test_execution_cancellation.py tests/test_research_security.py tests/test_ssrf_advanced.py tests/test_worker_authorization_enforcement.py tests/test_inference_paged_kv_sidecar.py tests/test_financial_reasoning.py tests/test_working_memory_adversarial.py tests/test_increment18_deliberate_assistant.py",
+      "exit_code": 0,
+      "passed": 287,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "duration_seconds": 213.51
+    },
+    "disposable_integration_merge_21_file_regression_suite": {
+      "rehearsal_branch": "rehearsal/audit-r1-r4-merge-20261105",
+      "base_main_sha": "4be7f547f4919380a22abdd2122961d559d2f46f",
+      "candidate_sha": "7cd9a91141a60d9582fee7bd4421ba1241403cb4",
+      "merge_commit_sha": "ae2d418a419701cf44a2cd5b576aa6bc10c31d63",
+      "merge_conflicts": 0,
+      "command": "python -m pytest -q tests/test_audit_r1_security_and_containment.py tests/test_audit_r2_provenance_and_status.py tests/test_audit_r3_grounding_tools_finance_memory.py tests/test_audit_r4_lifecycle_and_recovery.py tests/test_audit_r4_live_interruption_checks.py tests/test_increment19_public_holdout_and_containment.py tests/test_increment19_protected_boundary_adversarial.py tests/test_increment19_review_remediation.py tests/test_increment19_coordinator_adversarial_limits.py tests/test_linux_sandbox.py tests/test_protected_verification.py tests/test_code_proposals.py tests/test_bounded_process.py tests/test_execution_cancellation.py tests/test_research_security.py tests/test_ssrf_advanced.py tests/test_worker_authorization_enforcement.py tests/test_inference_paged_kv_sidecar.py tests/test_financial_reasoning.py tests/test_working_memory_adversarial.py tests/test_increment18_deliberate_assistant.py",
+      "exit_code": 0,
+      "passed": 287,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "duration_seconds": 219.83,
+      "disposable_branch_cleaned_up": true
+    },
+    "not_evaluated_suites_in_controller_venv": [
+      {
+        "suite": "tests/test_increment17_comprehensive_verification.py",
+        "status": "not_evaluated",
+        "reason": "Controller Python 3.12.10 environment does not have PyTorch (`torch`) installed; local GPU PyTorch PagedKV and split-pipeline parity were previously evaluated in comprehensive-audit-20261105.json, while controller sidecar/capability reporting was verified in tests/test_inference_paged_kv_sidecar.py and tests/test_audit_r4_lifecycle_and_recovery.py::test_aud09_paged_kv_and_pipeline_capability_reporting_is_truthful."
+      }
+    ]
+  },
+  "finding_status_summary": {
+    "verified": [
+      "AUD-01",
+      "AUD-02",
+      "AUD-03",
+      "AUD-04",
+      "AUD-05",
+      "AUD-06",
+      "AUD-07",
+      "AUD-08",
+      "AUD-10a",
+      "AUD-10b",
+      "AUD-10c",
+      "AUD-11b",
+      "AUD-11c",
+      "AUD-12"
+    ],
+    "partial": [
+      "AUD-11a",
+      "AUD-09"
+    ],
+    "not_evaluated": []
+  },
+  "known_limitations_and_open_partial_items": {
+    "AUD-11a": {
+      "status": "partial",
+      "verified_behaviors": [
+        "Cancellation acknowledged across all 8 required stages (before_dispatch, while_connecting, before_headers, during_streaming, concurrent_with_completion, during_timeout_and_cleanup, lease_revocation, repeated_20x_non_accumulation).",
+        "Client HTTP socket forcefully shut down (`SHUT_RDWR`) and closed; owned worker request thread/subprocess joined within <= 0.5s deadline (`owned_threads_or_processes_stopped=True`).",
+        "Controllable HTTP server confirms `backend_generation_stopped=True` when the backend observes socket disconnect or exposes `/api/generation-status`, and fails closed (`error_category='cancellation_termination_unconfirmed'`, `termination_confirmed=False`) when the backend reports generation is still running.",
+        "Late worker results are rejected by the controller (`409 Conflict`) and cannot complete tasks, publish accepted artifacts, or alter authoritative project state."
+      ],
+      "remaining_gap": "Live Ollama on `qwen-laptop` (`100.101.187.115:11434`, `qwen2.5:1.5b`) does not expose a per-request generation status inspection endpoint (`GET /api/generation-status` returns HTTP 404), so while the worker aborts its streaming HTTP socket in 0.484s and stops all owned threads, whether Ollama's internal runner immediately halts compute after socket close is reported honestly as `backend_generation_stopped='unconfirmed'` (`termination_confirmed='unconfirmed_backend'`)."
+    },
+    "AUD-09": {
+      "status": "partial",
+      "verified_behaviors": [
+        "`QC_PAGED_KV_ENABLED=false` by default in production configuration (`cache_disabled_startup`).",
+        "`get_paged_kv_metrics()` and `get_active_pipeline_topologies()` truthfully report `integration_mode='telemetry_only_http_sidecar'`, `external_http_runtime_kv_reuse_supported=False`, and `multi_host_weight_execution_implemented=False`."
+      ],
+      "remaining_gap": "External Ollama HTTP servers cannot accept pre-computed PyTorch `DynamicCache` KV tensors from the controller HTTP sidecar (`app/services/inference.py`), and multi-host real-weight split execution across `qwen-laptop` remains unimplemented/held."
+    }
+  }
+}

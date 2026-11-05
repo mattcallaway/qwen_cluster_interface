@@ -116,18 +116,25 @@ To eliminate any ordering ambiguity between initial summary notes and the remedi
 
 ---
 
-## 3. Remediation Execution & Integration Rehearsal Summary (Completed November 5, 2026)
+## 3. Remediation Execution, Independent Verification & Integration Rehearsal Summary (November 5, 2026)
 
-All four authoritative repair increments (**R1 ? R2 ? R3 ? R4**) have been implemented, independently tested, and verified on both `feature/increment19-general-purpose-coordinator` and a disposable integration rehearsal branch merged onto `origin/main` (`4be7f547f4919380a22abdd2122961d559d2f46f`).
+All four authoritative repair increments (**R1 -> R2 -> R3 -> R4**) and the subsequent independent verification repairs (`7cd9a91141a60d9582fee7bd4421ba1241403cb4`) have been implemented, independently tested, and verified on both `feature/increment19-general-purpose-coordinator` and a disposable integration rehearsal branch merged onto `origin/main` (`4be7f547f4919380a22abdd2122961d559d2f46f` -> merge commit `ae2d418a419701cf44a2cd5b576aa6bc10c31d63`).
 
-| Increment | Findings Resolved | Implementation Commit SHA | Regression Suite | Verification Result |
+| Increment / Phase | Findings Addressed | Implementation Commit SHA | Regression Suite | Status & Verification Result |
 | :---: | :--- | :--- | :--- | :--- |
-| **Section 1** | Plan reconciliation & subfinding split (`AUD-10a`?`c`, `AUD-11a`?`c`) | `a74a35a33599024ca8d71fb823f742f198ac99b7` | Doc & register consistency | **VERIFIED** |
-| **R1** | `AUD-03`, `AUD-05`, `AUD-10b`, `AUD-11c` (Security Boundaries & Containment) | `d268819dfb1d6298a6f7165b091d41bd03ba733f` | `tests/test_audit_r1_security_and_containment.py` + related security suites | **`76 passed, 0 failed`** |
-| **R2** | `AUD-04`, `AUD-07`, `AUD-10c` (Provenance, Acceptance & Truthful Status) | `8e15335828a125ff3cb0a2d56b02d230e521e543` | `tests/test_audit_r2_provenance_and_status.py` + related provenance suites | **`98 passed, 0 failed`** |
-| **R3** | `AUD-01`, `AUD-02`, `AUD-08`, `AUD-10a`, `AUD-12` (Grounded Coordination, Tools, Financial Rules & Memory) | `acec0e3e3ebc04c6a5d54087c321c26660409075` | `tests/test_audit_r3_grounding_tools_finance_memory.py` + related coordinator/memory suites | **`76 passed, 0 failed`** |
-| **R4** | `AUD-06`, `AUD-11a`, `AUD-11b`, `AUD-09` (Lifecycle Consistency, Lease Cancellation, Remote Cleanup & Capability Truth) | `3c5af4ab81cb386dedf8394c36f85219ec9bc2c9` | `tests/test_audit_r4_lifecycle_and_recovery.py` + related sandbox/migration/KV/worker suites | **`153 passed, 0 failed`** |
-| **Integration Rehearsal** | Full `R1`?`R4` + Increment 17?19 regression verification on `origin/main` (`4be7f547f4919380a22abdd2122961d559d2f46f`) | Rehearsed merge `5d6984de602ef543fb7c277cba3c40e6a4fe369b` (`0` conflicts) | 20 regression test files (`258` tests) | **`258 passed, 0 failed in 168.12s`** |
+| **Section 1** | Plan reconciliation & subfinding split (`AUD-10a`?`c`, `AUD-11a`?`c`) | `a74a35a33599024ca8d71fb823f742f198ac99b7` | Doc & register consistency | **Verified** |
+| **R1** | `AUD-03`, `AUD-05`, `AUD-10b`, `AUD-11c` (Security Boundaries & Containment) | `d268819dfb1d6298a6f7165b091d41bd03ba733f` + `7cd9a91141a60d9582fee7bd4421ba1241403cb4` | `tests/test_audit_r1_security_and_containment.py` + related security suites | **Verified** (`AUD-03`, `AUD-05`, `AUD-10b`, `AUD-11c`) |
+| **R2** | `AUD-04`, `AUD-07`, `AUD-10c` (Provenance, Acceptance & Truthful Status) | `8e15335828a125ff3cb0a2d56b02d230e521e543` + `7cd9a91141a60d9582fee7bd4421ba1241403cb4` | `tests/test_audit_r2_provenance_and_status.py` + related provenance suites | **Verified** (`AUD-04`, `AUD-07`, `AUD-10c`) |
+| **R3** | `AUD-01`, `AUD-02`, `AUD-08`, `AUD-10a`, `AUD-12` (Grounded Coordination, Tools, Financial Rules & Memory) | `acec0e3e3ebc04c6a5d54087c321c26660409075` | `tests/test_audit_r3_grounding_tools_finance_memory.py` + related coordinator/memory suites | **Verified** (`AUD-01`, `AUD-02`, `AUD-08`, `AUD-10a`, `AUD-12`) |
+| **R4 & Live Interruption Pass** | `AUD-06`, `AUD-11b` (**Verified**); `AUD-11a`, `AUD-09` (**Partial ? retained open for production**) | `3c5af4ab81cb386dedf8394c36f85219ec9bc2c9` + `7cd9a91141a60d9582fee7bd4421ba1241403cb4` | `tests/test_audit_r4_lifecycle_and_recovery.py` + `tests/test_audit_r4_live_interruption_checks.py` (`21 passed in 33.91s`) | **`AUD-06`, `AUD-11b` Verified; `AUD-11a`, `AUD-09` Partial** |
+| **Integration Rehearsal** | Full `R1`?`R4` + Live Interruption + Increment 18?19 regression suite on `origin/main` (`4be7f547f4919380a22abdd2122961d559d2f46f`) | Candidate `7cd9a91141a60d9582fee7bd4421ba1241403cb4`; Rehearsed merge `ae2d418a419701cf44a2cd5b576aa6bc10c31d63` (`0` conflicts) | 21 regression test files (`287` tests) | **`287 passed, 0 failed` (`213.51s` on branch; `219.83s` on merge)** |
 
-- **Evidence Bundle**: [`docs/verified-work/evidence/audit-remediation-verification-20261105.json`](evidence/audit-remediation-verification-20261105.json)
-
+### Finding Status Classification Summary
+- **Verified (14 findings/subfindings)**: `AUD-01`, `AUD-02`, `AUD-03`, `AUD-04`, `AUD-05`, `AUD-06`, `AUD-07`, `AUD-08`, `AUD-10a`, `AUD-10b`, `AUD-10c`, `AUD-11b`, `AUD-11c`, `AUD-12`.
+- **Partial ? Retained Open for Production Release (2 findings/subfindings, not presented as closed)**:
+  - **`AUD-11a` (`partial`)**: Client HTTP socket shutdown (`SHUT_RDWR` + `close()`), owned worker request thread/subprocess termination within `<= 0.5s`, lease-revocation abort, controller late-result rejection (`409`), controllable HTTP server generation stop, and fail-closed rejection of unconfirmed termination (`error_category="cancellation_termination_unconfirmed"`) are independently verified. However, uninstrumented Ollama on `qwen-laptop` (`100.101.187.115:11434`) does not expose a per-request generation status endpoint (`/api/generation-status` returns HTTP 404), so `backend_generation_stopped` is reported as `"unconfirmed"` on live Ollama runs.
+  - **`AUD-09` (`partial`)**: `QC_PAGED_KV_ENABLED=false` by default and truthful telemetry-only sidecar reporting (`integration_mode="telemetry_only_http_sidecar"`, `external_http_runtime_kv_reuse_supported=False`, `multi_host_weight_execution_implemented=False`) are verified; external Ollama HTTP KV tensor injection and multi-host real-weight split execution across `qwen-laptop` remain unimplemented/held.
+- **Evidence Bundles**:
+  - [`docs/verified-work/evidence/audit-r1-r4-independent-verification-20261105.json`](evidence/audit-r1-r4-independent-verification-20261105.json)
+  - [`docs/verified-work/evidence/audit-live-interruption-checks-20261105.json`](evidence/audit-live-interruption-checks-20261105.json)
+  - [`docs/verified-work/evidence/audit-remediation-verification-20261105.json`](evidence/audit-remediation-verification-20261105.json)

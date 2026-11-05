@@ -3,9 +3,9 @@
   "audit_date": "2026-11-05",
   "repository": "C:/Users/Matt C/.gemini/antigravity-ide/scratch/qwen-collective-integration",
   "branch": "feature/increment19-general-purpose-coordinator",
-  "head_sha": "b89e63ce372726f65fa650fd2ed30aa917b903eb",
-  "tested_implementation_sha": "3c5af4ab81cb386dedf8394c36f85219ec9bc2c9",
-  "rehearsed_merge_sha": "5d6984de602ef543fb7c277cba3c40e6a4fe369b",
+  "head_sha": "7cd9a91141a60d9582fee7bd4421ba1241403cb4",
+  "tested_implementation_sha": "7cd9a91141a60d9582fee7bd4421ba1241403cb4",
+  "rehearsed_merge_sha": "ae2d418a419701cf44a2cd5b576aa6bc10c31d63",
   "base_main_sha": "4be7f547f4919380a22abdd2122961d559d2f46f",
   "summary": {
     "total_findings": 12,
@@ -71,15 +71,40 @@
         "AUD-09"
       ]
     },
-    "remediation_status": "all_16_tracked_findings_and_subfindings_remediated_and_verified",
+    "remediation_status": "14_of_16_findings_verified_2_partial_retained_open_for_production",
     "remediation_commits": {
       "R1": "d268819dfb1d6298a6f7165b091d41bd03ba733f",
       "R2": "8e15335828a125ff3cb0a2d56b02d230e521e543",
       "R3": "acec0e3e3ebc04c6a5d54087c321c26660409075",
-      "R4": "3c5af4ab81cb386dedf8394c36f85219ec9bc2c9"
+      "R4": "3c5af4ab81cb386dedf8394c36f85219ec9bc2c9",
+      "R1_R4_independent_verification_repairs": "7cd9a91141a60d9582fee7bd4421ba1241403cb4"
     },
     "open_merge_review_blockers": [],
-    "open_production_release_blockers": []
+    "open_production_release_blockers": [
+      "AUD-09",
+      "AUD-11a"
+    ],
+    "verified_findings": [
+      "AUD-01",
+      "AUD-02",
+      "AUD-03",
+      "AUD-04",
+      "AUD-05",
+      "AUD-06",
+      "AUD-07",
+      "AUD-08",
+      "AUD-10a",
+      "AUD-10b",
+      "AUD-10c",
+      "AUD-11b",
+      "AUD-11c",
+      "AUD-12"
+    ],
+    "partial_findings": [
+      "AUD-09",
+      "AUD-11a"
+    ],
+    "not_evaluated_findings": []
   },
   "findings": [
     {
@@ -107,7 +132,7 @@
         "production_release_blocker"
       ],
       "assigned_repair_increment": "R3",
-      "status": "remediated_and_verified",
+      "status": "verified",
       "remediation_commit_sha": "acec0e3e3ebc04c6a5d54087c321c26660409075",
       "verified_by_test": "tests/test_audit_r3_grounding_tools_finance_memory.py::test_aud01_supplier_project_without_quotes_requires_clarification_never_synthetic_quotes"
     },
@@ -137,7 +162,7 @@
         "production_release_blocker"
       ],
       "assigned_repair_increment": "R3",
-      "status": "remediated_and_verified",
+      "status": "verified",
       "remediation_commit_sha": "acec0e3e3ebc04c6a5d54087c321c26660409075",
       "verified_by_test": "tests/test_audit_r3_grounding_tools_finance_memory.py::test_aud02_tool_catalogue_input_schema_validation_and_real_handlers"
     },
@@ -170,7 +195,7 @@
         "production_release_blocker"
       ],
       "assigned_repair_increment": "R1",
-      "status": "remediated_and_verified",
+      "status": "verified",
       "remediation_commit_sha": "d268819dfb1d6298a6f7165b091d41bd03ba733f",
       "verified_by_test": "tests/test_audit_r1_security_and_containment.py::test_aud03_workspace_confinement_holdout_isolation_and_fault_injection_rejected"
     },
@@ -212,7 +237,7 @@
         "production_release_blocker"
       ],
       "assigned_repair_increment": "R2",
-      "status": "remediated_and_verified",
+      "status": "verified",
       "remediation_commit_sha": "8e15335828a125ff3cb0a2d56b02d230e521e543",
       "verified_by_test": "tests/test_audit_r2_provenance_and_status.py::test_aud04_no_synthetic_direct_lease_or_expired_submit_or_unleased_inference_poll"
     },
@@ -252,7 +277,7 @@
         "production_release_blocker"
       ],
       "assigned_repair_increment": "R1",
-      "status": "remediated_and_verified",
+      "status": "verified",
       "remediation_commit_sha": "d268819dfb1d6298a6f7165b091d41bd03ba733f",
       "verified_by_test": "tests/test_audit_r1_security_and_containment.py::test_aud05_worker_token_sha256_and_csrf_and_route_authentication"
     },
@@ -284,7 +309,7 @@
         "production_release_blocker"
       ],
       "assigned_repair_increment": "R4",
-      "status": "remediated_and_verified",
+      "status": "verified",
       "remediation_commit_sha": "3c5af4ab81cb386dedf8394c36f85219ec9bc2c9",
       "verified_by_test": "tests/test_audit_r4_lifecycle_and_recovery.py::test_aud06_migration24_installs_software_review_items_and_synchronizes_run_lifecycle"
     },
@@ -311,7 +336,7 @@
         "production_release_blocker"
       ],
       "assigned_repair_increment": "R2",
-      "status": "remediated_and_verified",
+      "status": "verified",
       "remediation_commit_sha": "8e15335828a125ff3cb0a2d56b02d230e521e543",
       "verified_by_test": "tests/test_audit_r2_provenance_and_status.py::test_aud07_repo_change_report_truthful_controller_provenance_and_public_only_scope"
     },
@@ -339,7 +364,7 @@
         "production_release_blocker"
       ],
       "assigned_repair_increment": "R3",
-      "status": "remediated_and_verified",
+      "status": "verified",
       "remediation_commit_sha": "acec0e3e3ebc04c6a5d54087c321c26660409075",
       "verified_by_test": "tests/test_audit_r3_grounding_tools_finance_memory.py::test_aud08_financial_reconciliation_grant_match_categories_share_caps_currency_and_evidence"
     },
@@ -370,9 +395,10 @@
         "production_release_blocker"
       ],
       "assigned_repair_increment": "R4",
-      "status": "remediated_and_verified",
+      "status": "partial",
       "remediation_commit_sha": "3c5af4ab81cb386dedf8394c36f85219ec9bc2c9",
-      "verified_by_test": "tests/test_audit_r4_lifecycle_and_recovery.py::test_aud09_paged_kv_and_pipeline_capability_reporting_is_truthful"
+      "verified_by_test": "tests/test_audit_r4_lifecycle_and_recovery.py::test_aud09_paged_kv_and_pipeline_capability_reporting_is_truthful",
+      "remaining_limitation": "QC_PAGED_KV_ENABLED=false by default and truthful telemetry-only sidecar reporting (integration_mode='telemetry_only_http_sidecar', external_http_runtime_kv_reuse_supported=False, multi_host_weight_execution_implemented=False) are verified; however, external Ollama HTTP processes cannot accept pre-computed PyTorch KV tensors and multi-host real-weight split execution across qwen-laptop remains unimplemented."
     },
     {
       "id": "AUD-10a",
@@ -398,7 +424,7 @@
         "merge_review_blocker",
         "production_release_blocker"
       ],
-      "status": "remediated_and_verified",
+      "status": "verified",
       "remediation_commit_sha": "acec0e3e3ebc04c6a5d54087c321c26660409075",
       "verified_by_test": "tests/test_audit_r3_grounding_tools_finance_memory.py::test_aud10a_fts5_fence_failure_indexing_and_stale_superseded_filtering"
     },
@@ -426,7 +452,7 @@
         "merge_review_blocker",
         "production_release_blocker"
       ],
-      "status": "remediated_and_verified",
+      "status": "verified",
       "remediation_commit_sha": "d268819dfb1d6298a6f7165b091d41bd03ba733f",
       "verified_by_test": "tests/test_audit_r1_security_and_containment.py::test_aud10b_code_sandbox_never_executes_untrusted_host_subprocess"
     },
@@ -454,7 +480,7 @@
         "merge_review_blocker",
         "production_release_blocker"
       ],
-      "status": "remediated_and_verified",
+      "status": "verified",
       "remediation_commit_sha": "8e15335828a125ff3cb0a2d56b02d230e521e543",
       "verified_by_test": "tests/test_audit_r2_provenance_and_status.py::test_aud10c_reuse_status_and_reuse_id_truthful_strings"
     },
@@ -483,9 +509,10 @@
       "blocks": [
         "production_release_blocker"
       ],
-      "status": "remediated_and_verified",
-      "remediation_commit_sha": "3c5af4ab81cb386dedf8394c36f85219ec9bc2c9",
-      "verified_by_test": "tests/test_audit_r4_lifecycle_and_recovery.py::test_aud11a_worker_lease_loss_aborts_inflight_inference_within_bound"
+      "status": "partial",
+      "remediation_commit_sha": "7cd9a91141a60d9582fee7bd4421ba1241403cb4",
+      "verified_by_test": "tests/test_audit_r4_lifecycle_and_recovery.py::test_aud11a_all_cancellation_stages_and_resource_cleanup, tests/test_audit_r4_live_interruption_checks.py::test_check1_live_leased_model_task_cancelled_during_generation_and_check2_before_headers",
+      "remaining_limitation": "Client HTTP socket shutdown (SHUT_RDWR + close), owned worker request thread/subprocess termination within <= 0.5s, lease-revocation abort, late-result rejection (409), controllable HTTP server generation stop, and fail-closed rejection of unconfirmed termination (error_category='cancellation_termination_unconfirmed') are independently verified. However, uninstrumented Ollama on qwen-laptop (100.101.187.115:11434) does not expose a per-request generation status endpoint (/api/generation-status returns 404), so backend_generation_stopped is reported as 'unconfirmed' on live Ollama runs."
     },
     {
       "id": "AUD-11b",
@@ -511,9 +538,9 @@
       "blocks": [
         "production_release_blocker"
       ],
-      "status": "remediated_and_verified",
-      "remediation_commit_sha": "3c5af4ab81cb386dedf8394c36f85219ec9bc2c9",
-      "verified_by_test": "tests/test_audit_r4_lifecycle_and_recovery.py::test_aud11b_linux_sandbox_and_remote_driver_enforce_connection_independent_cleanup"
+      "status": "verified",
+      "remediation_commit_sha": "7cd9a91141a60d9582fee7bd4421ba1241403cb4",
+      "verified_by_test": "tests/test_audit_r4_live_interruption_checks.py::test_check3_controller_termination_during_protected_execution_cleans_up_remotely, tests/test_audit_r4_live_interruption_checks.py::test_check4_ssh_disconnection_during_remote_execution_cleans_up_remotely, tests/test_audit_r4_live_interruption_checks.py::test_check5_timeout_partial_startup_and_repeated_failures_do_not_accumulate"
     },
     {
       "id": "AUD-11c",
@@ -541,7 +568,7 @@
         "merge_review_blocker",
         "production_release_blocker"
       ],
-      "status": "remediated_and_verified",
+      "status": "verified",
       "remediation_commit_sha": "d268819dfb1d6298a6f7165b091d41bd03ba733f",
       "verified_by_test": "tests/test_audit_r1_security_and_containment.py::test_aud11c_ssrf_ipv6_zone_and_dns_rebinding_blocked"
     },
@@ -570,10 +597,12 @@
         "merge_review_blocker"
       ],
       "assigned_repair_increment": "R3",
-      "status": "remediated_and_verified",
+      "status": "verified",
       "remediation_commit_sha": "acec0e3e3ebc04c6a5d54087c321c26660409075",
       "verified_by_test": "tests/test_audit_r3_grounding_tools_finance_memory.py::test_aud02_and_aud12_multi_domain_detection_and_decomposition_without_supplier_fallback"
     }
   ],
-  "pre_remediation_head_sha": "b89e63ce372726f65fa650fd2ed30aa917b903eb"
+  "pre_remediation_head_sha": "b89e63ce372726f65fa650fd2ed30aa917b903eb",
+  "previous_tested_implementation_sha": "3c5af4ab81cb386dedf8394c36f85219ec9bc2c9",
+  "previous_rehearsed_merge_sha": "5d6984de602ef543fb7c277cba3c40e6a4fe369b"
 }

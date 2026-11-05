@@ -13,18 +13,18 @@
       "tests_run": 2,
       "expected_test_count": 2,
       "failures": 1,
-      "grant_nonce": "4c399602ba214879bb38d0ee2a36f271",
+      "grant_nonce": "2625c0f8e367459a9e1369152de4d1da",
       "filesystem_and_network_containment": true,
       "cleanup_confirmed": true
     },
     "holdout_tests": {
-      "suite_id": "holdout_h-1953326345a54e2e",
+      "suite_id": "holdout_h-c72dff75cfcf4f4e",
       "suite_sha256": "2bfd0181a858a1d35e3de406c2159b8809f17863f89c85d2027281887486a938",
       "candidate_source_sha256": "4a1cfef6884f6456ce080a5974cf18a01382fba7ebacfa1e7d844b9259a55d25",
       "passed": true,
       "tests_run": 2,
       "failures": 0,
-      "grant_nonce": "7cd7fa44a7ee4326ade579eb11e6d3da",
+      "grant_nonce": "1ceb9e6916664166b92065bfea66c2b3",
       "filesystem_and_network_containment": true,
       "cleanup_confirmed": true
     }
@@ -41,8 +41,8 @@
       "cleanup_confirmed": true,
       "public_cleanup_confirmed": true,
       "holdout_cleanup_confirmed": true,
-      "public_grant_nonce": "874f3dd725b342e190d8bb68e9ba1754",
-      "holdout_grant_nonce": "8677fdd696d4477fa4e0723dd87add0b"
+      "public_grant_nonce": "19d469fe53b245bbbe5ac813c0a55358",
+      "holdout_grant_nonce": "24cabbac3dff4110adbe3745073b02f4"
     },
     "public_tests": {
       "suite_id": "tests/test_public.py",
@@ -50,15 +50,15 @@
       "candidate_source_sha256": "cfe7b3e9658cf51f6d24c2ad9e53d5b1d416943b0d10feb809a38dea264b9470",
       "passed": true,
       "tests_run": 3,
-      "grant_nonce": "874f3dd725b342e190d8bb68e9ba1754"
+      "grant_nonce": "19d469fe53b245bbbe5ac813c0a55358"
     },
     "holdout_tests": {
-      "suite_id": "holdout_h-2de1772227cb4bdb",
+      "suite_id": "holdout_h-9e1b797deddc4f91",
       "suite_sha256": "2bfd0181a858a1d35e3de406c2159b8809f17863f89c85d2027281887486a938",
       "candidate_source_sha256": "4a1cfef6884f6456ce080a5974cf18a01382fba7ebacfa1e7d844b9259a55d25",
       "passed": true,
       "tests_run": 2,
-      "grant_nonce": "8677fdd696d4477fa4e0723dd87add0b"
+      "grant_nonce": "24cabbac3dff4110adbe3745073b02f4"
     }
   },
   "case_c_direct_public_suite_contained": {
@@ -67,7 +67,7 @@
     "containment_backend": "linux_systemd_root_image_sandbox",
     "filesystem_and_network_containment": true,
     "cleanup_confirmed": true,
-    "grant_nonce": "bb28dbc7335146d79c94c7f80cdae1e8"
+    "grant_nonce": "f4d01b9c67ff48788c048a7e9555abf4"
   },
   "total_ssh_sandbox_grants_executed": 5,
   "all_nonce_replays_denied": true
