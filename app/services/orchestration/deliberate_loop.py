@@ -960,27 +960,59 @@ def detect_project_domain(
     project_id: str,
     ledger: Optional[intake_mod.DurableRequirementLedger] = None,
 ) -> str:
-    """Classify the project's primary execution domain from its durable requirement ledger and epistemic metadata."""
+    """Classify the project's primary execution domain from its durable requirement ledger and epistemic metadata.
+
+    Supported domains:
+      - `repository_bugfix`
+      - `financial_reconciliation`
+      - `structured_data_analysis`
+      - `web_app_verification`
+      - `research_synthesis`
+      - `supplier_option_evaluation`
+      - `awaiting_clarification` (when domain or required inputs are ambiguous/unspecified; never silently defaults to supplier evaluation)
+    """
     if ledger is None:
         ledger = intake_mod.load_durable_requirement_ledger(project_id)
 
     conn = get_db_connection()
     try:
-        ws_row = conn.execute(
+        q_rows = conn.execute(
             """SELECT qualifiers_json FROM project_epistemic_items
-               WHERE project_id = ? AND qualifiers_json LIKE '%"workspace_path"%'
-               ORDER BY created_at DESC LIMIT 1""",
+               WHERE project_id = ?
+               ORDER BY created_at DESC""",
             (project_id,),
-        ).fetchone()
-        if ws_row:
-            return "repository_bugfix"
+        ).fetchall()
+        for r in q_rows:
+            qd = jload(r["qualifiers_json"], {})
+            if qd.get("workspace_path"):
+                return "repository_bugfix"
+            if isinstance(qd.get("financial_ledger"), dict):
+                return "financial_reconciliation"
+            if isinstance(qd.get("dataset_rows"), list):
+                return "structured_data_analysis"
+            if isinstance(qd.get("web_app_bundle"), dict):
+                return "web_app_verification"
+            if isinstance(qd.get("research_queries"), list):
+                return "research_synthesis"
+            if isinstance(qd.get("raw_quotes"), list):
+                return "supplier_option_evaluation"
     finally:
         conn.close()
 
     combined_text = " ".join(it.statement for it in ledger.items if it.status == "active").lower()
     if any(k in combined_text for k in ("repository", "bug", "allocator.py", "unit test", "pytest", "patch", "defect", "holdout")):
         return "repository_bugfix"
-    return "supplier_option_evaluation"
+    if any(k in combined_text for k in ("financial_reconciliation", "reconcile grant", "grant budget", "match_rate", "match_deficits", "funding_gap")):
+        return "financial_reconciliation"
+    if any(k in combined_text for k in ("structured dataset", "dataset_analysis", "z-score", "anomaly", "sensor readings", "tabular data")):
+        return "structured_data_analysis"
+    if any(k in combined_text for k in ("verify web application", "web_app_verification", "dom elements", "interactive js", "html dom")):
+        return "web_app_verification"
+    if any(k in combined_text for k in ("search and retrieve", "research_synthesis", "rfc 9110", "source snapshots", "cite sources", "research")):
+        return "research_synthesis"
+    if any(k in combined_text for k in ("supplier", "vendor", "quote", "procurement")):
+        return "supplier_option_evaluation"
+    return "awaiting_clarification"
 
 
 def validate_proposed_action(
@@ -1090,6 +1122,22 @@ def validate_proposed_action(
             "valid": False,
             "error_class": "invalid_arguments_schema",
             "reason": "Proposed action 'arguments' must be a JSON object/dict.",
+        }
+
+    is_template_proposal = (
+        str(proposed_action.get("action_origin") or "") in ("template", "caller_supplied_contract")
+        and len(raw_args) == 0
+    )
+    schema_chk = tool_catalogue.GLOBAL_TOOL_CATALOGUE.validate_tool_arguments(
+        tool_id,
+        raw_args,
+        allow_template_empty=is_template_proposal,
+    )
+    if not schema_chk["valid"]:
+        return {
+            "valid": False,
+            "error_class": schema_chk["error_class"],
+            "reason": schema_chk["reason"],
         }
 
     if "target_file" in raw_args:
@@ -1292,6 +1340,66 @@ def _verify_repo_change_summary(pkt: Dict[str, Any], raw: Dict[str, Any], staged
     }
 
 
+def _verify_financial_reconciliation(pkt: Dict[str, Any], raw: Dict[str, Any], staged: Dict[str, Any]) -> Dict[str, Any]:
+    obs = raw.get("observation_payload") or {}
+    checks = [
+        {"name": "decimal_reconciled", "passed": isinstance(obs.get("valid"), bool) and isinstance(obs.get("errors"), list)},
+        {"name": "artifact_published", "passed": bool(staged.get("artifact_id") and staged.get("artifact_sha256"))},
+    ]
+    tkey = pkt.get("task_key") or (pkt.get("task_contract") or {}).get("task_key") or "t1_reconcile_financial_ledger"
+    return {
+        "passed": all(c["passed"] for c in checks),
+        "verification_method": "deterministic_tool_check",
+        "declared_scope": f"task:{tkey}:rev{pkt.get('requirement_revision', 1)}",
+        "checks": checks,
+    }
+
+
+def _verify_structured_data_analysis(pkt: Dict[str, Any], raw: Dict[str, Any], staged: Dict[str, Any]) -> Dict[str, Any]:
+    obs = raw.get("observation_payload") or {}
+    checks = [
+        {"name": "row_count_non_negative", "passed": int(obs.get("row_count", -1)) >= 0 and isinstance(obs.get("groups"), dict)},
+        {"name": "artifact_published", "passed": bool(staged.get("artifact_id") and staged.get("artifact_sha256"))},
+    ]
+    tkey = pkt.get("task_key") or (pkt.get("task_contract") or {}).get("task_key") or "t1_analyze_structured_dataset"
+    return {
+        "passed": all(c["passed"] for c in checks),
+        "verification_method": "deterministic_tool_check",
+        "declared_scope": f"task:{tkey}:rev{pkt.get('requirement_revision', 1)}",
+        "checks": checks,
+    }
+
+
+def _verify_research_synthesis(pkt: Dict[str, Any], raw: Dict[str, Any], staged: Dict[str, Any]) -> Dict[str, Any]:
+    obs = raw.get("observation_payload") or {}
+    checks = [
+        {"name": "epistemic_search_executed", "passed": isinstance(obs.get("sources"), list) and isinstance(obs.get("claims"), list)},
+        {"name": "artifact_published", "passed": bool(staged.get("artifact_id") and staged.get("artifact_sha256"))},
+    ]
+    tkey = pkt.get("task_key") or (pkt.get("task_contract") or {}).get("task_key") or "t1_retrieve_and_synthesize_sources"
+    return {
+        "passed": all(c["passed"] for c in checks),
+        "verification_method": "independent_acceptance_verifier",
+        "declared_scope": f"task:{tkey}:rev{pkt.get('requirement_revision', 1)}",
+        "checks": checks,
+    }
+
+
+def _verify_web_app_verification(pkt: Dict[str, Any], raw: Dict[str, Any], staged: Dict[str, Any]) -> Dict[str, Any]:
+    obs = raw.get("observation_payload") or {}
+    checks = [
+        {"name": "web_bundle_verified", "passed": bool(obs.get("passed") or obs.get("status") == "verified_for_scope")},
+        {"name": "artifact_published", "passed": bool(staged.get("artifact_id") and staged.get("artifact_sha256"))},
+    ]
+    tkey = pkt.get("task_key") or (pkt.get("task_contract") or {}).get("task_key") or "t1_verify_web_app_bundle"
+    return {
+        "passed": all(c["passed"] for c in checks),
+        "verification_method": "independent_acceptance_verifier",
+        "declared_scope": f"task:{tkey}:rev{pkt.get('requirement_revision', 1)}",
+        "checks": checks,
+    }
+
+
 REGISTERED_CONTROLLER_VERIFIERS: Dict[str, Callable[[Dict[str, Any], Dict[str, Any], Dict[str, Any]], Dict[str, Any]]] = {
     "verifier:quote_reconciliation_v1": _verify_quote_reconciliation,
     "verifier:option_constraint_comparison_v1": _verify_option_constraint_comparison,
@@ -1299,6 +1407,10 @@ REGISTERED_CONTROLLER_VERIFIERS: Dict[str, Callable[[Dict[str, Any], Dict[str, A
     "verifier:repo_inspection_and_reproduction_v1": _verify_repo_inspection_and_reproduction,
     "verifier:protected_repo_bugfix_v1": _verify_protected_repo_bugfix,
     "verifier:repo_change_summary_v1": _verify_repo_change_summary,
+    "verifier:financial_reconciliation_v1": _verify_financial_reconciliation,
+    "verifier:structured_data_analysis_v1": _verify_structured_data_analysis,
+    "verifier:research_synthesis_v1": _verify_research_synthesis,
+    "verifier:web_app_verification_v1": _verify_web_app_verification,
 }
 
 
@@ -1441,7 +1553,136 @@ def ensure_deliberate_task_contracts(
         )
         return wm.list_task_contracts(project_id)
 
-    # Default / regression domain: supplier_option_evaluation
+    if domain == "financial_reconciliation":
+        all_active_req_ids = [
+            r.req_id for r in ledger.items
+            if r.status == "active" and r.kind != intake_mod.RequirementKind.MISSING_INFO
+        ]
+        wm.register_task_contract(
+            project_id,
+            run_id=eff_run_id,
+            task_key="t1_reconcile_financial_ledger",
+            purpose="Reconcile grant budget allocations, cost categories, match share caps, and currency rules using exact Decimal arithmetic.",
+            expected_output="financial_reconciliation_ledger.json",
+            bound_requirement_ids=all_active_req_ids or obj_ids,
+            depends_on_task_keys=[],
+            acceptance_checks=["decimal_reconciled", "artifact_published"],
+            selected_tool="decimal_calculate_and_reconcile",
+            validated_arguments={"action_origin": "template"},
+            expected_observation="qc.financial_reconciliation.v1",
+            verification_method="deterministic_tool_check",
+            verifier_id="verifier:financial_reconciliation_v1",
+            authority_scope="deterministic_compute",
+            permitted_effects=["read_only", "deterministic_compute", "write_project_artifact"],
+        )
+        wm.create_working_checkpoint(
+            project_id,
+            boundary_type="task_boundary",
+            next_action={"action": "execute_t1_reconcile_financial_ledger"},
+            delta_summary={"domain": "financial_reconciliation", "decomposed_contracts": ["t1_reconcile_financial_ledger"]},
+            created_by="orchestrator",
+        )
+        return wm.list_task_contracts(project_id)
+
+    if domain == "structured_data_analysis":
+        all_active_req_ids = [
+            r.req_id for r in ledger.items
+            if r.status == "active" and r.kind != intake_mod.RequirementKind.MISSING_INFO
+        ]
+        wm.register_task_contract(
+            project_id,
+            run_id=eff_run_id,
+            task_key="t1_analyze_structured_dataset",
+            purpose="Analyze structured dataset rows with exact Decimal aggregation, schema inspection, and group statistics.",
+            expected_output="structured_data_analysis.json",
+            bound_requirement_ids=all_active_req_ids or obj_ids,
+            depends_on_task_keys=[],
+            acceptance_checks=["row_count_non_negative", "artifact_published"],
+            selected_tool="analyze_structured_dataset",
+            validated_arguments={"action_origin": "template"},
+            expected_observation="qc.structured_data_analysis.v1",
+            verification_method="deterministic_tool_check",
+            verifier_id="verifier:structured_data_analysis_v1",
+            authority_scope="deterministic_compute",
+            permitted_effects=["read_only", "deterministic_compute", "write_project_artifact"],
+        )
+        wm.create_working_checkpoint(
+            project_id,
+            boundary_type="task_boundary",
+            next_action={"action": "execute_t1_analyze_structured_dataset"},
+            delta_summary={"domain": "structured_data_analysis", "decomposed_contracts": ["t1_analyze_structured_dataset"]},
+            created_by="orchestrator",
+        )
+        return wm.list_task_contracts(project_id)
+
+    if domain == "research_synthesis":
+        all_active_req_ids = [
+            r.req_id for r in ledger.items
+            if r.status == "active" and r.kind != intake_mod.RequirementKind.MISSING_INFO
+        ]
+        wm.register_task_contract(
+            project_id,
+            run_id=eff_run_id,
+            task_key="t1_retrieve_and_synthesize_sources",
+            purpose="Retrieve active verified epistemic evidence and synthesize a citation-backed research report.",
+            expected_output="research_synthesis_report.md",
+            bound_requirement_ids=all_active_req_ids or obj_ids,
+            depends_on_task_keys=[],
+            acceptance_checks=["epistemic_search_executed", "artifact_published"],
+            selected_tool="search_and_retrieve_sources",
+            validated_arguments={"action_origin": "template"},
+            expected_observation="qc.research_synthesis.v1",
+            verification_method="independent_acceptance_verifier",
+            verifier_id="verifier:research_synthesis_v1",
+            authority_scope="artifact_publication",
+            permitted_effects=["read_only", "external_retrieval", "write_project_artifact"],
+        )
+        wm.create_working_checkpoint(
+            project_id,
+            boundary_type="task_boundary",
+            next_action={"action": "execute_t1_retrieve_and_synthesize_sources"},
+            delta_summary={"domain": "research_synthesis", "decomposed_contracts": ["t1_retrieve_and_synthesize_sources"]},
+            created_by="orchestrator",
+        )
+        return wm.list_task_contracts(project_id)
+
+    if domain == "web_app_verification":
+        all_active_req_ids = [
+            r.req_id for r in ledger.items
+            if r.status == "active" and r.kind != intake_mod.RequirementKind.MISSING_INFO
+        ]
+        wm.register_task_contract(
+            project_id,
+            run_id=eff_run_id,
+            task_key="t1_verify_web_app_bundle",
+            purpose="Verify web application bundle structure, required DOM selectors, and JavaScript syntax.",
+            expected_output="web_app_verification_report.json",
+            bound_requirement_ids=all_active_req_ids or obj_ids,
+            depends_on_task_keys=[],
+            acceptance_checks=["web_bundle_verified", "artifact_published"],
+            selected_tool="verify_web_application_behavior",
+            validated_arguments={"action_origin": "template"},
+            expected_observation="qc.web_app_verification.v1",
+            verification_method="independent_acceptance_verifier",
+            verifier_id="verifier:web_app_verification_v1",
+            authority_scope="artifact_publication",
+            permitted_effects=["read_only", "deterministic_compute", "write_project_artifact"],
+        )
+        wm.create_working_checkpoint(
+            project_id,
+            boundary_type="task_boundary",
+            next_action={"action": "execute_t1_verify_web_app_bundle"},
+            delta_summary={"domain": "web_app_verification", "decomposed_contracts": ["t1_verify_web_app_bundle"]},
+            created_by="orchestrator",
+        )
+        return wm.list_task_contracts(project_id)
+
+    if domain != "supplier_option_evaluation":
+        # AUD-12: Unknown or underspecified requests must enter clarification rather than
+        # silently decomposing into supplier_option_evaluation.
+        return []
+
+    # Explicit supplier_option_evaluation domain
     wm.register_task_contract(
         project_id,
         run_id=eff_run_id,
@@ -1517,8 +1758,11 @@ def _load_project_domain_inputs(
     workspace_path: Optional[str] = None,
     holdout_test_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Load persisted domain inputs (supplier quotes or repository workspace paths) from `project_epistemic_items`."""
-    from app.services.orchestration import acceptance_harness, working_memory as wm
+    """Load persisted domain inputs from `project_epistemic_items`.
+
+    AUD-01: Never falls back to `SYNTHETIC_SUPPLIER_QUOTES` when `quotes` are omitted.
+    """
+    from app.services.orchestration import working_memory as wm
 
     run = get_run_for_project(project_id)
     run_id = run["id"] if run else None
@@ -1527,6 +1771,12 @@ def _load_project_domain_inputs(
     persisted_quotes = None
     persisted_ws = None
     persisted_holdout = None
+    persisted_financial_ledger = None
+    persisted_dataset_rows = None
+    persisted_group_by = None
+    persisted_value_field = None
+    persisted_research_queries = None
+    persisted_web_app_bundle = None
     try:
         rows = conn.execute(
             "SELECT qualifiers_json FROM project_epistemic_items WHERE project_id = ? ORDER BY created_at DESC",
@@ -1540,6 +1790,16 @@ def _load_project_domain_inputs(
                 persisted_ws = str(qd["workspace_path"])
             if persisted_holdout is None and qd.get("holdout_test_dir"):
                 persisted_holdout = str(qd["holdout_test_dir"])
+            if persisted_financial_ledger is None and isinstance(qd.get("financial_ledger"), dict):
+                persisted_financial_ledger = qd["financial_ledger"]
+            if persisted_dataset_rows is None and isinstance(qd.get("dataset_rows"), list):
+                persisted_dataset_rows = qd["dataset_rows"]
+                persisted_group_by = qd.get("group_by")
+                persisted_value_field = qd.get("value_field")
+            if persisted_research_queries is None and isinstance(qd.get("research_queries"), list):
+                persisted_research_queries = qd["research_queries"]
+            if persisted_web_app_bundle is None and isinstance(qd.get("web_app_bundle"), dict):
+                persisted_web_app_bundle = qd["web_app_bundle"]
     finally:
         conn.close()
 
@@ -1572,9 +1832,15 @@ def _load_project_domain_inputs(
         )
 
     return {
-        "quotes": eff_quotes if eff_quotes is not None else acceptance_harness.SYNTHETIC_SUPPLIER_QUOTES,
+        "quotes": eff_quotes,
         "workspace_path": eff_ws,
         "holdout_test_dir": eff_holdout,
+        "financial_ledger": persisted_financial_ledger,
+        "dataset_rows": persisted_dataset_rows,
+        "group_by": persisted_group_by,
+        "value_field": persisted_value_field,
+        "research_queries": persisted_research_queries,
+        "web_app_bundle": persisted_web_app_bundle,
     }
 
 
@@ -1961,8 +2227,60 @@ def advance_deliberate_project(
     eff_ws = domain_inputs["workspace_path"]
     eff_holdout = domain_inputs["holdout_test_dir"]
 
-    ensure_deliberate_task_contracts(project_id, run_id=run_id)
     domain = detect_project_domain(project_id, ledger=ledger)
+    existing_contracts = wm.list_task_contracts(project_id)
+
+    if domain == "awaiting_clarification" and not existing_contracts:
+        gap_msg = "Request domain or concrete task deliverables are underspecified; please clarify your target workflow or attach structured source inputs."
+        context_manager.save_project_memory_state(
+            project_id,
+            run_id=run_id,
+            current_cycle_phase="clarify",
+            unresolved_questions=[gap_msg],
+            contradictions=[],
+            next_action={"action": "clarify_material_gaps", "gaps": [gap_msg]},
+        )
+        clarify_stats = copy.deepcopy(empty_stats)
+        clarify_stats["action_origin_counts"]["controller_policy"] = 1
+        return {
+            "project_id": project_id,
+            "run_id": run_id,
+            "domain": domain,
+            "status": "clarify",
+            "final_cycle_phase": "clarify",
+            "material_gaps": [gap_msg],
+            "conflicts": [],
+            "steps_executed": [],
+            "native_worker_lease_ids": [],
+            "tool_selection_stats": clarify_stats,
+        }
+
+    if domain == "supplier_option_evaluation" and not quotes:
+        gap_msg = "Supplier option evaluation requires user-supplied supplier quote records (`quotes`) or source artifacts."
+        context_manager.save_project_memory_state(
+            project_id,
+            run_id=run_id,
+            current_cycle_phase="clarify",
+            unresolved_questions=[gap_msg],
+            contradictions=[],
+            next_action={"action": "clarify_material_gaps", "gaps": [gap_msg]},
+        )
+        clarify_stats = copy.deepcopy(empty_stats)
+        clarify_stats["action_origin_counts"]["controller_policy"] = 1
+        return {
+            "project_id": project_id,
+            "run_id": run_id,
+            "domain": domain,
+            "status": "clarify",
+            "final_cycle_phase": "clarify",
+            "material_gaps": [gap_msg],
+            "conflicts": [],
+            "steps_executed": [],
+            "native_worker_lease_ids": [],
+            "tool_selection_stats": clarify_stats,
+        }
+
+    ensure_deliberate_task_contracts(project_id, run_id=run_id)
 
     steps_executed: List[Dict[str, Any]] = []
     native_leases: List[str] = []
@@ -3012,6 +3330,229 @@ def advance_deliberate_project(
                 "action_appropriateness": "unmeasured" if action_origin == "template" else True,
                 "execution_outcome": "succeeded",
                 "task_outcome": res_repo_t3["task_status"],
+            })
+
+        elif verifier_id == "verifier:financial_reconciliation_v1":
+            fin_payload = raw_val_args.get("payload") or raw_val_args.get("ledger") or domain_inputs.get("financial_ledger")
+            if not isinstance(fin_payload, dict):
+                steps_executed.append({
+                    "task_key": tkey,
+                    "status": "blocked",
+                    "error_class": "missing_financial_ledger",
+                    "reason": "Financial reconciliation requires a structured financial_ledger payload.",
+                    "action_origin": "controller_policy",
+                    "proposal_validity": True,
+                    "action_appropriateness": True,
+                    "execution_outcome": "not_executed",
+                    "task_outcome": "blocked",
+                })
+                break
+            tool_obs = tool_catalogue.GLOBAL_TOOL_CATALOGUE.execute_tool(
+                "decimal_calculate_and_reconcile",
+                {"mode": "reconcile", "payload": fin_payload},
+            )
+            fin_res = tool_obs["result"]
+            fin_bytes = json.dumps(fin_res, indent=2, sort_keys=True).encode("utf-8")
+            res_fin = wm.execute_checkpointed_work_boundary(
+                project_id,
+                tkey,
+                lambda _pkt: {
+                    "epistemic_category": "derived_result",
+                    "statement": f"Reconciled financial ledger: valid={fin_res.get('valid')}, errors={len(fin_res.get('errors') or [])}.",
+                    "observation_payload": fin_res,
+                    "publish_artifact": {
+                        "filename": next_tc["expected_output"],
+                        "content_bytes": fin_bytes,
+                    },
+                    "output_summary": {
+                        "valid": fin_res.get("valid"),
+                        "error_count": len(fin_res.get("errors") or []),
+                        "errors": fin_res.get("errors") or [],
+                        "funding_gap": fin_res.get("funding_gap"),
+                        "decision_summary": op_summary,
+                    },
+                    "next_action": "deliver",
+                },
+                verifier_fn=verifier_fn,
+            )
+            steps_executed.append({
+                "task_key": tkey,
+                "status": res_fin["task_status"],
+                "artifact_id": res_fin["published_artifact_id"],
+                "selected_tool": val_gate["selected_tool"],
+                "action_origin": action_origin,
+                "proposal_validity": True,
+                "action_appropriateness": "unmeasured" if action_origin == "template" else True,
+                "execution_outcome": "succeeded",
+                "task_outcome": res_fin["task_status"],
+            })
+
+        elif verifier_id == "verifier:structured_data_analysis_v1":
+            rows_payload = raw_val_args.get("rows") or domain_inputs.get("dataset_rows")
+            if not isinstance(rows_payload, list):
+                steps_executed.append({
+                    "task_key": tkey,
+                    "status": "blocked",
+                    "error_class": "missing_dataset_rows",
+                    "reason": "Structured data analysis requires dataset_rows.",
+                    "action_origin": "controller_policy",
+                    "proposal_validity": True,
+                    "action_appropriateness": True,
+                    "execution_outcome": "not_executed",
+                    "task_outcome": "blocked",
+                })
+                break
+            tool_obs = tool_catalogue.GLOBAL_TOOL_CATALOGUE.execute_tool(
+                "analyze_structured_dataset",
+                {
+                    "rows": rows_payload,
+                    "group_by": raw_val_args.get("group_by") or domain_inputs.get("group_by"),
+                    "value_field": raw_val_args.get("value_field") or domain_inputs.get("value_field"),
+                },
+            )
+            data_res = tool_obs["result"]
+            data_bytes = json.dumps(data_res, indent=2, sort_keys=True).encode("utf-8")
+            res_data = wm.execute_checkpointed_work_boundary(
+                project_id,
+                tkey,
+                lambda _pkt: {
+                    "epistemic_category": "derived_result",
+                    "statement": f"Analyzed {data_res.get('row_count', 0)} structured rows across {len(data_res.get('groups') or {})} group(s).",
+                    "observation_payload": data_res,
+                    "publish_artifact": {
+                        "filename": next_tc["expected_output"],
+                        "content_bytes": data_bytes,
+                    },
+                    "output_summary": {
+                        "row_count": data_res.get("row_count", 0),
+                        "group_count": len(data_res.get("groups") or {}),
+                        "decision_summary": op_summary,
+                    },
+                    "next_action": "deliver",
+                },
+                verifier_fn=verifier_fn,
+            )
+            steps_executed.append({
+                "task_key": tkey,
+                "status": res_data["task_status"],
+                "artifact_id": res_data["published_artifact_id"],
+                "selected_tool": val_gate["selected_tool"],
+                "action_origin": action_origin,
+                "proposal_validity": True,
+                "action_appropriateness": "unmeasured" if action_origin == "template" else True,
+                "execution_outcome": "succeeded",
+                "task_outcome": res_data["task_status"],
+            })
+
+        elif verifier_id == "verifier:research_synthesis_v1":
+            queries = raw_val_args.get("queries") or domain_inputs.get("research_queries") or [
+                o.text for o in ledger.get_items_by_category(intake_mod.RequirementKind.OBJECTIVE)
+            ]
+            tool_obs = tool_catalogue.GLOBAL_TOOL_CATALOGUE.execute_tool(
+                "search_and_retrieve_sources",
+                {"project_id": project_id, "queries": queries},
+            )
+            search_res = tool_obs["result"]
+            sources = search_res.get("sources") or []
+            claims = search_res.get("claims") or []
+            all_hits = sources + claims
+            lines = [f"# Research Synthesis Report (Requirement Revision {ledger.revision_number})\n"]
+            for h in all_hits:
+                lines.append(f"- [{h.get('id')}] ({h.get('verification_status')}): {h.get('statement')}")
+            if not all_hits:
+                lines.append("- No active verified epistemic items matched the query.")
+            md_bytes = "\n".join(lines).encode("utf-8")
+            res_res = wm.execute_checkpointed_work_boundary(
+                project_id,
+                tkey,
+                lambda _pkt: {
+                    "epistemic_category": "verified_artifact",
+                    "statement": f"Retrieved {len(all_hits)} active epistemic items and published research synthesis report.",
+                    "observation_payload": search_res,
+                    "publish_artifact": {
+                        "filename": next_tc["expected_output"],
+                        "content_bytes": md_bytes,
+                    },
+                    "output_summary": {
+                        "hit_count": len(all_hits),
+                        "decision_summary": op_summary,
+                    },
+                    "next_action": "deliver",
+                },
+                verifier_fn=verifier_fn,
+            )
+            steps_executed.append({
+                "task_key": tkey,
+                "status": res_res["task_status"],
+                "artifact_id": res_res["published_artifact_id"],
+                "selected_tool": val_gate["selected_tool"],
+                "action_origin": action_origin,
+                "proposal_validity": True,
+                "action_appropriateness": "unmeasured" if action_origin == "template" else True,
+                "execution_outcome": "succeeded",
+                "task_outcome": res_res["task_status"],
+            })
+
+        elif verifier_id == "verifier:web_app_verification_v1":
+            bundle = raw_val_args if (raw_val_args.get("html_content") or raw_val_args.get("files")) else (domain_inputs.get("web_app_bundle") or {})
+            html_c = str(bundle.get("html_content") or (bundle.get("files") or {}).get("index.html") or "")
+            js_c = str(bundle.get("js_content") or (bundle.get("files") or {}).get("app.js") or "")
+            css_c = str(bundle.get("css_content") or (bundle.get("files") or {}).get("styles.css") or "")
+            if not html_c:
+                steps_executed.append({
+                    "task_key": tkey,
+                    "status": "blocked",
+                    "error_class": "missing_web_app_bundle",
+                    "reason": "Web application verification requires html_content in web_app_bundle.",
+                    "action_origin": "controller_policy",
+                    "proposal_validity": True,
+                    "action_appropriateness": True,
+                    "execution_outcome": "not_executed",
+                    "task_outcome": "blocked",
+                })
+                break
+            tool_obs = tool_catalogue.GLOBAL_TOOL_CATALOGUE.execute_tool(
+                "verify_web_application_behavior",
+                {
+                    "html_content": html_c,
+                    "js_content": js_c,
+                    "css_content": css_c,
+                    "required_elements": bundle.get("required_elements") or bundle.get("required_ids") or [],
+                    "interaction_cases": bundle.get("interaction_cases") or [],
+                },
+            )
+            web_res = tool_obs["result"]
+            web_bytes = json.dumps(web_res, indent=2, sort_keys=True).encode("utf-8")
+            res_web = wm.execute_checkpointed_work_boundary(
+                project_id,
+                tkey,
+                lambda _pkt: {
+                    "epistemic_category": "verified_artifact",
+                    "statement": f"Verified web application bundle: status={web_res.get('status')}.",
+                    "observation_payload": web_res,
+                    "publish_artifact": {
+                        "filename": next_tc["expected_output"],
+                        "content_bytes": web_bytes,
+                    },
+                    "output_summary": {
+                        "status": web_res.get("status"),
+                        "passed": bool(web_res.get("passed") or web_res.get("status") == "verified_for_scope"),
+                        "decision_summary": op_summary,
+                    },
+                    "next_action": "deliver",
+                },
+                verifier_fn=verifier_fn,
+            )
+            steps_executed.append({
+                "task_key": tkey,
+                "status": res_web["task_status"],
+                "artifact_id": res_web["published_artifact_id"],
+                "selected_tool": val_gate["selected_tool"],
+                "action_origin": action_origin,
+                "proposal_validity": True,
+                "action_appropriateness": "unmeasured" if action_origin == "template" else True,
+                "execution_outcome": "succeeded",
+                "task_outcome": res_web["task_status"],
             })
 
         else:

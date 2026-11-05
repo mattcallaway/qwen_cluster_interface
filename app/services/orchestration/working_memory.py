@@ -1843,6 +1843,7 @@ def execute_checkpointed_work_boundary(
         art_refs = [published_artifact_id] if published_artifact_id else list(raw_result.get("artifact_refs") or [])
         out_summary = dict(raw_result.get("output_summary") or {})
 
+        fence_err_to_raise: Optional[str] = None
         with db_transaction() as c:
             fence_err = _evaluate_fence_against_snapshot(
                 c, project_id, task_key, before_snap, lease_id=lease_id
@@ -1866,6 +1867,7 @@ def execute_checkpointed_work_boundary(
                     )
                 # Preserve raw observation only as unaccepted/superseded model_proposal provenance
                 sup_id = new_id("epi")
+                sup_quals = {**quals, "rejected_by_revision_fence": True}
                 c.execute(
                     """INSERT INTO project_epistemic_items (
                         id, project_id, run_id, task_key, epistemic_category, statement,
@@ -1882,12 +1884,18 @@ def execute_checkpointed_work_boundary(
                         jdump(req_ids),
                         jdump(raw_result.get("source_refs") or []),
                         jdump(art_refs),
-                        jdump({**quals, "rejected_by_revision_fence": True}),
+                        jdump(sup_quals),
                         expected_req_rev,
                         fence_err,
                         now,
                         now,
                     ),
+                )
+                c.execute(
+                    """INSERT INTO project_epistemic_fts (
+                        item_id, project_id, epistemic_category, statement, qualifiers_text
+                    ) VALUES (?, ?, ?, ?, ?)""",
+                    (sup_id, project_id, "model_proposal", clean_stmt, jdump(sup_quals)),
                 )
                 c.execute(
                     """UPDATE project_task_contracts
@@ -1898,8 +1906,13 @@ def execute_checkpointed_work_boundary(
                      WHERE project_id = ? AND task_key = ?""",
                     (fence_err, now, project_id, task_key),
                 )
-                raise StaleWorkerResultError(fence_err)
+                fence_err_to_raise = fence_err
 
+        if fence_err_to_raise is not None:
+            raise StaleWorkerResultError(fence_err_to_raise)
+
+        with db_transaction() as c:
+            now = now_iso()
             # Fence holds! Now validate trusted verification receipt against live revisions & artifact hash
             receipt_validation = verify_trusted_receipt(
                 active_receipt,
@@ -2380,9 +2393,21 @@ def invalidate_dependency_closure(
                 or art_set.intersection(ed["artifact_refs"])
             ):
                 if ed["epistemic_category"] != "user_instruction_or_decision":
+                    stale_quals = dict(ed.get("qualifiers") or {})
+                    stale_quals["stale_reason"] = reason
                     c.execute(
-                        "UPDATE project_epistemic_items SET verification_status = 'stale', stale_reason = ?, updated_at = ? WHERE id = ?",
-                        (reason, now, ed["id"]),
+                        "UPDATE project_epistemic_items SET verification_status = 'stale', stale_reason = ?, qualifiers_json = ?, updated_at = ? WHERE id = ?",
+                        (reason, jdump(stale_quals), now, ed["id"]),
+                    )
+                    c.execute(
+                        "DELETE FROM project_epistemic_fts WHERE item_id = ? AND project_id = ?",
+                        (ed["id"], project_id),
+                    )
+                    c.execute(
+                        """INSERT INTO project_epistemic_fts (
+                            item_id, project_id, epistemic_category, statement, qualifiers_text
+                        ) VALUES (?, ?, ?, ?, ?)""",
+                        (ed["id"], project_id, ed["epistemic_category"], ed["statement"], jdump(stale_quals)),
                     )
                     invalidated_epistemic_ids.append(ed["id"])
 
@@ -2664,10 +2689,12 @@ class WorkingMemoryRetriever:
         *,
         limit: int = 10,
         offset: int = 0,
+        include_historical: bool = False,
     ) -> Dict[str, Any]:
         """Full-text search over `project_epistemic_fts` strictly scoped to `project_id` in SQL.
 
         Prevents private knowledge from another project from ever appearing in search results.
+        By default (`include_historical=False`), excludes `stale` and `superseded` epistemic items.
         """
         bounded_limit = max(1, min(int(limit), 50))
         bounded_offset = max(0, int(offset))
@@ -2682,17 +2709,31 @@ class WorkingMemoryRetriever:
         fts_expr = " OR ".join(f'"{t}"' for t in tokens[:8])
         conn = get_db_connection()
         try:
-            rows = conn.execute(
-                """SELECT e.*
-                   FROM project_epistemic_fts f
-                   JOIN project_epistemic_items e ON e.id = f.item_id
-                   WHERE f.project_id = ?
-                     AND e.project_id = ?
-                     AND project_epistemic_fts MATCH ?
-                   ORDER BY bm25(project_epistemic_fts) ASC
-                   LIMIT ? OFFSET ?""",
-                (project_id, project_id, fts_expr, bounded_limit, bounded_offset),
-            ).fetchall()
+            if include_historical:
+                rows = conn.execute(
+                    """SELECT e.*
+                       FROM project_epistemic_fts f
+                       JOIN project_epistemic_items e ON e.id = f.item_id
+                       WHERE f.project_id = ?
+                         AND e.project_id = ?
+                         AND project_epistemic_fts MATCH ?
+                       ORDER BY bm25(project_epistemic_fts) ASC
+                       LIMIT ? OFFSET ?""",
+                    (project_id, project_id, fts_expr, bounded_limit, bounded_offset),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """SELECT e.*
+                       FROM project_epistemic_fts f
+                       JOIN project_epistemic_items e ON e.id = f.item_id
+                       WHERE f.project_id = ?
+                         AND e.project_id = ?
+                         AND e.verification_status NOT IN ('stale', 'superseded')
+                         AND project_epistemic_fts MATCH ?
+                       ORDER BY bm25(project_epistemic_fts) ASC
+                       LIMIT ? OFFSET ?""",
+                    (project_id, project_id, fts_expr, bounded_limit, bounded_offset),
+                ).fetchall()
         finally:
             conn.close()
 
@@ -2703,6 +2744,7 @@ class WorkingMemoryRetriever:
             "query_type": "fts_search",
             "project_id": project_id,
             "query_text": query_text,
+            "include_historical": bool(include_historical),
             "items": items,
             "includes_superseded_or_stale_count": superseded_count,
             "pagination": {"limit": bounded_limit, "offset": bounded_offset},

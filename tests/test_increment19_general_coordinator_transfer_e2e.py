@@ -458,6 +458,7 @@ def test_live_general_coordinator_cross_domain_transfer_e2e(tmp_path: Path, monk
                             "supplier_recommendation.json",
                             "supplier_recommendation.md",
                         ],
+                        "quotes": acceptance_harness.SYNTHETIC_SUPPLIER_QUOTES,
                     },
                     "advance": True,
                     "max_steps": 5,

@@ -133,9 +133,11 @@ def test_03_action_validation_rate_and_origin_separation() -> None:
     })
     intake_mod.persist_requirement_ledger(pid, ledger, run_id=run_id, actor="tester")
 
-    # Run 1 step of supplier template workflow
+    # Run 1 step of supplier template workflow (with explicit quotes per AUD-01)
+    from app.services.orchestration import acceptance_harness
     res = deliberate_loop.advance_deliberate_project(
         project_id=pid,
+        quotes_data=acceptance_harness.SYNTHETIC_SUPPLIER_QUOTES,
         use_live_worker=False,
         max_steps=1,
     )

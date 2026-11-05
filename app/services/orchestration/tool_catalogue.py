@@ -32,7 +32,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from app.services.orchestration.action_registry import ActionKind, ActionManifest, GLOBAL_ACTION_REGISTRY
 from app.services.orchestration.common import new_id, now_iso
-from app.services.orchestration.financial_ledger import Allocation, Cost, Fund, money, reconcile
+from app.services.orchestration.financial_ledger import Allocation, Cost, Fund, money, reconcile, reconcile_grant_budget_ledger
 from app.services.orchestration.intake import inspect_untrusted_source_for_directive_injection
 
 logger = logging.getLogger("qc.orchestrator.tool_catalogue")
@@ -1183,7 +1183,7 @@ class ToolCatalogue:
                 tool_id="inspect_document_or_repo",
                 category="inspection",
                 description="Read and extract structured facts, tables, or source files from approved project documents or disposable repositories with prompt-injection stripping.",
-                input_schema={"source_id": "str", "content_or_path": "str", "max_chars": "int"},
+                input_schema={"source_id": "str|None", "content_or_path": "str", "max_chars": "int|None"},
                 output_schema={"sanitized_text": "str", "contains_injection_attempt": "bool", "sha256": "str"},
                 permissions=["read_scoped_workspace"],
                 side_effects=False,
@@ -1194,7 +1194,7 @@ class ToolCatalogue:
                 tool_id="inspect_repository_workspace",
                 category="inspection",
                 description="Inspect all source and test files inside a scoped repository workspace with directive-injection stripping and SHA-256 digests.",
-                input_schema={"workspace_path": "str", "include_globs": "list[str]|None", "max_file_chars": "int"},
+                input_schema={"workspace_path": "str", "include_globs": "list[str]|None", "max_file_chars": "int|None"},
                 output_schema={"files": "dict", "file_count": "int", "contains_injection_attempt": "bool"},
                 permissions=["read_scoped_workspace"],
                 side_effects=False,
@@ -1205,7 +1205,7 @@ class ToolCatalogue:
                 tool_id="run_repository_test_suite",
                 category="coding",
                 description="Run a repository's unit test suite inside a WindowsJob-bounded isolated process with network disabled.",
-                input_schema={"workspace_path": "str", "test_rel_path": "str|None", "timeout_seconds": "float"},
+                input_schema={"workspace_path": "str", "test_rel_path": "str|None", "extra_test_dir": "str|None", "timeout_seconds": "float|None"},
                 output_schema={"passed": "bool", "tests_run": "int", "failures": "int", "errors": "int", "output_excerpt": "str"},
                 permissions=["read_scoped_workspace", "isolated_code_sandbox"],
                 side_effects=False,
@@ -1216,7 +1216,20 @@ class ToolCatalogue:
                 tool_id="apply_and_verify_repository_patch",
                 category="coding",
                 description="Apply a candidate code patch to a scoped repository file and verify against public unit tests and protected holdout tests.",
-                input_schema={"workspace_path": "str", "target_file": "str", "patched_content": "str", "public_test_rel_path": "str|None", "holdout_test_dir": "str|None"},
+                input_schema={
+                    "workspace_path": "str",
+                    "target_file": "str",
+                    "patched_content": "str",
+                    "public_test_rel_path": "str|None",
+                    "holdout_test_dir": "str|None",
+                    "revert_on_failure": "bool|None",
+                    "timeout_seconds": "float|None",
+                    "project_id": "str|None",
+                    "run_id": "str|None",
+                    "native_execution_id": "str|None",
+                    "native_lease_id": "str|None",
+                    "native_idempotency_key": "str|None",
+                },
                 output_schema={"accepted": "bool", "status": "str", "unified_diff": "str", "checks": "list[dict]"},
                 permissions=["write_scoped_workspace", "isolated_code_sandbox"],
                 side_effects=True,
@@ -1238,7 +1251,7 @@ class ToolCatalogue:
                 tool_id="search_and_retrieve_sources",
                 category="research",
                 description="Search and retrieve source snapshots with publication date, jurisdiction/program scope, and provenance metadata.",
-                input_schema={"queries": "list[str]", "project_id": "str", "as_of_date": "str"},
+                input_schema={"queries": "list[str]", "project_id": "str", "as_of_date": "str|None"},
                 output_schema={"sources": "list[dict]", "claims": "list[dict]", "contradictions": "list[dict]"},
                 permissions=["controller_research_runner"],
                 side_effects=False,
@@ -1249,7 +1262,7 @@ class ToolCatalogue:
                 tool_id="decimal_calculate_and_reconcile",
                 category="calculation",
                 description="Perform cent-accurate Decimal arithmetic, budget allocation reconciliation, or quote cost calculation.",
-                input_schema={"mode": "str (reconcile|option_cost)", "payload": "dict"},
+                input_schema={"mode": "str", "payload": "dict"},
                 output_schema={"valid": "bool", "total_cost": "str", "derivations": "dict", "errors": "list[str]"},
                 permissions=["deterministic_compute"],
                 side_effects=False,
@@ -1260,7 +1273,7 @@ class ToolCatalogue:
                 tool_id="compare_options_against_constraints",
                 category="reasoning",
                 description="Resolve conflicting quote revisions and compare candidate options against hard and soft price, delivery, capability, and dependency constraints.",
-                input_schema={"options": "list[dict]", "constraints": "dict", "quantity": "int", "as_of_date": "str"},
+                input_schema={"options": "list[dict]", "constraints": "dict", "quantity": "int|None", "as_of_date": "str|None"},
                 output_schema={"status": "str", "recommended_option": "dict|None", "evaluated_options": "list[dict]", "blocker": "str|None"},
                 permissions=["deterministic_compute"],
                 side_effects=False,
@@ -1271,7 +1284,7 @@ class ToolCatalogue:
                 tool_id="analyze_structured_dataset",
                 category="data_analysis",
                 description="Compute exact Decimal aggregations, group-by summaries, malformed row diagnostics, and z-score anomaly detection on tabular data.",
-                input_schema={"rows": "list[dict]", "group_by": "str|None", "value_field": "str"},
+                input_schema={"rows": "list[dict]", "group_by": "str|None", "value_field": "str|None", "anomaly_z_threshold": "float|None"},
                 output_schema={"summary": "dict", "groups": "dict", "anomalies": "list[dict]", "malformed_rows": "list[dict]"},
                 permissions=["deterministic_compute"],
                 side_effects=False,
@@ -1282,7 +1295,7 @@ class ToolCatalogue:
                 tool_id="execute_and_test_code",
                 category="coding",
                 description="Validate syntax and execute candidate Python code against independent pinned unit tests inside the isolated sandbox runner.",
-                input_schema={"code": "str", "test_code": "str", "filename": "str", "timeout_seconds": "float"},
+                input_schema={"code": "str", "test_code": "str", "filename": "str|None", "timeout_seconds": "float|None"},
                 output_schema={"accepted": "bool", "decision": "str", "checks": "list[dict]"},
                 permissions=["isolated_code_sandbox"],
                 side_effects=False,
@@ -1293,7 +1306,7 @@ class ToolCatalogue:
                 tool_id="verify_web_application_behavior",
                 category="web_verification",
                 description="Verify HTML/CSS/JS web application DOM elements, event handlers, and interactive state transitions.",
-                input_schema={"html_content": "str", "js_content": "str", "required_elements": "list[str]", "interaction_cases": "list[dict]"},
+                input_schema={"html_content": "str", "js_content": "str|None", "css_content": "str|None", "required_elements": "list[str]|None", "interaction_cases": "list[dict]|None"},
                 output_schema={"verified": "bool", "status": "str", "checks": "list[dict]"},
                 permissions=["deterministic_compute"],
                 side_effects=False,
@@ -1304,7 +1317,7 @@ class ToolCatalogue:
                 tool_id="create_or_revise_artifact",
                 category="artifact",
                 description="Write a versioned, content-addressed project artifact with provenance and validation metadata.",
-                input_schema={"run": "dict", "filename": "str", "content": "bytes|str", "provenance": "str"},
+                input_schema={"run": "dict|None", "project_id": "str|None", "run_id": "str|None", "filename": "str", "content": "bytes|str", "provenance": "str|None"},
                 output_schema={"artifact_id": "str", "sha256": "str", "version": "int"},
                 permissions=["write_project_artifact"],
                 side_effects=True,
@@ -1326,7 +1339,7 @@ class ToolCatalogue:
                 tool_id="worker_model_inference",
                 category="inference",
                 description="Dispatch bounded model generation or synthesis through an authenticated, capability-verified worker lease.",
-                input_schema={"purpose": "str", "prompt": "str", "role": "str", "max_tokens": "int"},
+                input_schema={"purpose": "str", "prompt": "str", "role": "str|None", "max_tokens": "int|None"},
                 output_schema={"status": "str", "response": "str", "lease_id": "str|None", "model": "str"},
                 permissions=["authenticated_worker_lease"],
                 side_effects=False,
@@ -1342,6 +1355,84 @@ class ToolCatalogue:
 
     def get_tool(self, tool_id: str) -> Optional[ToolSpec]:
         return self._tools.get(tool_id)
+
+    def validate_tool_arguments(
+        self,
+        tool_id: str,
+        arguments: Dict[str, Any],
+        *,
+        allow_template_empty: bool = False,
+    ) -> Dict[str, Any]:
+        """Validate `arguments` against `spec.input_schema` (required keys, allowed keys, and primitive types)."""
+        spec = self.get_tool(tool_id)
+        if not spec:
+            return {"valid": False, "error_class": "unregistered_tool", "reason": f"Unknown tool '{tool_id}'"}
+        if not isinstance(arguments, dict):
+            return {"valid": False, "error_class": "invalid_arguments_schema", "reason": "Arguments must be a JSON object/dict."}
+
+        if allow_template_empty and len(arguments) == 0:
+            return {"valid": True}
+
+        schema = spec.input_schema
+        unknown_keys = sorted(set(arguments.keys()) - set(schema.keys()))
+        if unknown_keys:
+            return {
+                "valid": False,
+                "error_class": "invalid_arguments_schema",
+                "reason": f"Unknown argument(s) for tool '{tool_id}': {unknown_keys}",
+            }
+
+        missing_keys = [
+            k for k, t_str in schema.items()
+            if "|None" not in str(t_str) and k not in arguments
+        ]
+        if missing_keys:
+            return {
+                "valid": False,
+                "error_class": "invalid_arguments_schema",
+                "reason": f"Missing required argument(s) for tool '{tool_id}': {missing_keys}",
+            }
+
+        for k, val in arguments.items():
+            t_spec = str(schema.get(k, "str"))
+            is_optional = "|None" in t_spec
+            if val is None:
+                if is_optional:
+                    continue
+                return {
+                    "valid": False,
+                    "error_class": "invalid_arguments_schema",
+                    "reason": f"Argument '{k}' for tool '{tool_id}' cannot be null.",
+                }
+            base_type = t_spec.replace("|None", "").strip()
+            if base_type == "str":
+                if not isinstance(val, str):
+                    return {"valid": False, "error_class": "invalid_arguments_schema", "reason": f"Argument '{k}' must be str."}
+                if not is_optional and not val.strip() and k in ("workspace_path", "target_file", "project_id", "filename", "prompt", "purpose"):
+                    return {"valid": False, "error_class": "invalid_arguments_schema", "reason": f"Argument '{k}' must be non-empty str."}
+            elif base_type == "int":
+                if not isinstance(val, int) or isinstance(val, bool):
+                    return {"valid": False, "error_class": "invalid_arguments_schema", "reason": f"Argument '{k}' must be int."}
+            elif base_type == "float":
+                if not isinstance(val, (int, float)) or isinstance(val, bool):
+                    return {"valid": False, "error_class": "invalid_arguments_schema", "reason": f"Argument '{k}' must be float/number."}
+            elif base_type == "bool":
+                if not isinstance(val, bool):
+                    return {"valid": False, "error_class": "invalid_arguments_schema", "reason": f"Argument '{k}' must be bool."}
+            elif base_type == "dict":
+                if not isinstance(val, dict):
+                    return {"valid": False, "error_class": "invalid_arguments_schema", "reason": f"Argument '{k}' must be dict."}
+            elif base_type == "list[str]":
+                if not isinstance(val, list) or not all(isinstance(x, str) for x in val):
+                    return {"valid": False, "error_class": "invalid_arguments_schema", "reason": f"Argument '{k}' must be list[str]."}
+            elif base_type == "list[dict]":
+                if not isinstance(val, list) or not all(isinstance(x, dict) for x in val):
+                    return {"valid": False, "error_class": "invalid_arguments_schema", "reason": f"Argument '{k}' must be list[dict]."}
+            elif base_type == "bytes|str":
+                if not isinstance(val, (bytes, str)):
+                    return {"valid": False, "error_class": "invalid_arguments_schema", "reason": f"Argument '{k}' must be bytes or str."}
+
+        return {"valid": True}
 
     def execute_tool(self, tool_id: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a registered tool safely and return a provenance-tagged observation."""
@@ -1433,28 +1524,71 @@ class ToolCatalogue:
                 "result": res,
             }
 
+        if tool_id == "search_and_retrieve_sources":
+            from app.services.orchestration import working_memory as wm
+            queries = [str(q) for q in (arguments.get("queries") or []) if str(q).strip()]
+            project_id = str(arguments.get("project_id") or "").strip()
+            as_of_date = str(arguments.get("as_of_date") or "")
+            seen_ids: set[str] = set()
+            sources: List[Dict[str, Any]] = []
+            claims: List[Dict[str, Any]] = []
+            contradictions: List[Dict[str, Any]] = []
+
+            for q in queries:
+                fts_res = wm.WorkingMemoryRetriever.search_project_epistemic_fts(project_id, q, limit=20)
+                for item in fts_res.get("items", []):
+                    iid = item["id"]
+                    if iid in seen_ids:
+                        continue
+                    seen_ids.add(iid)
+                    guard = inspect_untrusted_source_for_directive_injection(item["statement"], source_id=iid)
+                    entry = {
+                        "id": iid,
+                        "epistemic_category": item["epistemic_category"],
+                        "statement": guard["sanitized_text"],
+                        "verification_status": item["verification_status"],
+                        "source_refs": item.get("source_refs") or [],
+                        "artifact_refs": item.get("artifact_refs") or [],
+                        "contains_injection_attempt": guard["contains_injection_attempt"],
+                    }
+                    if item["epistemic_category"] in ("source_observation", "verified_artifact"):
+                        sources.append(entry)
+                    elif item["epistemic_category"] in ("supported_claim", "derived_result"):
+                        claims.append(entry)
+                    elif item["verification_status"] in ("failed", "blocked") or "contradict" in str(item.get("qualifiers") or ""):
+                        contradictions.append(entry)
+                    else:
+                        sources.append(entry)
+
+            return {
+                "tool_id": tool_id,
+                "status": "observed",
+                "provenance": "tool_observation",
+                "result": {
+                    "schema": "qc.source_retrieval.v1",
+                    "project_id": project_id,
+                    "as_of_date": as_of_date,
+                    "queries": queries,
+                    "sources": sources,
+                    "claims": claims,
+                    "contradictions": contradictions,
+                },
+            }
+
         if tool_id == "decimal_calculate_and_reconcile":
             mode = arguments.get("mode", "option_cost")
             payload = arguments.get("payload") or {}
             if mode == "reconcile":
-                costs = tuple(Cost(**c) for c in payload.get("costs", []))
-                funds = tuple(
-                    Fund(
-                        id=f["id"],
-                        kind=f["kind"],
-                        status=f["status"],
-                        amount=f["amount"],
-                        eligible_categories=frozenset(f.get("eligible_categories", [])),
-                        rule_evidence_id=f.get("rule_evidence_id", "ev-1"),
-                        match_rate=str(f.get("match_rate", "0")),
-                        match_basis=f.get("match_basis", "grant"),
-                        accepted_match_kinds=frozenset(f.get("accepted_match_kinds", [])),
-                        category_caps=tuple(tuple(p) for p in f.get("category_caps", [])),
-                    )
-                    for f in payload.get("funds", [])
-                )
-                allocs = tuple(Allocation(**a) for a in payload.get("allocations", []))
-                res = reconcile(payload["total"], costs, funds, allocs)
+                try:
+                    res = reconcile_grant_budget_ledger(payload)
+                except ValueError as exc:
+                    res = {
+                        "valid": False,
+                        "errors": [str(exc)],
+                        "funding_gap": "0.00",
+                        "match_deficits": {},
+                        "derivations": {},
+                    }
                 return {
                     "tool_id": tool_id,
                     "status": "verified_for_scope" if res["valid"] else "failed",
@@ -1527,6 +1661,53 @@ class ToolCatalogue:
                 "result": res,
             }
 
+        if tool_id == "create_or_revise_artifact":
+            from app.services.orchestration import artifact_manager
+            from app.services.orchestration.common import get_run, get_run_for_project
+            raw_content = arguments.get("content", b"")
+            content_bytes = raw_content if isinstance(raw_content, bytes) else str(raw_content).encode("utf-8")
+            filename = str(arguments.get("filename") or "artifact.txt").strip()
+            provenance = str(arguments.get("provenance") or "controller_generated")
+            run_obj = arguments.get("run")
+            project_id = str(arguments.get("project_id") or (run_obj.get("project_id") if isinstance(run_obj, dict) else "") or "")
+            run_id = str(arguments.get("run_id") or (run_obj.get("id") if isinstance(run_obj, dict) else "") or "")
+            if not isinstance(run_obj, dict) or not run_obj.get("id"):
+                if run_id:
+                    run_obj = get_run(run_id)
+                elif project_id:
+                    run_obj = get_run_for_project(project_id)
+            sha256_hex = hashlib.sha256(content_bytes).hexdigest()
+            if isinstance(run_obj, dict) and run_obj.get("id"):
+                art_id = artifact_manager.write_controller_artifact(
+                    run_obj,
+                    None,
+                    filename,
+                    content_bytes,
+                    provenance=provenance,
+                )
+            else:
+                from app.services.artifacts import artifact_service
+                reg = artifact_service.register_artifact(
+                    name=filename,
+                    data=content_bytes,
+                    project_id=project_id or None,
+                    description=f"Created via tool create_or_revise_artifact ({provenance})",
+                    created_by="tool_catalogue",
+                    expected_sha256=sha256_hex,
+                )
+                art_id = reg["id"]
+            return {
+                "tool_id": tool_id,
+                "status": "observed",
+                "provenance": "tool_observation",
+                "result": {
+                    "artifact_id": art_id,
+                    "filename": filename,
+                    "sha256": sha256_hex,
+                    "version": 1,
+                },
+            }
+
         if tool_id == "inspect_operational_state":
             from app.services.orchestration import model_router, telemetry
             run_id = arguments.get("run_id")
@@ -1541,11 +1722,20 @@ class ToolCatalogue:
                 },
             }
 
+        if tool_id == "worker_model_inference":
+            return {
+                "tool_id": tool_id,
+                "status": "failed",
+                "error": "worker_model_inference_requires_leased_worker_dispatch",
+                "detail": "Model inference must be dispatched through execute_native_worker_inference with an authenticated worker lease.",
+                "provenance": "tool_observation",
+            }
+
         return {
             "tool_id": tool_id,
-            "status": "observed",
+            "status": "failed",
+            "error": f"Unhandled tool_id '{tool_id}'",
             "provenance": "tool_observation",
-            "result": arguments,
         }
 
 
