@@ -4,11 +4,11 @@
   "model_identity": "qwen2.5:3b",
   "worker_node_id": "node-inc19-live-worker",
   "supplier_domain": {
-    "project_id": "prj-282e364f2d8748b8b5132b16f01544f9",
+    "project_id": "prj-8672ddbf4b794c5cae167f47b8088a05",
     "domain": "supplier_option_evaluation",
     "final_cycle_phase": "completed",
     "native_worker_lease_ids": [
-      "lease_0770a22b1349"
+      "lease_73f754282024"
     ],
     "tool_selection_stats": {
       "total_proposals": 3,
@@ -33,7 +33,7 @@
     ]
   },
   "repository_bugfix_domain": {
-    "project_id": "prj-afa2682efc824587abf0f656087b7d48",
+    "project_id": "prj-2adaddea143648f9826ebab26d38913c",
     "domain": "repository_bugfix",
     "initial_clarification_phase": "clarify",
     "step1_inspection_status": "verified",
@@ -41,7 +41,7 @@
     "attempt1_natural_repair": {
       "final_cycle_phase": "completed",
       "native_worker_lease_ids": [
-        "lease_6550b4916e23"
+        "lease_7ec5d7549df2"
       ],
       "tool_selection_stats": {
         "total_proposals": 2,
@@ -61,7 +61,7 @@
       "integration_verified": true,
       "untouched_reporting_sha256": "d66c879595e1c52ca8cda492c2282d574aee7a738dc664d5cf5e354265164074",
       "untouched_public_test_sha256": "c29ea0aa89052a8de91b803a104d2436ff7545876e50a36630e1fc727857d18c",
-      "patched_allocator_sha256": "0edfab7de93a2ec4adbdb5a3b996767b9ce6aec0dadd93d8cb7d3eb35a3a9f45"
+      "patched_allocator_sha256": "2a8e58a3cce4e45893ddcd11960bc89aaae5c5cd2cf9c750451d738309e15e3d"
     },
     "mid_flight_steering_and_fault_injection_recovery": {
       "invalidated_task_keys": [
@@ -73,7 +73,7 @@
       ],
       "final_cycle_phase": "completed",
       "native_worker_lease_ids": [
-        "lease_043250ff6c79"
+        "lease_3af0049e7833"
       ],
       "repair_events_count": 1,
       "oracle_exposure_prevented": true

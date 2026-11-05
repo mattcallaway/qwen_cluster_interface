@@ -2517,6 +2517,33 @@ def advance_deliberate_project(
             tool_selection_stats["valid_selections"] += 1
             tool_selection_stats["action_origin_counts"][action_origin] += 1
 
+            if test_res.get("status") in ("held_containment_backend_required", "held_protected_backend_required", "backend_error", "not_evaluated"):
+                blocker_msg = f"Repository test suite execution blocked ({test_res.get('status')}): {test_res.get('reason') or test_res.get('error')}"
+                with db_transaction() as c:
+                    c.execute(
+                        "UPDATE project_task_contracts SET status = 'blocked', blocker_conditions_json = ?, updated_at = ? WHERE project_id = ? AND task_key = ?",
+                        (jdump([blocker_msg]), now_iso(), project_id, tkey),
+                    )
+                context_manager.save_project_memory_state(
+                    project_id,
+                    run_id=run_id,
+                    current_cycle_phase="blocked",
+                    escalation_step=7,
+                    next_action={"action": "repo_test_execution_blocked", "task_key": tkey, "reason": blocker_msg},
+                )
+                steps_executed.append({
+                    "task_key": tkey,
+                    "status": "blocked",
+                    "error_class": test_res.get("status"),
+                    "reason": blocker_msg,
+                    "action_origin": action_origin,
+                    "proposal_validity": True,
+                    "action_appropriateness": "unmeasured" if action_origin == "template" else True,
+                    "execution_outcome": "held" if "held" in str(test_res.get("status")) else "failed",
+                    "task_outcome": "blocked",
+                })
+                break
+
             combined_obs = {
                 "schema": "qc.repo_inspection_and_reproduction.v1",
                 "inspection": insp_res,
@@ -2622,6 +2649,32 @@ def advance_deliberate_project(
 
             # Run public test suite to capture current failure traceback for the model (never holdout tests!)
             pub_run_before = tool_catalogue.run_repository_test_suite(eff_ws, test_rel_path=pub_test_rel)
+            if pub_run_before.get("status") in ("held_containment_backend_required", "held_protected_backend_required", "backend_error", "not_evaluated"):
+                blocker_msg = f"Containment backend required before running repository tests ({pub_run_before.get('status')})"
+                with db_transaction() as c:
+                    c.execute(
+                        "UPDATE project_task_contracts SET status = 'blocked', blocker_conditions_json = ?, updated_at = ? WHERE project_id = ? AND task_key = ?",
+                        (jdump([blocker_msg]), now_iso(), project_id, tkey),
+                    )
+                context_manager.save_project_memory_state(
+                    project_id,
+                    run_id=run_id,
+                    current_cycle_phase="blocked",
+                    escalation_step=7,
+                    next_action={"action": "patch_verification_blocked", "task_key": tkey, "reason": blocker_msg},
+                )
+                steps_executed.append({
+                    "task_key": tkey,
+                    "status": "blocked",
+                    "error_class": pub_run_before.get("status"),
+                    "reason": blocker_msg,
+                    "action_origin": action_origin,
+                    "proposal_validity": True,
+                    "action_appropriateness": "unmeasured" if action_origin == "template" else True,
+                    "execution_outcome": "held",
+                    "task_outcome": "blocked",
+                })
+                break
             pub_failure_excerpt = pub_run_before.get("output_excerpt") or ""
 
             constraint_texts = [c.text for c in ledger.get_items_by_category(intake_mod.RequirementKind.CONSTRAINT)]
@@ -2765,7 +2818,7 @@ def advance_deliberate_project(
                     },
                 )
                 patch_res = tool_patch_obs["result"]
-                if patch_res.get("status") == "held_protected_backend_required":
+                if patch_res.get("status") in ("held_protected_backend_required", "held_containment_backend_required", "not_evaluated"):
                     break
                 if patch_res.get("accepted"):
                     break
@@ -2796,7 +2849,7 @@ def advance_deliberate_project(
             if not patch_res or not patch_res.get("accepted"):
                 blocker_msg = (
                     "Protected repository verifier backend is held; candidate code execution refused on host"
-                    if (patch_res and patch_res.get("status") == "held_protected_backend_required")
+                    if (patch_res and patch_res.get("status") in ("held_protected_backend_required", "held_containment_backend_required"))
                     else "Patch verification failed or worker unavailable"
                 )
                 with db_transaction() as c:

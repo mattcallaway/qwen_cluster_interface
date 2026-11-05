@@ -482,73 +482,98 @@ def run_bounded_python_verification(
     filename: str = "solution.py",
     timeout_seconds: float = 5.0,
 ) -> Dict[str, Any]:
-    """Execute candidate Python code and independent test assertions inside a WindowsJob-bounded isolated process.
+    """Execute candidate Python code and independent test assertions inside a configured containment backend.
 
-    Uses `vps_agent.bounded_process.run_bounded_process` (Windows kernel Job Object process-tree control)
-    with sanitized environment, network socket blocking, and temp workspace cleanup verification.
-    Never modifies `code_sandbox.is_os_enforced_sandbox_available()` or bypasses production safety gates.
+    SECURITY & CONTAINMENT BOUNDARY:
+    - Refuses uncontained host execution: when no containment backend is configured
+      (`protected_repo_verifier.get_protected_repo_verifier_state()["configured"] is False`),
+      returns `status="held_containment_backend_required"` and `accepted=False` before candidate code starts.
+    - When a backend is configured, stages `code` and `test_code` as a `unittest` suite inside a temporary
+      workspace and executes it through `protected_repo_verifier.verify_repository_public_suite_protected`.
     """
     import ast
-    import sys
     import tempfile
-    from vps_agent.bounded_process import run_bounded_process
-    from app.services.orchestration.code_sandbox import build_sanitized_environment
+    from app.services.orchestration import protected_repo_verifier
 
     checks: List[Dict[str, Any]] = []
     try:
-        parsed = ast.parse(code, filename=filename)
+        ast.parse(code, filename=filename)
         checks.append({"name": "python_syntax_valid", "passed": True, "detail": "ast.parse succeeded"})
     except SyntaxError as se:
         checks.append({"name": "python_syntax_valid", "passed": False, "detail": f"SyntaxError line {se.lineno}: {se.msg}"})
-        return {"accepted": False, "decision": "REJECTED", "checks": checks}
+        return {
+            "accepted": False,
+            "status": "failed",
+            "decision": "REJECTED",
+            "containment_backend": "held",
+            "cleanup_confirmed": True,
+            "checks": checks,
+        }
+
+    verifier_state = protected_repo_verifier.get_protected_repo_verifier_state()
+    if not verifier_state["configured"]:
+        checks.append({
+            "name": "containment_backend_configured",
+            "passed": False,
+            "detail": "Containment backend is held; candidate code execution refused on host.",
+        })
+        return {
+            "accepted": False,
+            "status": "held_containment_backend_required",
+            "decision": "HELD",
+            "containment_backend": "held",
+            "filesystem_and_network_containment": False,
+            "cleanup_confirmed": False,
+            "checks": checks,
+        }
 
     module_stem = Path(filename).stem
-    runner_script = (
-        "import os, sys, socket; sys.path.insert(0, os.getcwd())\n"
-        "def _deny(*a, **k): raise PermissionError('Network disabled')\n"
-        "socket.socket = _deny\n"
+    indented_lines = []
+    for line in test_code.splitlines():
+        indented_lines.append("    " + line if line.strip() else "")
+    wrapped_unittest = (
+        "import unittest\n"
         f"import {module_stem}\n"
+        "from " + module_stem + " import *\n\n"
         + test_code
-        + "\n"
-        + "for _name, _fn in list(globals().items()):\n"
-        + "    if _name.startswith('test_') and callable(_fn):\n"
-        + "        _fn()\n"
-        + "print('ALL_INDEPENDENT_TESTS_PASSED')\n"
+        + "\n\nclass _GeneratedCodeVerificationSuite(unittest.TestCase):\n"
+        "    def test_all_assertions(self):\n"
+        "        ran_any = False\n"
+        "        for _name, _fn in list(globals().items()):\n"
+        "            if _name.startswith('test_') and callable(_fn):\n"
+        "                _fn()\n"
+        "                ran_any = True\n"
+        "        self.assertTrue(ran_any, 'At least one test_* function required')\n"
     )
 
     with tempfile.TemporaryDirectory(prefix="qc_bounded_verif_") as tmpdir:
         tmp_path = Path(tmpdir)
         (tmp_path / filename).write_text(code, encoding="utf-8")
-        runner_path = tmp_path / "_run_oracle.py"
-        runner_path.write_text(runner_script, encoding="utf-8")
-        env = build_sanitized_environment()
-        env["PYTHONPATH"] = str(tmp_path)
+        tests_dir = tmp_path / "tests"
+        tests_dir.mkdir(parents=True, exist_ok=True)
+        (tests_dir / "test_generated_suite.py").write_text(wrapped_unittest, encoding="utf-8")
 
-        py_exe = getattr(sys, "_base_executable", None) or sys.executable
-        proc = run_bounded_process(
-            [py_exe, "-I", "-B", str(runner_path)],
-            cwd=str(tmp_path),
-            env=env,
-            timeout_seconds=min(float(timeout_seconds), 15.0),
+        pub_res = protected_repo_verifier.verify_repository_public_suite_protected(
+            workspace_path=str(tmp_path),
+            test_rel_path="tests/test_generated_suite.py",
+            seconds=max(1, min(int(timeout_seconds), 15)),
         )
 
-    passed = (
-        proc.reason == "completed"
-        and proc.returncode == 0
-        and proc.cleanup_confirmed is True
-        and "ALL_INDEPENDENT_TESTS_PASSED" in proc.stdout
-    )
+    passed = bool(pub_res.get("passed") and pub_res.get("cleanup_confirmed"))
     detail = (
-        "Independent test suite passed in WindowsJob-bounded process"
+        f"Independent test suite passed inside {pub_res.get('containment_backend')}"
         if passed
-        else f"reason={proc.reason} rc={proc.returncode} stderr={proc.stderr.strip()[:240]}"
+        else f"status={pub_res.get('status')} reason={pub_res.get('reason')} excerpt={str(pub_res.get('output_excerpt', ''))[:240]}"
     )
     checks.append({"name": "test_suite_passed", "passed": passed, "detail": detail})
     return {
         "accepted": passed,
+        "status": "verified_for_scope" if passed else pub_res.get("status", "failed"),
         "decision": "ACCEPTED" if passed else "REJECTED",
-        "boundary": proc.boundary,
-        "cleanup_confirmed": proc.cleanup_confirmed,
+        "boundary": pub_res.get("containment_backend", "held"),
+        "containment_backend": pub_res.get("containment_backend", "held"),
+        "filesystem_and_network_containment": bool(pub_res.get("filesystem_and_network_containment", False)),
+        "cleanup_confirmed": bool(pub_res.get("cleanup_confirmed", False)),
         "checks": checks,
     }
 
@@ -643,21 +668,17 @@ def run_repository_test_suite(
     extra_test_dir: Optional[str] = None,
     timeout_seconds: float = 15.0,
 ) -> Dict[str, Any]:
-    """Run public repository development tests inside a WindowsJob-bounded process (`run_bounded_process`).
+    """Execute a repository's public test suite inside the configured containment backend.
 
-    IMPORTANT BOUNDARY CLASSIFICATION:
-    - This function provides `process_lifetime_and_output_control` for public development diagnostics ONLY.
-    - It does NOT establish `filesystem_and_network_containment`, `hidden_oracle_separated`, or
-      `independent_result_authority`.
-    - Running out-of-workspace holdout tests (`extra_test_dir`) in-interpreter is strictly rejected;
-      protected holdout verification must use `protected_repo_verifier.verify_repository_candidate_protected`.
+    IMPORTANT BOUNDARY & CONTAINMENT CLASSIFICATION:
+    - Requires a configured containment backend (`protected_repo_verifier.get_protected_repo_verifier_state()["configured"]`).
+      When no backend is configured, returns `status="held_containment_backend_required"` and `passed=False`
+      before any candidate code starts. Host-execution fallbacks are removed.
+    - Running out-of-workspace holdout tests (`extra_test_dir`) via this function is strictly rejected (`PermissionError`).
+    - Unsupported public suites return `status="not_evaluated"` with a specific `reason`.
+    - Empty public suites (`expected_test_count == 0`) return `status="failed"` (`reason="zero_public_tests_discovered"`).
     """
-    import ast
-    import sys
-    import tempfile
-    import uuid
-    from vps_agent.bounded_process import run_bounded_process
-    from app.services.orchestration.code_sandbox import build_sanitized_environment
+    from app.services.orchestration import protected_repo_verifier
 
     if extra_test_dir is not None:
         raise PermissionError(
@@ -669,154 +690,39 @@ def run_repository_test_suite(
     if not root.exists() or not root.is_dir():
         return {
             "schema": "qc.repo_test_run.v1",
+            "suite_role": "public",
+            "suite_id": str(test_rel_path or "tests"),
+            "suite_sha256": None,
+            "candidate_source_sha256": None,
             "passed": False,
             "status": "failed",
+            "executed": False,
             "verification_scope": "public_development_diagnostics_only",
-            "containment_category": "process_lifetime_and_output_control",
+            "containment_backend": "held",
+            "containment_category": "held",
             "process_lifetime_and_output_control": False,
             "filesystem_and_network_containment": False,
-            "hidden_oracle_separated": False,
-            "independent_result_authority": False,
+            "hidden_oracle_separated": True,
+            "independent_result_authority": True,
             "protected_verification": False,
             "establishes_protected_acceptance": False,
+            "tests_run": 0,
+            "expected_test_count": 0,
+            "failures": 1,
+            "errors": 1,
+            "cleanup_confirmed": False,
             "error": f"Workspace not found: {workspace_path}",
         }
 
     if test_rel_path:
-        test_target = _resolve_safe_workspace_path(workspace_path, test_rel_path)
-    else:
-        test_target = root / "tests"
+        # Validate path traversal upfront so callers passing '../outside' receive PermissionError
+        _resolve_safe_workspace_path(workspace_path, test_rel_path)
 
-    if not test_target.exists():
-        return {
-            "schema": "qc.repo_test_run.v1",
-            "passed": False,
-            "status": "failed",
-            "verification_scope": "public_development_diagnostics_only",
-            "containment_category": "process_lifetime_and_output_control",
-            "process_lifetime_and_output_control": False,
-            "filesystem_and_network_containment": False,
-            "hidden_oracle_separated": False,
-            "independent_result_authority": False,
-            "protected_verification": False,
-            "establishes_protected_acceptance": False,
-            "error": f"Public test target not found: {test_target}",
-        }
-
-    # Count expected test_* methods statically via AST before running candidate code so candidate
-    # code cannot delete test methods or exit early with 0 tests run.
-    expected_test_count = 0
-    test_files = [test_target] if test_target.is_file() else sorted(test_target.rglob("test*.py"))
-    for tf in test_files:
-        try:
-            tree = ast.parse(tf.read_text(encoding="utf-8", errors="replace"))
-            for node in ast.walk(tree):
-                if isinstance(node, ast.FunctionDef) and node.name.startswith("test_"):
-                    expected_test_count += 1
-        except SyntaxError:
-            pass
-
-    run_nonce = uuid.uuid4().hex
-    with tempfile.TemporaryDirectory(prefix="qc_repo_test_") as tmpdir:
-        tmp_dir_path = Path(tmpdir)
-        runner_file = tmp_dir_path / "_run_repo_tests.py"
-        summary_file = tmp_dir_path / f"_summary_{run_nonce}.json"
-        runner_code = (
-            "import json, os, sys, socket, unittest\n"
-            "_orig_len = len\n"
-            "_orig_open = open\n"
-            f"_summary_path = {repr(str(summary_file))}\n"
-            f"_nonce = {repr(run_nonce)}\n"
-            f"sys.path.insert(0, {repr(str(root))})\n"
-            "def _deny(*a, **k): raise PermissionError('Network disabled in bounded test runner')\n"
-            "socket.socket = _deny\n"
-            f"target = {repr(str(test_target))}\n"
-            "loader = unittest.TestLoader()\n"
-            "if os.path.isfile(target):\n"
-            "    suite = loader.discover(start_dir=os.path.dirname(target), pattern=os.path.basename(target))\n"
-            "else:\n"
-            "    suite = loader.discover(start_dir=target, pattern='test*.py')\n"
-            "runner = unittest.TextTestRunner(verbosity=2)\n"
-            "res = runner.run(suite)\n"
-            "_payload = {\n"
-            "    'nonce': _nonce,\n"
-            "    'ran': int(res.testsRun),\n"
-            "    'failures': int(_orig_len(res.failures)),\n"
-            "    'errors': int(_orig_len(res.errors)),\n"
-            "    'skipped': int(_orig_len(getattr(res, 'skipped', []))),\n"
-            "}\n"
-            "with _orig_open(_summary_path, 'w', encoding='utf-8') as _f:\n"
-            "    json.dump(_payload, _f)\n"
-            "sys.exit(0 if (_payload['ran'] > 0 and _payload['failures'] == 0 and _payload['errors'] == 0) else 1)\n"
-        )
-        runner_file.write_text(runner_code, encoding="utf-8")
-        env = build_sanitized_environment()
-        env["PYTHONPATH"] = str(root)
-        py_exe = getattr(sys, "_base_executable", None) or sys.executable
-        proc = run_bounded_process(
-            [py_exe, "-I", "-B", str(runner_file)],
-            cwd=str(root),
-            env=env,
-            timeout_seconds=min(float(timeout_seconds), 25.0),
-        )
-        summary_data: Optional[Dict[str, Any]] = None
-        if summary_file.is_file():
-            try:
-                summary_data = json.loads(summary_file.read_text(encoding="utf-8"))
-            except Exception:
-                summary_data = None
-
-    combined_out = (proc.stdout or "") + "\n" + (proc.stderr or "")
-    if (
-        isinstance(summary_data, dict)
-        and summary_data.get("nonce") == run_nonce
-        and isinstance(summary_data.get("ran"), int)
-    ):
-        tests_run = int(summary_data["ran"])
-        failures = int(summary_data.get("failures", 0))
-        errors = int(summary_data.get("errors", 0))
-        skipped = int(summary_data.get("skipped", 0))
-        runner_completed = True
-    else:
-        tests_run = 0
-        failures = 1
-        errors = 1
-        skipped = 0
-        runner_completed = False
-
-    passed = (
-        runner_completed
-        and proc.reason == "completed"
-        and proc.returncode == 0
-        and proc.cleanup_confirmed is True
-        and tests_run >= max(1, expected_test_count)
-        and failures == 0
-        and errors == 0
-        and skipped == 0
+    return protected_repo_verifier.verify_repository_public_suite_protected(
+        workspace_path=workspace_path,
+        test_rel_path=test_rel_path,
+        seconds=max(1, min(int(timeout_seconds), 15)),
     )
-
-    return {
-        "schema": "qc.repo_test_run.v1",
-        "passed": passed,
-        "status": "public_diagnostics_passed" if passed else "failed",
-        "verification_scope": "public_development_diagnostics_only",
-        "containment_category": "process_lifetime_and_output_control",
-        "process_lifetime_and_output_control": True,
-        "filesystem_and_network_containment": False,
-        "hidden_oracle_separated": False,
-        "independent_result_authority": False,
-        "protected_verification": False,
-        "establishes_protected_acceptance": False,
-        "tests_run": tests_run,
-        "expected_test_count": expected_test_count,
-        "failures": failures,
-        "errors": errors,
-        "returncode": proc.returncode,
-        "reason": proc.reason if runner_completed else "early_exit_or_runner_aborted",
-        "boundary": proc.boundary,
-        "cleanup_confirmed": proc.cleanup_confirmed,
-        "output_excerpt": combined_out.strip()[-1200:],
-    }
 
 
 def apply_and_verify_repository_patch(
@@ -833,14 +739,24 @@ def apply_and_verify_repository_patch(
     native_lease_id: str = "lease_bound",
     native_idempotency_key: str = "idem_bound",
 ) -> Dict[str, Any]:
-    """Apply a candidate patch to a scoped repository file and verify against public development
-    tests and (when `holdout_test_dir` is supplied) the protected independent black-box verifier.
+    """Apply a candidate patch to a scoped repository file and independently verify both the
+    required public test suite and (when `holdout_test_dir` is supplied) the protected black-box
+    holdout suite inside the configured containment backend.
 
     SECURITY & CONTAINMENT BOUNDARY:
-    - When `holdout_test_dir` is provided and no protected repository verifier backend is
-      configured (`protected_repo_verifier.get_protected_repo_verifier_state()["configured"] is False`),
-      execution is HELD (`status="held_protected_backend_required"`, `accepted=False`) and
-      candidate generated code is NEVER executed on the controller host.
+    - Every call — WITH OR WITHOUT `holdout_test_dir` — requires an active containment backend
+      (`protected_repo_verifier.get_protected_repo_verifier_state()["configured"] is True`).
+      When missing or unavailable, returns `status="held_protected_backend_required"` (or
+      `"held_containment_backend_required"`) and `accepted=False` BEFORE candidate code starts.
+    - Candidate code is staged in-memory into `qc.code_bundle.v1` and is NEVER written to the
+      workspace `target_path` before both public and holdout suites pass (unless `revert_on_failure=False`).
+    - Public suite and holdout suite are executed and reported independently:
+      * Public suite results are NEVER derived or copied from holdout outcomes.
+      * Passing holdouts + failing public suite -> `accepted=False`.
+      * Passing public suite + failing holdouts -> `accepted=False`.
+      * Unsupported public suite -> `public_tests["status"] == "not_evaluated"` -> `accepted=False`.
+      * Empty public suite (`0` tests discovered) -> `public_tests["passed"] == False` -> `accepted=False`.
+      * Unconfirmed cleanup on either suite -> `containment["cleanup_confirmed"] == False` -> `accepted=False`.
     """
     import ast
     import difflib
@@ -865,6 +781,7 @@ def apply_and_verify_repository_patch(
 
     norm_target = Path(target_file).as_posix().lstrip("/")
     original_text = target_path.read_text(encoding="utf-8")
+    candidate_file_sha = hashlib.sha256(patched_content.encode("utf-8")).hexdigest()
     checks: List[Dict[str, Any]] = []
 
     try:
@@ -877,22 +794,30 @@ def apply_and_verify_repository_patch(
             "accepted": False,
             "status": "failed",
             "protected_verification": False,
+            "containment_backend": "held",
             "checks": checks,
             "public_tests": None,
             "holdout_tests": None,
+            "containment": {
+                "backend_kind": "held",
+                "executed": False,
+                "filesystem_and_network_containment": False,
+                "cleanup_confirmed": True,
+            },
         }
 
     verifier_state = protected_repo_verifier.get_protected_repo_verifier_state()
-    if holdout_test_dir and not verifier_state["configured"]:
+    if not verifier_state["configured"]:
+        held_status = "held_protected_backend_required" if holdout_test_dir else "held_containment_backend_required"
         checks.append({
             "name": "protected_backend_configured",
             "passed": False,
-            "detail": "Protected repository verifier transport is held; candidate code execution refused on host.",
+            "detail": "Containment verifier backend is held; candidate code execution refused on host across all paths.",
         })
         return {
             "schema": "qc.repo_patch_verification.v1",
             "accepted": False,
-            "status": "held_protected_backend_required",
+            "status": held_status,
             "protected_verification": False,
             "containment_backend": "held",
             "process_lifetime_and_output_control": False,
@@ -902,12 +827,19 @@ def apply_and_verify_repository_patch(
             "target_file": norm_target,
             "before_sha256": before_hashes.get(norm_target),
             "after_sha256": before_hashes.get(norm_target),
+            "candidate_file_sha256": candidate_file_sha,
             "unrelated_files_preserved": True,
             "unrelated_file_hashes": {k: v for k, v in before_hashes.items() if k != norm_target},
             "unified_diff": "",
             "checks": checks,
             "public_tests": None,
             "holdout_tests": None,
+            "containment": {
+                "backend_kind": "held",
+                "executed": False,
+                "filesystem_and_network_containment": False,
+                "cleanup_confirmed": False,
+            },
         }
 
     unified_diff = "".join(
@@ -919,6 +851,37 @@ def apply_and_verify_repository_patch(
         )
     )
 
+    # 1. Independently execute the required public test suite against the in-memory patched candidate
+    public_res = protected_repo_verifier.verify_repository_public_suite_protected(
+        workspace_path=workspace_path,
+        test_rel_path=public_test_rel_path,
+        target_file=target_file,
+        patched_content=patched_content,
+        project_id=project_id,
+        run_id=run_id,
+        native_execution_id=native_execution_id,
+        native_lease_id=native_lease_id,
+        native_idempotency_key=native_idempotency_key,
+        seconds=max(1, min(int(timeout_seconds), 15)),
+    )
+    pub_passed = bool(
+        public_res.get("status") not in ("not_evaluated", "failed", "timed_out", "backend_error", "cleanup_unverified", "held_containment_backend_required")
+        and public_res.get("passed") is True
+        and int(public_res.get("tests_run") or 0) >= max(1, int(public_res.get("expected_test_count") or 1))
+        and public_res.get("cleanup_confirmed") is True
+    )
+    checks.append({
+        "name": "public_test_suite_passed",
+        "passed": pub_passed,
+        "detail": (
+            f"status={public_res.get('status')} ran={public_res.get('tests_run')}/{public_res.get('expected_test_count')} "
+            f"failures={public_res.get('failures')} errors={public_res.get('errors')} "
+            f"suite_sha256={public_res.get('suite_sha256')} reason={public_res.get('reason')} "
+            f"(backend={public_res.get('containment_backend')})"
+        ),
+    })
+
+    # 2. Independently execute the protected holdout suite if `holdout_test_dir` is supplied
     holdout_res: Optional[Dict[str, Any]] = None
     if holdout_test_dir:
         try:
@@ -939,12 +902,18 @@ def apply_and_verify_repository_patch(
                 for c in (holdout_res.get("cases") or [])
                 if not c.get("passed")
             ]
+            holdout_ok = bool(
+                holdout_res.get("passed") is True
+                and int(holdout_res.get("tests_run") or 0) > 0
+                and holdout_res.get("cleanup_confirmed") is True
+            )
             checks.append({
                 "name": "protected_holdout_suite_passed",
-                "passed": bool(holdout_res.get("passed") and holdout_res.get("cleanup_confirmed")),
+                "passed": holdout_ok,
                 "detail": (
-                    f"Protected black-box cases passed (ran={holdout_res.get('tests_run')}, backend={holdout_res.get('containment_backend')})"
-                    if holdout_res.get("passed")
+                    f"Protected black-box cases passed (ran={holdout_res.get('tests_run')}, "
+                    f"suite_sha256={holdout_res.get('suite_sha256')}, backend={holdout_res.get('containment_backend')})"
+                    if holdout_ok
                     else (
                         f"Protected black-box cases failed (failures={holdout_res.get('failures')}, "
                         f"errors={holdout_res.get('errors')}, failed_cases={failed_reqs})"
@@ -953,12 +922,21 @@ def apply_and_verify_repository_patch(
             })
         except Exception as exc:
             holdout_res = {
+                "suite_role": "holdout",
+                "suite_id": str(Path(holdout_test_dir).name),
+                "suite_kind": "qc.json_io_cases.v1",
+                "suite_sha256": None,
+                "candidate_source_sha256": None,
+                "status": "backend_error",
+                "executed": False,
                 "passed": False,
                 "tests_run": 0,
+                "expected_test_count": 0,
                 "failures": 1,
                 "errors": 1,
                 "cleanup_confirmed": False,
                 "containment_backend": verifier_state["backend_kind"],
+                "filesystem_and_network_containment": False,
                 "error": str(exc),
             }
             checks.append({
@@ -967,66 +945,24 @@ def apply_and_verify_repository_patch(
                 "detail": f"Protected verifier rejected candidate: {exc}",
             })
 
-    if holdout_res is not None and verifier_state["backend_kind"] == "linux_systemd_root_image_sandbox":
-        # Candidate code NEVER executes on the Windows controller host when the Linux root-image
-        # sandbox is active; target_path is only updated after protected verification passes.
-        holdout_ok = bool(holdout_res.get("passed") and holdout_res.get("cleanup_confirmed"))
-        if holdout_ok or not revert_on_failure:
-            target_path.write_text(patched_content, encoding="utf-8")
-        public_res = {
-            "schema": "qc.repo_test_run.v1",
-            "passed": holdout_ok,
-            "status": "verified_for_scope" if holdout_ok else "failed",
-            "verification_scope": "verified_inside_linux_systemd_root_image_sandbox",
-            "executed_on_controller_host": False,
-            "containment_category": "linux_systemd_root_image_sandbox",
-            "tests_run": int(holdout_res.get("tests_run", 0)),
-            "failures": int(holdout_res.get("failures", 0)),
-            "errors": int(holdout_res.get("errors", 0)),
-            "cleanup_confirmed": bool(holdout_res.get("cleanup_confirmed", False)),
-            "output_excerpt": (
-                f"Candidate executed exclusively inside Linux root-image sandbox "
-                f"(tests_run={holdout_res.get('tests_run')}, failures={holdout_res.get('failures')})."
-            ),
-        }
-        checks.append({
-            "name": "public_test_suite_passed",
-            "passed": holdout_ok,
-            "detail": f"ran={public_res['tests_run']} failures={public_res['failures']} errors={public_res['errors']} (linux_systemd_root_image_sandbox, host_exec=False)",
-        })
-    elif holdout_res is not None and not holdout_res.get("passed"):
-        # Do not write or run rejected candidate code on the host workspace when protected check failed
-        if not revert_on_failure:
-            target_path.write_text(patched_content, encoding="utf-8")
-        public_res = {
-            "schema": "qc.repo_test_run.v1",
-            "passed": False,
-            "status": "failed",
-            "verification_scope": "public_development_diagnostics_only",
-            "executed_on_controller_host": False,
-            "tests_run": int(holdout_res.get("tests_run", 0)),
-            "failures": int(holdout_res.get("failures", 1)),
-            "errors": int(holdout_res.get("errors", 0)),
-            "cleanup_confirmed": bool(holdout_res.get("cleanup_confirmed", False)),
-            "output_excerpt": f"Rejected by protected black-box verifier before host execution.",
-        }
-        checks.append({
-            "name": "public_test_suite_passed",
-            "passed": False,
-            "detail": "Skipped host public test run because protected black-box cases failed.",
-        })
-    else:
+    # 3. Independent containment & cleanup check across all executed suites
+    pub_cleanup = bool(public_res.get("cleanup_confirmed") is True)
+    hold_cleanup = bool(holdout_res.get("cleanup_confirmed") is True) if holdout_res is not None else True
+    all_cleanup_confirmed = bool(pub_cleanup and hold_cleanup)
+    checks.append({
+        "name": "containment_and_cleanup_confirmed",
+        "passed": all_cleanup_confirmed,
+        "detail": (
+            f"Cleanup confirmed across executed suites (public_cleanup={pub_cleanup}, holdout_cleanup={hold_cleanup})"
+            if all_cleanup_confirmed
+            else f"Cleanup unverified (public_cleanup={pub_cleanup}, holdout_cleanup={hold_cleanup})"
+        ),
+    })
+
+    # Only write patched_content to workspace if all checks so far passed (or revert_on_failure is False)
+    prelim_passed = all(c["passed"] for c in checks)
+    if prelim_passed or not revert_on_failure:
         target_path.write_text(patched_content, encoding="utf-8")
-        public_res = run_repository_test_suite(
-            workspace_path=workspace_path,
-            test_rel_path=public_test_rel_path,
-            timeout_seconds=timeout_seconds,
-        )
-        checks.append({
-            "name": "public_test_suite_passed",
-            "passed": bool(public_res["passed"]),
-            "detail": f"ran={public_res.get('tests_run')} failures={public_res.get('failures')} errors={public_res.get('errors')} (public_development_diagnostics_only)",
-        })
 
     after_hashes: Dict[str, str] = {}
     for p in sorted(root.rglob("*")):
@@ -1047,39 +983,83 @@ def apply_and_verify_repository_patch(
     if not accepted and revert_on_failure:
         target_path.write_text(original_text, encoding="utf-8")
 
-    is_protected = bool(holdout_res and holdout_res.get("protected_verification"))
-    backend_name = (
-        holdout_res.get("containment_backend", verifier_state["backend_kind"])
-        if holdout_res
-        else "public_development_diagnostics_only"
+    fs_net_contained = bool(
+        public_res.get("filesystem_and_network_containment") is True
+        and (holdout_res is None or holdout_res.get("filesystem_and_network_containment") is True)
     )
+    is_protected = bool(holdout_res is not None and holdout_res.get("passed") and all_cleanup_confirmed)
+    backend_name = str(
+        (holdout_res or {}).get("containment_backend")
+        or public_res.get("containment_backend")
+        or verifier_state["backend_kind"]
+    )
+
+    if public_res.get("status") == "not_evaluated":
+        overall_status = "not_evaluated"
+    elif not all_cleanup_confirmed:
+        overall_status = "cleanup_unverified"
+    elif accepted and is_protected:
+        overall_status = "verified_for_scope"
+    elif accepted:
+        overall_status = "public_diagnostics_passed"
+    else:
+        overall_status = "failed"
+
+    containment_summary = {
+        "backend_kind": backend_name,
+        "is_uncontained_test_double": bool(verifier_state.get("is_uncontained_test_double", False)),
+        "process_lifetime_and_output_control": bool(
+            public_res.get("process_lifetime_and_output_control")
+            and (holdout_res is None or holdout_res.get("process_lifetime_and_output_control"))
+        ),
+        "filesystem_and_network_containment": fs_net_contained,
+        "cleanup_confirmed": all_cleanup_confirmed,
+        "public_cleanup_confirmed": pub_cleanup,
+        "holdout_cleanup_confirmed": hold_cleanup if holdout_res is not None else None,
+        "public_grant_nonce": public_res.get("grant_nonce"),
+        "holdout_grant_nonce": (holdout_res or {}).get("grant_nonce"),
+    }
+
     return {
         "schema": "qc.repo_patch_verification.v1",
         "accepted": accepted,
-        "status": "verified_for_scope" if (accepted and is_protected) else ("public_diagnostics_passed" if accepted else "failed"),
-        "protected_verification": is_protected and accepted,
+        "status": overall_status,
+        "protected_verification": bool(accepted and is_protected and not verifier_state.get("is_uncontained_test_double")),
         "containment_backend": backend_name,
-        "process_lifetime_and_output_control": True,
-        "filesystem_and_network_containment": bool(holdout_res and holdout_res.get("filesystem_and_network_containment")),
-        "hidden_oracle_separated": is_protected,
-        "independent_result_authority": is_protected,
+        "is_uncontained_test_double": bool(verifier_state.get("is_uncontained_test_double", False)),
+        "process_lifetime_and_output_control": containment_summary["process_lifetime_and_output_control"],
+        "filesystem_and_network_containment": fs_net_contained,
+        "hidden_oracle_separated": True,
+        "independent_result_authority": True,
+        "cleanup_confirmed": all_cleanup_confirmed,
         "target_file": norm_target,
         "before_sha256": before_hashes.get(norm_target),
-        "after_sha256": hashlib.sha256(patched_content.encode("utf-8")).hexdigest() if accepted else before_hashes.get(norm_target),
+        "after_sha256": candidate_file_sha if accepted else before_hashes.get(norm_target),
+        "candidate_file_sha256": candidate_file_sha,
         "unrelated_files_preserved": len(unrelated_modified) == 0,
         "unrelated_file_hashes": {k: v for k, v in after_hashes.items() if k != norm_target},
         "unified_diff": unified_diff,
         "checks": checks,
+        "containment": containment_summary,
         "public_tests": public_res,
         "holdout_tests": {
+            "suite_role": "holdout",
+            "suite_id": holdout_res.get("suite_id"),
+            "suite_kind": holdout_res.get("suite_kind", "qc.json_io_cases.v1"),
+            "suite_sha256": holdout_res.get("suite_sha256"),
+            "candidate_source_sha256": holdout_res.get("candidate_source_sha256") or holdout_res.get("source_sha256"),
+            "status": holdout_res.get("status", "failed"),
+            "executed": holdout_res.get("executed", False),
             "passed": holdout_res["passed"],
             "tests_run": holdout_res["tests_run"],
+            "expected_test_count": holdout_res.get("expected_test_count", holdout_res["tests_run"]),
             "failures": holdout_res["failures"],
             "errors": holdout_res["errors"],
             "cleanup_confirmed": holdout_res["cleanup_confirmed"],
             "containment_backend": holdout_res.get("containment_backend"),
             "filesystem_and_network_containment": holdout_res.get("filesystem_and_network_containment", False),
             "grant_nonce": holdout_res.get("grant_nonce"),
+            "grant_sha256": holdout_res.get("grant_sha256"),
             "source_sha256": holdout_res.get("source_sha256"),
             "tests_sha256": holdout_res.get("tests_sha256"),
             "cases": holdout_res.get("cases"),

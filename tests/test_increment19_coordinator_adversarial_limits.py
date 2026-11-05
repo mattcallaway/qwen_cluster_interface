@@ -488,16 +488,27 @@ def test_10_infeasible_task_ends_as_blocked_preserving_verified_upstream_work(tm
     )
 
     # Run with use_live_worker=False on repository_bugfix domain:
-    # Step 1 (`t1_inspect_and_reproduce`) is deterministic and succeeds (`verified`),
+    # Step 1 (`t1_inspect_and_reproduce`) is deterministic and succeeds (`verified`) when an explicit test double
+    # is wired for public suite reproduction,
     # Step 2 (`t2_propose_and_verify_patch`) requires live authenticated worker model inference (no hardcoded patch in coordinator!)
     # and therefore honestly blocks (`blocked`) while preserving `t1_inspect_and_reproduce` as `verified`!
-    adv = deliberate_loop.advance_deliberate_project(
-        project_id,
-        max_steps=5,
-        use_live_worker=False,
-        workspace_path=str(ws_dir),
-        holdout_test_dir=str(holdout_dir),
+    from app.services.orchestration import protected_repo_verifier
+    protected_repo_verifier.configure_protected_repo_verifier(
+        protected_repo_verifier.make_local_blackbox_isolated_transport(),
+        backend_kind="local_blackbox_process_isolated_oracle",
+        nonproduction=True,
+        allow_uncontained_test_double=True,
     )
+    try:
+        adv = deliberate_loop.advance_deliberate_project(
+            project_id,
+            max_steps=5,
+            use_live_worker=False,
+            workspace_path=str(ws_dir),
+            holdout_test_dir=str(holdout_dir),
+        )
+    finally:
+        protected_repo_verifier.configure_protected_repo_verifier(None)
     assert adv["final_cycle_phase"] == "blocked"
     contracts = {tc["task_key"]: tc for tc in wm.list_task_contracts(project_id)}
     assert contracts["t1_inspect_and_reproduce"]["status"] == "verified"

@@ -1161,15 +1161,30 @@ def test_malformed_and_boundary():
         raised = True
     assert raised is True
 '''
-    eval_13 = tool_catalogue.GLOBAL_TOOL_CATALOGUE.execute_tool(
-        "execute_and_test_code",
-        {
-            "code": code_13,
-            "test_code": hidden_oracle_13,
-            "filename": "solution.py",
-            "acceptance_criteria": {"required_functions": ["normalize_sensor_records"], "require_execution": True},
-        },
-    )
+    from app.services.orchestration import protected_repo_verifier
+    _prev_state = protected_repo_verifier.get_protected_repo_verifier_state()
+    _configured_here = False
+    if not _prev_state["configured"]:
+        protected_repo_verifier.configure_protected_repo_verifier(
+            protected_repo_verifier.make_local_blackbox_isolated_transport(),
+            backend_kind="local_blackbox_process_isolated_oracle",
+            nonproduction=True,
+            allow_uncontained_test_double=True,
+        )
+        _configured_here = True
+    try:
+        eval_13 = tool_catalogue.GLOBAL_TOOL_CATALOGUE.execute_tool(
+            "execute_and_test_code",
+            {
+                "code": code_13,
+                "test_code": hidden_oracle_13,
+                "filename": "solution.py",
+                "acceptance_criteria": {"required_functions": ["normalize_sensor_records"], "require_execution": True},
+            },
+        )
+    finally:
+        if _configured_here:
+            protected_repo_verifier.configure_protected_repo_verifier(None)
     checks_13 = [
         {"name": "passes_nominal_unicode_malformed_and_boundary_oracle", "passed": eval_13["status"] == "verified_for_scope"},
     ]
@@ -1231,12 +1246,26 @@ def test_existing_behavior_preserved():
         raised = True
     assert raised is True
 '''
-    buggy_eval = tool_catalogue.run_bounded_python_verification(
-        code=buggy_repo_code, test_code=regression_tests_14, filename="quota_allocator.py",
-    )
-    fixed_eval = tool_catalogue.run_bounded_python_verification(
-        code=repaired_repo_code, test_code=regression_tests_14, filename="quota_allocator.py",
-    )
+    _prev_state_14 = protected_repo_verifier.get_protected_repo_verifier_state()
+    _configured_14 = False
+    if not _prev_state_14["configured"]:
+        protected_repo_verifier.configure_protected_repo_verifier(
+            protected_repo_verifier.make_local_blackbox_isolated_transport(),
+            backend_kind="local_blackbox_process_isolated_oracle",
+            nonproduction=True,
+            allow_uncontained_test_double=True,
+        )
+        _configured_14 = True
+    try:
+        buggy_eval = tool_catalogue.run_bounded_python_verification(
+            code=buggy_repo_code, test_code=regression_tests_14, filename="quota_allocator.py",
+        )
+        fixed_eval = tool_catalogue.run_bounded_python_verification(
+            code=repaired_repo_code, test_code=regression_tests_14, filename="quota_allocator.py",
+        )
+    finally:
+        if _configured_14:
+            protected_repo_verifier.configure_protected_repo_verifier(None)
     checks_14 = [
         {"name": "regression_test_catches_original_bug", "passed": buggy_eval["accepted"] is False},
         {"name": "repaired_code_passes_regression_and_existing_tests", "passed": fixed_eval["accepted"] is True},
@@ -1402,24 +1431,38 @@ def test_boundary_100_is_critical():
     assert classify_temperature_band(75.0) == "WARNING"
     assert classify_temperature_band(20.0) == "NORMAL"
 '''
-    ev_19_v1 = tool_catalogue.run_bounded_python_verification(
-        code=candidate_v1_faulty, test_code=oracle_19, filename="temp_classifier.py",
-    )
-    repair_plan_19 = deliberate_loop.build_sanitized_repair_feedback(
-        failure_class="test_assertion_failure",
-        verification_checks=ev_19_v1["checks"],
-        attempt_number=1,
-    )
-    candidate_v2_repaired = '''def classify_temperature_band(temp_c: float) -> str:
+    _prev_state_19 = protected_repo_verifier.get_protected_repo_verifier_state()
+    _configured_19 = False
+    if not _prev_state_19["configured"]:
+        protected_repo_verifier.configure_protected_repo_verifier(
+            protected_repo_verifier.make_local_blackbox_isolated_transport(),
+            backend_kind="local_blackbox_process_isolated_oracle",
+            nonproduction=True,
+            allow_uncontained_test_double=True,
+        )
+        _configured_19 = True
+    try:
+        ev_19_v1 = tool_catalogue.run_bounded_python_verification(
+            code=candidate_v1_faulty, test_code=oracle_19, filename="temp_classifier.py",
+        )
+        repair_plan_19 = deliberate_loop.build_sanitized_repair_feedback(
+            failure_class="test_assertion_failure",
+            verification_checks=ev_19_v1["checks"],
+            attempt_number=1,
+        )
+        candidate_v2_repaired = '''def classify_temperature_band(temp_c: float) -> str:
     if temp_c >= 100.0:
         return "CRITICAL"
     if temp_c >= 75.0:
         return "WARNING"
     return "NORMAL"
 '''
-    ev_19_v2 = tool_catalogue.run_bounded_python_verification(
-        code=candidate_v2_repaired, test_code=oracle_19, filename="temp_classifier.py",
-    )
+        ev_19_v2 = tool_catalogue.run_bounded_python_verification(
+            code=candidate_v2_repaired, test_code=oracle_19, filename="temp_classifier.py",
+        )
+    finally:
+        if _configured_19:
+            protected_repo_verifier.configure_protected_repo_verifier(None)
     checks_19 = [
         {"name": "faulty_candidate_v1_rejected", "passed": ev_19_v1["accepted"] is False},
         {"name": "oracle_literals_redacted_from_repair_feedback", "passed": repair_plan_19["oracle_exposure_prevented"] is True and "== \"CRITICAL\"" not in json.dumps(repair_plan_19)},
