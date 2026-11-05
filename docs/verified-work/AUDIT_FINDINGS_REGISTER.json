@@ -4,8 +4,8 @@
   "repository": "C:/Users/Matt C/.gemini/antigravity-ide/scratch/qwen-collective-integration",
   "branch": "feature/increment19-general-purpose-coordinator",
   "head_sha": "b89e63ce372726f65fa650fd2ed30aa917b903eb",
-  "tested_implementation_sha": "745dc27eff9c3931f1f0a24b18f1876c9528a98d",
-  "rehearsed_merge_sha": "93e5d2ac8fce3289615e413b2cd294988db1049f",
+  "tested_implementation_sha": "3c5af4ab81cb386dedf8394c36f85219ec9bc2c9",
+  "rehearsed_merge_sha": "5d6984de602ef543fb7c277cba3c40e6a4fe369b",
   "base_main_sha": "4be7f547f4919380a22abdd2122961d559d2f46f",
   "summary": {
     "total_findings": 12,
@@ -46,11 +46,40 @@
       "AUD-12"
     ],
     "authoritative_repair_increments": {
-      "R1": ["AUD-03", "AUD-05", "AUD-10b", "AUD-11c"],
-      "R2": ["AUD-04", "AUD-07", "AUD-10c"],
-      "R3": ["AUD-01", "AUD-02", "AUD-08", "AUD-10a", "AUD-12"],
-      "R4": ["AUD-06", "AUD-11a", "AUD-11b", "AUD-09"]
-    }
+      "R1": [
+        "AUD-03",
+        "AUD-05",
+        "AUD-10b",
+        "AUD-11c"
+      ],
+      "R2": [
+        "AUD-04",
+        "AUD-07",
+        "AUD-10c"
+      ],
+      "R3": [
+        "AUD-01",
+        "AUD-02",
+        "AUD-08",
+        "AUD-10a",
+        "AUD-12"
+      ],
+      "R4": [
+        "AUD-06",
+        "AUD-11a",
+        "AUD-11b",
+        "AUD-09"
+      ]
+    },
+    "remediation_status": "all_16_tracked_findings_and_subfindings_remediated_and_verified",
+    "remediation_commits": {
+      "R1": "d268819dfb1d6298a6f7165b091d41bd03ba733f",
+      "R2": "8e15335828a125ff3cb0a2d56b02d230e521e543",
+      "R3": "acec0e3e3ebc04c6a5d54087c321c26660409075",
+      "R4": "3c5af4ab81cb386dedf8394c36f85219ec9bc2c9"
+    },
+    "open_merge_review_blockers": [],
+    "open_production_release_blockers": []
   },
   "findings": [
     {
@@ -76,7 +105,11 @@
       "blocks": [
         "merge_review_blocker",
         "production_release_blocker"
-      ]
+      ],
+      "assigned_repair_increment": "R3",
+      "status": "remediated_and_verified",
+      "remediation_commit_sha": "acec0e3e3ebc04c6a5d54087c321c26660409075",
+      "verified_by_test": "tests/test_audit_r3_grounding_tools_finance_memory.py::test_aud01_supplier_project_without_quotes_requires_clarification_never_synthetic_quotes"
     },
     {
       "id": "AUD-02",
@@ -102,7 +135,11 @@
       "blocks": [
         "merge_review_blocker",
         "production_release_blocker"
-      ]
+      ],
+      "assigned_repair_increment": "R3",
+      "status": "remediated_and_verified",
+      "remediation_commit_sha": "acec0e3e3ebc04c6a5d54087c321c26660409075",
+      "verified_by_test": "tests/test_audit_r3_grounding_tools_finance_memory.py::test_aud02_tool_catalogue_input_schema_validation_and_real_handlers"
     },
     {
       "id": "AUD-03",
@@ -131,7 +168,11 @@
       "blocks": [
         "merge_review_blocker",
         "production_release_blocker"
-      ]
+      ],
+      "assigned_repair_increment": "R1",
+      "status": "remediated_and_verified",
+      "remediation_commit_sha": "d268819dfb1d6298a6f7165b091d41bd03ba733f",
+      "verified_by_test": "tests/test_audit_r1_security_and_containment.py::test_aud03_workspace_confinement_holdout_isolation_and_fault_injection_rejected"
     },
     {
       "id": "AUD-04",
@@ -169,7 +210,11 @@
       "blocks": [
         "merge_review_blocker",
         "production_release_blocker"
-      ]
+      ],
+      "assigned_repair_increment": "R2",
+      "status": "remediated_and_verified",
+      "remediation_commit_sha": "8e15335828a125ff3cb0a2d56b02d230e521e543",
+      "verified_by_test": "tests/test_audit_r2_provenance_and_status.py::test_aud04_no_synthetic_direct_lease_or_expired_submit_or_unleased_inference_poll"
     },
     {
       "id": "AUD-05",
@@ -205,7 +250,11 @@
       "blocks": [
         "merge_review_blocker",
         "production_release_blocker"
-      ]
+      ],
+      "assigned_repair_increment": "R1",
+      "status": "remediated_and_verified",
+      "remediation_commit_sha": "d268819dfb1d6298a6f7165b091d41bd03ba733f",
+      "verified_by_test": "tests/test_audit_r1_security_and_containment.py::test_aud05_worker_token_sha256_and_csrf_and_route_authentication"
     },
     {
       "id": "AUD-06",
@@ -233,7 +282,11 @@
       "verification_test": "Add an integration test verifying that steering, parking, resuming, and completing a project via `/api/v1/chat/deliberate` updates `orchestration_runs.state` and is reflected identically in `/api/v1/orchestration/runs/{run_id}`.",
       "blocks": [
         "production_release_blocker"
-      ]
+      ],
+      "assigned_repair_increment": "R4",
+      "status": "remediated_and_verified",
+      "remediation_commit_sha": "3c5af4ab81cb386dedf8394c36f85219ec9bc2c9",
+      "verified_by_test": "tests/test_audit_r4_lifecycle_and_recovery.py::test_aud06_migration24_installs_software_review_items_and_synchronizes_run_lifecycle"
     },
     {
       "id": "AUD-07",
@@ -256,7 +309,11 @@
       "blocks": [
         "merge_review_blocker",
         "production_release_blocker"
-      ]
+      ],
+      "assigned_repair_increment": "R2",
+      "status": "remediated_and_verified",
+      "remediation_commit_sha": "8e15335828a125ff3cb0a2d56b02d230e521e543",
+      "verified_by_test": "tests/test_audit_r2_provenance_and_status.py::test_aud07_repo_change_report_truthful_controller_provenance_and_public_only_scope"
     },
     {
       "id": "AUD-08",
@@ -280,7 +337,11 @@
       "blocks": [
         "merge_review_blocker",
         "production_release_blocker"
-      ]
+      ],
+      "assigned_repair_increment": "R3",
+      "status": "remediated_and_verified",
+      "remediation_commit_sha": "acec0e3e3ebc04c6a5d54087c321c26660409075",
+      "verified_by_test": "tests/test_audit_r3_grounding_tools_finance_memory.py::test_aud08_financial_reconciliation_grant_match_categories_share_caps_currency_and_evidence"
     },
     {
       "id": "AUD-09",
@@ -307,7 +368,11 @@
       "verification_test": "Existing Increment 17 suite (`tests/test_paged_kv_authority_and_app_behavior.py`) plus `section11_distributed_and_cache` probe in `comprehensive-audit-20261105.json`.",
       "blocks": [
         "production_release_blocker"
-      ]
+      ],
+      "assigned_repair_increment": "R4",
+      "status": "remediated_and_verified",
+      "remediation_commit_sha": "3c5af4ab81cb386dedf8394c36f85219ec9bc2c9",
+      "verified_by_test": "tests/test_audit_r4_lifecycle_and_recovery.py::test_aud09_paged_kv_and_pipeline_capability_reporting_is_truthful"
     },
     {
       "id": "AUD-10a",
@@ -332,7 +397,10 @@
       "blocks": [
         "merge_review_blocker",
         "production_release_blocker"
-      ]
+      ],
+      "status": "remediated_and_verified",
+      "remediation_commit_sha": "acec0e3e3ebc04c6a5d54087c321c26660409075",
+      "verified_by_test": "tests/test_audit_r3_grounding_tools_finance_memory.py::test_aud10a_fts5_fence_failure_indexing_and_stale_superseded_filtering"
     },
     {
       "id": "AUD-10b",
@@ -357,7 +425,10 @@
       "blocks": [
         "merge_review_blocker",
         "production_release_blocker"
-      ]
+      ],
+      "status": "remediated_and_verified",
+      "remediation_commit_sha": "d268819dfb1d6298a6f7165b091d41bd03ba733f",
+      "verified_by_test": "tests/test_audit_r1_security_and_containment.py::test_aud10b_code_sandbox_never_executes_untrusted_host_subprocess"
     },
     {
       "id": "AUD-10c",
@@ -382,7 +453,10 @@
       "blocks": [
         "merge_review_blocker",
         "production_release_blocker"
-      ]
+      ],
+      "status": "remediated_and_verified",
+      "remediation_commit_sha": "8e15335828a125ff3cb0a2d56b02d230e521e543",
+      "verified_by_test": "tests/test_audit_r2_provenance_and_status.py::test_aud10c_reuse_status_and_reuse_id_truthful_strings"
     },
     {
       "id": "AUD-11a",
@@ -408,7 +482,10 @@
       "verification_test": "Lease-loss cancellation and late-submission rejection tests in `tests/test_audit_r4_lifecycle_and_recovery.py`.",
       "blocks": [
         "production_release_blocker"
-      ]
+      ],
+      "status": "remediated_and_verified",
+      "remediation_commit_sha": "3c5af4ab81cb386dedf8394c36f85219ec9bc2c9",
+      "verified_by_test": "tests/test_audit_r4_lifecycle_and_recovery.py::test_aud11a_worker_lease_loss_aborts_inflight_inference_within_bound"
     },
     {
       "id": "AUD-11b",
@@ -433,7 +510,10 @@
       "verification_test": "Controller disconnect, timeout, and partial startup cleanup tests in `tests/test_audit_r4_lifecycle_and_recovery.py`.",
       "blocks": [
         "production_release_blocker"
-      ]
+      ],
+      "status": "remediated_and_verified",
+      "remediation_commit_sha": "3c5af4ab81cb386dedf8394c36f85219ec9bc2c9",
+      "verified_by_test": "tests/test_audit_r4_lifecycle_and_recovery.py::test_aud11b_linux_sandbox_and_remote_driver_enforce_connection_independent_cleanup"
     },
     {
       "id": "AUD-11c",
@@ -460,7 +540,10 @@
       "blocks": [
         "merge_review_blocker",
         "production_release_blocker"
-      ]
+      ],
+      "status": "remediated_and_verified",
+      "remediation_commit_sha": "d268819dfb1d6298a6f7165b091d41bd03ba733f",
+      "verified_by_test": "tests/test_audit_r1_security_and_containment.py::test_aud11c_ssrf_ipv6_zone_and_dns_rebinding_blocked"
     },
     {
       "id": "AUD-12",
@@ -485,8 +568,12 @@
       "verification_test": "Run the new negative tests in `comprehensive-audit-20261105.json` as permanent pytest regressions.",
       "blocks": [
         "merge_review_blocker"
-      ]
+      ],
+      "assigned_repair_increment": "R3",
+      "status": "remediated_and_verified",
+      "remediation_commit_sha": "acec0e3e3ebc04c6a5d54087c321c26660409075",
+      "verified_by_test": "tests/test_audit_r3_grounding_tools_finance_memory.py::test_aud02_and_aud12_multi_domain_detection_and_decomposition_without_supplier_fallback"
     }
-  ]
+  ],
+  "pre_remediation_head_sha": "b89e63ce372726f65fa650fd2ed30aa917b903eb"
 }
-

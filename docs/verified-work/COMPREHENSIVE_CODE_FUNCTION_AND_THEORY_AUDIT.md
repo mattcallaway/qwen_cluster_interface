@@ -454,3 +454,15 @@ All four required audit artifacts and the reproducible probe evidence bundle hav
 4. **Prioritized Remediation Plan**: [`docs/verified-work/AUDIT_REMEDIATION_PLAN.md`](AUDIT_REMEDIATION_PLAN.md) (Ordered Repair Increments `R1` -> `R2` -> `R3` -> `R4`)
 5. **Empirical Probe Evidence Bundle**: [`docs/verified-work/evidence/comprehensive-audit-20261105.json`](evidence/comprehensive-audit-20261105.json)
 
+---
+
+## 15. Post-Audit Remediation Verification Addendum (`R1`?`R4`, November 5, 2026)
+
+Following the initial zero-modification audit at `b89e63ce372726f65fa650fd2ed30aa917b903eb`, all 12 findings (`AUD-01` through `AUD-12`, including subfindings `AUD-10a`?`c` and `AUD-11a`?`c`) were systematically reproduced, repaired, and independently verified across four atomic increments on `feature/increment19-general-purpose-coordinator`:
+- **Section 1 (Plan Reconciliation & Subfinding Taxonomy)**: `a74a35a33599024ca8d71fb823f742f198ac99b7`
+- **Increment `R1` (`AUD-03`, `AUD-05`, `AUD-10b`, `AUD-11c` ? Security Boundaries & Containment)**: `d268819dfb1d6298a6f7165b091d41bd03ba733f` (`76 passed` in `tests/test_audit_r1_security_and_containment.py` and related suites)
+- **Increment `R2` (`AUD-04`, `AUD-07`, `AUD-10c` ? Provenance, Acceptance & Truthful Status)**: `8e15335828a125ff3cb0a2d56b02d230e521e543` (`98 passed` in `tests/test_audit_r2_provenance_and_status.py` and related suites)
+- **Increment `R3` (`AUD-01`, `AUD-02`, `AUD-08`, `AUD-10a`, `AUD-12` ? Grounded Coordination, Tools, Financial Rules & Memory)**: `acec0e3e3ebc04c6a5d54087c321c26660409075` (`76 passed` in `tests/test_audit_r3_grounding_tools_finance_memory.py` and related suites)
+- **Increment `R4` (`AUD-06`, `AUD-11a`, `AUD-11b`, `AUD-09` ? Lifecycle Consistency, Worker Lease Cancellation, Remote Sandbox Cleanup & Capability Truth)**: `3c5af4ab81cb386dedf8394c36f85219ec9bc2c9` (`153 passed` in `tests/test_audit_r4_lifecycle_and_recovery.py` and related suites)
+- **Disposable Integration Rehearsal onto `origin/main` (`4be7f547f4919380a22abdd2122961d559d2f46f`)**: Rehearsed merge commit `5d6984de602ef543fb7c277cba3c40e6a4fe369b` (`0` conflicts, **`258 passed, 0 failed in 168.12s`** across 20 test files; tracked in [`docs/verified-work/evidence/audit-remediation-verification-20261105.json`](evidence/audit-remediation-verification-20261105.json)).
+

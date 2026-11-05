@@ -119,3 +119,10 @@
 - **Capability & Evidence Matrix (10 Areas / 20 Capabilities):** [`docs/verified-work/AUDIT_CAPABILITY_AND_EVIDENCE_MATRIX.md`](AUDIT_CAPABILITY_AND_EVIDENCE_MATRIX.md)
 - **Prioritized Remediation Plan (`R1`–`R4`) & Readiness Gates:** [`docs/verified-work/AUDIT_REMEDIATION_PLAN.md`](AUDIT_REMEDIATION_PLAN.md)
 - **Reproducible Audit Probe & Benchmark Evidence:** [`docs/verified-work/evidence/comprehensive-audit-20261105.json`](evidence/comprehensive-audit-20261105.json)
+
+- **Audit Remediation Increments `R1`?`R4` (Verified 2026-11-05):**
+  - **`R1` (`d268819dfb1d6298a6f7165b091d41bd03ba733f`)**: Resolved `AUD-03`, `AUD-05`, `AUD-10b`, `AUD-11c` (`tests/test_audit_r1_security_and_containment.py`).
+  - **`R2` (`8e15335828a125ff3cb0a2d56b02d230e521e543`)**: Resolved `AUD-04`, `AUD-07`, `AUD-10c` (`tests/test_audit_r2_provenance_and_status.py`).
+  - **`R3` (`acec0e3e3ebc04c6a5d54087c321c26660409075`)**: Resolved `AUD-01`, `AUD-02`, `AUD-08`, `AUD-10a`, `AUD-12` (`tests/test_audit_r3_grounding_tools_finance_memory.py`).
+  - **`R4` (`3c5af4ab81cb386dedf8394c36f85219ec9bc2c9`)**: Resolved `AUD-06`, `AUD-11a`, `AUD-11b`, `AUD-09` (`tests/test_audit_r4_lifecycle_and_recovery.py`, Migration 24).
+  - **Rehearsed Integration Merge (`5d6984de602ef543fb7c277cba3c40e6a4fe369b` onto `origin/main` `4be7f547f4919380a22abdd2122961d559d2f46f`)**: `258 passed, 0 failed in 168.12s` ([`docs/verified-work/evidence/audit-remediation-verification-20261105.json`](evidence/audit-remediation-verification-20261105.json)).

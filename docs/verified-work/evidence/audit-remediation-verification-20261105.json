@@ -1,0 +1,80 @@
+{
+  "schema": "qc.audit_remediation_verification.v1",
+  "verification_date": "2026-11-05",
+  "repository": "C:/Users/Matt C/.gemini/antigravity-ide/scratch/qwen-collective-integration",
+  "branch": "feature/increment19-general-purpose-coordinator",
+  "base_main_sha": "4be7f547f4919380a22abdd2122961d559d2f46f",
+  "pre_remediation_audit_head_sha": "b89e63ce372726f65fa650fd2ed30aa917b903eb",
+  "pre_remediation_implementation_sha": "745dc27eff9c3931f1f0a24b18f1876c9528a98d",
+  "remediation_commits": {
+    "section1_plan_reconciliation": "a74a35a33599024ca8d71fb823f742f198ac99b7",
+    "R1_security_and_containment": "d268819dfb1d6298a6f7165b091d41bd03ba733f",
+    "R2_provenance_and_status": "8e15335828a125ff3cb0a2d56b02d230e521e543",
+    "R3_grounding_tools_finance_memory": "acec0e3e3ebc04c6a5d54087c321c26660409075",
+    "R4_lifecycle_and_recovery": "3c5af4ab81cb386dedf8394c36f85219ec9bc2c9"
+  },
+  "tested_implementation_sha": "3c5af4ab81cb386dedf8394c36f85219ec9bc2c9",
+  "rehearsed_integration_merge_sha": "5d6984de602ef543fb7c277cba3c40e6a4fe369b",
+  "integration_rehearsal_summary": {
+    "rehearsal_branch": "rehearsal/audit-remediation-20261105",
+    "merge_conflicts": 0,
+    "test_files_executed": 20,
+    "tests_passed": 258,
+    "tests_failed": 0,
+    "duration_seconds": 168.12,
+    "disposable_branch_cleaned_up": true
+  },
+  "increments": {
+    "R1": {
+      "commit_sha": "d268819dfb1d6298a6f7165b091d41bd03ba733f",
+      "findings_resolved": [
+        "AUD-03",
+        "AUD-05",
+        "AUD-10b",
+        "AUD-11c"
+      ],
+      "test_suite": "tests/test_audit_r1_security_and_containment.py",
+      "focused_and_related_tests_passed": 76
+    },
+    "R2": {
+      "commit_sha": "8e15335828a125ff3cb0a2d56b02d230e521e543",
+      "findings_resolved": [
+        "AUD-04",
+        "AUD-07",
+        "AUD-10c"
+      ],
+      "test_suite": "tests/test_audit_r2_provenance_and_status.py",
+      "focused_and_related_tests_passed": 98
+    },
+    "R3": {
+      "commit_sha": "acec0e3e3ebc04c6a5d54087c321c26660409075",
+      "findings_resolved": [
+        "AUD-01",
+        "AUD-02",
+        "AUD-08",
+        "AUD-10a",
+        "AUD-12"
+      ],
+      "test_suite": "tests/test_audit_r3_grounding_tools_finance_memory.py",
+      "focused_and_related_tests_passed": 76
+    },
+    "R4": {
+      "commit_sha": "3c5af4ab81cb386dedf8394c36f85219ec9bc2c9",
+      "findings_resolved": [
+        "AUD-06",
+        "AUD-11a",
+        "AUD-11b",
+        "AUD-09"
+      ],
+      "test_suite": "tests/test_audit_r4_lifecycle_and_recovery.py",
+      "focused_and_related_tests_passed": 153
+    }
+  },
+  "preserved_safety_holds": {
+    "QC_PAGED_KV_ENABLED_default": false,
+    "protected_repo_verifier_default": "held",
+    "code_sandbox_uncontained_host_execution": "blocked",
+    "production_services_and_databases_untouched": true,
+    "russian_river_project_not_regenerated": true
+  }
+}
