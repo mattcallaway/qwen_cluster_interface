@@ -1,0 +1,318 @@
+{
+  "passed": true,
+  "checks": [
+    {
+      "source": "docs\\verified-work\\CODE_PROPOSALS.md",
+      "target": "README.md"
+    },
+    {
+      "source": "docs\\verified-work\\CODE_PROPOSALS.md",
+      "target": "TECHMAP.md"
+    },
+    {
+      "source": "docs\\verified-work\\CODE_PROPOSALS.md",
+      "target": "evidence/INCREMENT_11_CODE_PROPOSALS.md"
+    },
+    {
+      "source": "docs\\verified-work\\CODE_PROPOSALS.md",
+      "target": "PROTECTED_VERIFIER.md"
+    },
+    {
+      "source": "docs\\verified-work\\EXECUTION_PROTOCOL.md",
+      "target": "README.md"
+    },
+    {
+      "source": "docs\\verified-work\\EXECUTION_PROTOCOL.md",
+      "target": "TECHMAP.md"
+    },
+    {
+      "source": "docs\\verified-work\\EXECUTION_PROTOCOL.md",
+      "target": "CODE_PROPOSALS.md"
+    },
+    {
+      "source": "docs\\verified-work\\EXECUTION_PROTOCOL.md",
+      "target": "evidence/INCREMENT_12_EXECUTION_AUTHORIZATION.md"
+    },
+    {
+      "source": "docs\\verified-work\\EXECUTION_PROTOCOL.md",
+      "target": "PROCESS_CONTROL.md"
+    },
+    {
+      "source": "docs\\verified-work\\LAPTOP_VERIFICATION.md",
+      "target": "evidence/INCREMENT_15_LAPTOP_LINUX_VERIFICATION.md"
+    },
+    {
+      "source": "docs\\verified-work\\LAPTOP_VERIFICATION.md",
+      "target": "LINUX_SANDBOX.md"
+    },
+    {
+      "source": "docs\\verified-work\\LAPTOP_VERIFICATION.md",
+      "target": "README.md"
+    },
+    {
+      "source": "docs\\verified-work\\LAPTOP_VERIFICATION.md",
+      "target": "TECHMAP.md"
+    },
+    {
+      "source": "docs\\verified-work\\LAPTOP_VERIFICATION.md",
+      "target": "PRODUCTION_RELEASE.md"
+    },
+    {
+      "source": "docs\\verified-work\\LINUX_SANDBOX.md",
+      "target": "README.md"
+    },
+    {
+      "source": "docs\\verified-work\\LINUX_SANDBOX.md",
+      "target": "TECHMAP.md"
+    },
+    {
+      "source": "docs\\verified-work\\LINUX_SANDBOX.md",
+      "target": "EXECUTION_PROTOCOL.md"
+    },
+    {
+      "source": "docs\\verified-work\\LINUX_SANDBOX.md",
+      "target": "PRODUCTION_RELEASE.md"
+    },
+    {
+      "source": "docs\\verified-work\\LINUX_SANDBOX.md",
+      "target": "evidence/INCREMENT_14_LINUX_BACKEND.md"
+    },
+    {
+      "source": "docs\\verified-work\\LINUX_SANDBOX.md",
+      "target": "LAPTOP_VERIFICATION.md"
+    },
+    {
+      "source": "docs\\verified-work\\LINUX_SANDBOX.md",
+      "target": "LAPTOP_VERIFICATION.md"
+    },
+    {
+      "source": "docs\\verified-work\\PROCESS_CONTROL.md",
+      "target": "README.md"
+    },
+    {
+      "source": "docs\\verified-work\\PROCESS_CONTROL.md",
+      "target": "TECHMAP.md"
+    },
+    {
+      "source": "docs\\verified-work\\PROCESS_CONTROL.md",
+      "target": "EXECUTION_PROTOCOL.md"
+    },
+    {
+      "source": "docs\\verified-work\\PROCESS_CONTROL.md",
+      "target": "evidence/INCREMENT_13_BOUNDED_PROCESSES.md"
+    },
+    {
+      "source": "docs\\verified-work\\PRODUCTION_RELEASE.md",
+      "target": "README.md"
+    },
+    {
+      "source": "docs\\verified-work\\PRODUCTION_RELEASE.md",
+      "target": "TECHMAP.md"
+    },
+    {
+      "source": "docs\\verified-work\\PRODUCTION_RELEASE.md",
+      "target": "LINUX_SANDBOX.md"
+    },
+    {
+      "source": "docs\\verified-work\\PRODUCTION_RELEASE.md",
+      "target": "LAPTOP_VERIFICATION.md"
+    },
+    {
+      "source": "docs\\verified-work\\PRODUCTION_RELEASE.md",
+      "target": "evidence/INCREMENT_16_PROTECTED_CODE_VERIFICATION.md"
+    },
+    {
+      "source": "docs\\verified-work\\PROTECTED_VERIFIER.md",
+      "target": "evidence/INCREMENT_16_PROTECTED_CODE_VERIFICATION.md"
+    },
+    {
+      "source": "docs\\verified-work\\PROTECTED_VERIFIER.md",
+      "target": "README.md"
+    },
+    {
+      "source": "docs\\verified-work\\PROTECTED_VERIFIER.md",
+      "target": "TECHMAP.md"
+    },
+    {
+      "source": "docs\\verified-work\\PROTECTED_VERIFIER.md",
+      "target": "PRODUCTION_RELEASE.md"
+    },
+    {
+      "source": "docs\\verified-work\\README.md",
+      "target": "../../README.md"
+    },
+    {
+      "source": "docs\\verified-work\\README.md",
+      "target": "../../TECHMAP.md"
+    },
+    {
+      "source": "docs\\verified-work\\README.md",
+      "target": "../remediation/README.md"
+    },
+    {
+      "source": "docs\\verified-work\\README.md",
+      "target": "evidence/QWEN_SYSTEMIC_REMEDIATION_REVIEW.md"
+    },
+    {
+      "source": "docs\\verified-work\\README.md",
+      "target": "evidence/READINESS_AND_INCREMENT_2.md"
+    },
+    {
+      "source": "docs\\verified-work\\README.md",
+      "target": "evidence/INCREMENT_3_COMPATIBILITY_RESULTS.md"
+    },
+    {
+      "source": "docs\\verified-work\\README.md",
+      "target": "evidence/INCREMENT_4_EVIDENCE_FEEDBACK.md"
+    },
+    {
+      "source": "docs\\verified-work\\README.md",
+      "target": "evidence/INCREMENT_5_NATIVE_RETRIEVAL.md"
+    },
+    {
+      "source": "docs\\verified-work\\README.md",
+      "target": "evidence/INCREMENT_6_STANDALONE_WORKER.md"
+    },
+    {
+      "source": "docs\\verified-work\\README.md",
+      "target": "evidence/INCREMENT_7_RETRIEVAL_RECOVERY.md"
+    },
+    {
+      "source": "docs\\verified-work\\README.md",
+      "target": "evidence/INCREMENT_8_CLAIM_APPLICABILITY.md"
+    },
+    {
+      "source": "docs\\verified-work\\README.md",
+      "target": "evidence/INCREMENT_9_FINANCIAL_REASONING.md"
+    },
+    {
+      "source": "docs\\verified-work\\README.md",
+      "target": "evidence/INCREMENT_10_CODING_WEB_VPS.md"
+    },
+    {
+      "source": "docs\\verified-work\\README.md",
+      "target": "evidence/INCREMENT_11_CODE_PROPOSALS.md"
+    },
+    {
+      "source": "docs\\verified-work\\README.md",
+      "target": "evidence/INCREMENT_12_EXECUTION_AUTHORIZATION.md"
+    },
+    {
+      "source": "docs\\verified-work\\README.md",
+      "target": "evidence/INCREMENT_13_BOUNDED_PROCESSES.md"
+    },
+    {
+      "source": "docs\\verified-work\\README.md",
+      "target": "evidence/INCREMENT_14_LINUX_BACKEND.md"
+    },
+    {
+      "source": "docs\\verified-work\\README.md",
+      "target": "evidence/INCREMENT_15_LAPTOP_LINUX_VERIFICATION.md"
+    },
+    {
+      "source": "docs\\verified-work\\README.md",
+      "target": "CODE_PROPOSALS.md"
+    },
+    {
+      "source": "docs\\verified-work\\README.md",
+      "target": "EXECUTION_PROTOCOL.md"
+    },
+    {
+      "source": "docs\\verified-work\\README.md",
+      "target": "PROCESS_CONTROL.md"
+    },
+    {
+      "source": "docs\\verified-work\\README.md",
+      "target": "LINUX_SANDBOX.md"
+    },
+    {
+      "source": "docs\\verified-work\\README.md",
+      "target": "PRODUCTION_RELEASE.md"
+    },
+    {
+      "source": "docs\\verified-work\\README.md",
+      "target": "LAPTOP_VERIFICATION.md"
+    },
+    {
+      "source": "docs\\verified-work\\README.md",
+      "target": "TECHMAP.md"
+    },
+    {
+      "source": "docs\\verified-work\\README.md",
+      "target": "evidence/INCREMENT_16_PROTECTED_CODE_VERIFICATION.md"
+    },
+    {
+      "source": "docs\\verified-work\\README.md",
+      "target": "PROTECTED_VERIFIER.md"
+    },
+    {
+      "source": "docs\\verified-work\\TECHMAP.md",
+      "target": "../../TECHMAP.md"
+    },
+    {
+      "source": "docs\\verified-work\\TECHMAP.md",
+      "target": "../../TECH_MAP.md"
+    },
+    {
+      "source": "docs\\verified-work\\TECHMAP.md",
+      "target": "README.md"
+    },
+    {
+      "source": "docs\\verified-work\\TECHMAP.md",
+      "target": "CODE_PROPOSALS.md"
+    },
+    {
+      "source": "docs\\verified-work\\TECHMAP.md",
+      "target": "EXECUTION_PROTOCOL.md"
+    },
+    {
+      "source": "docs\\verified-work\\TECHMAP.md",
+      "target": "PROCESS_CONTROL.md"
+    },
+    {
+      "source": "docs\\verified-work\\TECHMAP.md",
+      "target": "LINUX_SANDBOX.md"
+    },
+    {
+      "source": "docs\\verified-work\\TECHMAP.md",
+      "target": "PRODUCTION_RELEASE.md"
+    },
+    {
+      "source": "docs\\verified-work\\TECHMAP.md",
+      "target": "LAPTOP_VERIFICATION.md"
+    },
+    {
+      "source": "docs\\verified-work\\TECHMAP.md",
+      "target": "PROTECTED_VERIFIER.md"
+    },
+    {
+      "source": "docs\\verified-work\\TECHMAP.md",
+      "target": "evidence/INCREMENT_16_PROTECTED_CODE_VERIFICATION.md"
+    },
+    {
+      "entrypoint": "README.md",
+      "overlay_links": [
+        "docs/verified-work/README.md"
+      ]
+    },
+    {
+      "entrypoint": "TECHMAP.md",
+      "overlay_links": [
+        "docs/verified-work/TECHMAP.md"
+      ]
+    },
+    {
+      "entrypoint": "TECH_MAP.md",
+      "overlay_links": [
+        "docs/verified-work/TECHMAP.md"
+      ]
+    },
+    {
+      "entrypoint": "docs/remediation/README.md",
+      "overlay_links": [
+        "../verified-work/README.md"
+      ]
+    }
+  ],
+  "scope": "New overlay links and four integrated entry-point links; historical documents not globally audited."
+}

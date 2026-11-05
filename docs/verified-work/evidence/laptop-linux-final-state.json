@@ -1,0 +1,146 @@
+{
+  "units": [
+    {
+      "unit": "qc-sandbox-4216ef41bd2f49fa8da715afdd5095ce.service",
+      "before": {
+        "MainPID": "0",
+        "ControlGroup": "",
+        "Id": "qc-sandbox-4216ef41bd2f49fa8da715afdd5095ce.service",
+        "Description": "QwenSandbox ea1d4995eb9b40c59da8f63599ffc96b",
+        "LoadState": "loaded",
+        "ActiveState": "failed"
+      },
+      "cgroup_absent_or_empty": true,
+      "stop_exit": 0,
+      "reset-failed_exit": 0
+    },
+    {
+      "unit": "qc-sandbox-544c7f9588c74ea5bb759fadfe5db448.service",
+      "before": {
+        "MainPID": "0",
+        "ControlGroup": "",
+        "Id": "qc-sandbox-544c7f9588c74ea5bb759fadfe5db448.service",
+        "Description": "QwenSandbox 11ad07d9282a4ef79ddcd76633859119",
+        "LoadState": "loaded",
+        "ActiveState": "failed"
+      },
+      "cgroup_absent_or_empty": true,
+      "stop_exit": 0,
+      "reset-failed_exit": 0
+    },
+    {
+      "unit": "qc-sandbox-b004db13cc8740afba1d8584cc752826.service",
+      "before": {
+        "MainPID": "0",
+        "ControlGroup": "",
+        "Id": "qc-sandbox-b004db13cc8740afba1d8584cc752826.service",
+        "Description": "QwenSandbox b7289c60ef34493ebd16f53e48494fb7",
+        "LoadState": "loaded",
+        "ActiveState": "failed"
+      },
+      "cgroup_absent_or_empty": true,
+      "stop_exit": 0,
+      "reset-failed_exit": 0
+    },
+    {
+      "unit": "qc-sandbox-b244b301ed9c475f8681c45b33cee23c.service",
+      "before": {
+        "MainPID": "0",
+        "ControlGroup": "",
+        "Id": "qc-sandbox-b244b301ed9c475f8681c45b33cee23c.service",
+        "Description": "qc-sandbox-b244b301ed9c475f8681c45b33cee23c.service",
+        "LoadState": "not-found",
+        "ActiveState": "inactive"
+      },
+      "cgroup_absent_or_empty": true
+    },
+    {
+      "unit": "qc-sandbox-b782bb3b8ad0412db525ae8bd1d33c6c.service",
+      "before": {
+        "MainPID": "0",
+        "ControlGroup": "",
+        "Id": "qc-sandbox-b782bb3b8ad0412db525ae8bd1d33c6c.service",
+        "Description": "qc-sandbox-b782bb3b8ad0412db525ae8bd1d33c6c.service",
+        "LoadState": "not-found",
+        "ActiveState": "inactive"
+      },
+      "cgroup_absent_or_empty": true
+    },
+    {
+      "unit": "qc-sandbox-bd6b3c231f3c4e5486e0290ea163a186.service",
+      "before": {
+        "MainPID": "0",
+        "ControlGroup": "",
+        "Id": "qc-sandbox-bd6b3c231f3c4e5486e0290ea163a186.service",
+        "Description": "qc-sandbox-bd6b3c231f3c4e5486e0290ea163a186.service",
+        "LoadState": "not-found",
+        "ActiveState": "inactive"
+      },
+      "cgroup_absent_or_empty": true
+    },
+    {
+      "unit": "qc-sandbox-c21195e5dccb44e7b11864c0bb64c3fa.service",
+      "before": {
+        "MainPID": "0",
+        "ControlGroup": "",
+        "Id": "qc-sandbox-c21195e5dccb44e7b11864c0bb64c3fa.service",
+        "Description": "qc-sandbox-c21195e5dccb44e7b11864c0bb64c3fa.service",
+        "LoadState": "not-found",
+        "ActiveState": "inactive"
+      },
+      "cgroup_absent_or_empty": true
+    },
+    {
+      "unit": "qc-sandbox-c795f11fe85c49f7875324bcfc080801.service",
+      "before": {
+        "MainPID": "0",
+        "ControlGroup": "",
+        "Id": "qc-sandbox-c795f11fe85c49f7875324bcfc080801.service",
+        "Description": "QwenSandbox 4346f0d30ed6472db6835aeaa971b6c6",
+        "LoadState": "loaded",
+        "ActiveState": "failed"
+      },
+      "cgroup_absent_or_empty": true,
+      "stop_exit": 0,
+      "reset-failed_exit": 0
+    },
+    {
+      "unit": "qc-sandbox-f7c098c8742d4ad4b8dfef5fb839528d.service",
+      "before": {
+        "MainPID": "0",
+        "ControlGroup": "",
+        "Id": "qc-sandbox-f7c098c8742d4ad4b8dfef5fb839528d.service",
+        "Description": "QwenSandbox 44795879798440dc9895eb2f1c930865",
+        "LoadState": "loaded",
+        "ActiveState": "failed"
+      },
+      "cgroup_absent_or_empty": true,
+      "stop_exit": 0,
+      "reset-failed_exit": 0
+    },
+    {
+      "unit": "qc-sandbox-faef0b2e02ea472699904b99310ea439.service",
+      "before": {
+        "MainPID": "0",
+        "ControlGroup": "",
+        "Id": "qc-sandbox-faef0b2e02ea472699904b99310ea439.service",
+        "Description": "qc-sandbox-faef0b2e02ea472699904b99310ea439.service",
+        "LoadState": "not-found",
+        "ActiveState": "inactive"
+      },
+      "cgroup_absent_or_empty": true
+    }
+  ],
+  "policy_absent": true,
+  "services_after": {
+    "qwen-worker.service": "MainPID=554427\nActiveState=active\nSubState=running",
+    "ollama.service": "MainPID=1432\nActiveState=active\nSubState=running",
+    "qc-ollama-ts.service": "MainPID=519545\nActiveState=active\nSubState=running"
+  },
+  "retained_inactive_artifacts": [
+    "/var/lib/qwen-sandbox/images",
+    "/var/lib/qwen-sandbox/inputs",
+    "/var/lib/qwen-sandbox/audit"
+  ],
+  "existing_service_pids_unchanged": true
+}

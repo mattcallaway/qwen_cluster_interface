@@ -14,21 +14,25 @@ import hmac
 import json
 import logging
 import math
+import os
 from pathlib import Path
+import re
 import secrets
 import sqlite3
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
 from app.config import settings
 from app.database import get_db_connection
+from app.services import loop_detection
 
 logger = logging.getLogger("qwen_collective.worker")
 
 DEFAULT_LEASE_DURATION_SECONDS = 300  # 5 minutes
 MAX_LEASE_DURATION_SECONDS = 3600  # 1 hour
+MAX_ARTIFACT_SIZE = 25 * 1024 * 1024  # 25 MB (26,214,400 bytes)
 
 
 def _utc_now_iso() -> str:
@@ -37,6 +41,255 @@ def _utc_now_iso() -> str:
 
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+class TaskAuthorizationError(Exception):
+    """Raised when a worker task operation violates security, ownership, or lease fencing."""
+    def __init__(self, message: str, status_code: int = 403):
+        super().__init__(message)
+        self.message = message
+        self.status_code = status_code
+
+
+def sanitize_display_filename(raw_name: str) -> str:
+    """
+    Sanitize untrusted filename from worker to prevent path traversal,
+    Windows device collisions, control characters, and Unicode path abuse.
+    """
+    if not raw_name or not isinstance(raw_name, str):
+        return f"artifact_{uuid4().hex[:8]}.bin"
+
+    # Normalize slashes and take basename
+    clean = raw_name.replace("\\", "/").strip().split("/")[-1].strip()
+
+    # Strip null bytes and control chars (ASCII < 32 or 127)
+    clean = "".join(c for c in clean if ord(c) >= 32 and ord(c) != 127)
+
+    # Replace forbidden path characters
+    for bad_char in ('<', '>', ':', '"', '/', '\\', '|', '?', '*'):
+        clean = clean.replace(bad_char, '_')
+
+    # Strip leading/trailing dots and spaces
+    clean = clean.strip(". ")
+
+    # Check for empty or reserved directory references
+    if not clean or clean in (".", ".."):
+        return f"artifact_{uuid4().hex[:8]}.bin"
+
+    # Windows reserved device names (CON, PRN, AUX, NUL, COM1..9, LPT1..9)
+    stem = Path(clean).stem.upper()
+    reserved_names = {
+        "CON", "PRN", "AUX", "NUL",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    }
+    if stem in reserved_names:
+        clean = f"safe_{clean}"
+
+    return clean[:255]
+
+
+def verify_worker_task_authorization(
+    worker_id: str,
+    task_id: str,
+    operation: str = "upload",
+    lease_id: Optional[str] = None,
+    conn: Optional[sqlite3.Connection] = None,
+) -> Dict[str, Any]:
+    """
+    Authoritative single policy gate for worker task operations (F-10).
+    Enforces:
+    - Worker identity must be valid and active
+    - Task must exist
+    - Task must be assigned to worker_id (if assigned)
+    - Worker must hold an active lease for upload operations (fenced against expiration)
+    - Reconciled expired lease handling for submit operations
+    - Rejection of cross-worker operations and conflicting active leases
+    - Task state must be eligible for the requested operation
+    """
+    own_conn = conn is None
+    c = get_db_connection() if own_conn else conn
+    try:
+        # 0. Verify worker node administrative enablement and canonical status
+        w_node = c.execute("SELECT is_enabled, notes, health_status FROM infrastructure_nodes WHERE id = ?", (worker_id,)).fetchone()
+        if w_node:
+            if not bool(w_node["is_enabled"]):
+                raise TaskAuthorizationError(f"Worker '{worker_id}' is administratively disabled. Task execution denied.", status_code=403)
+            w_notes = str(w_node["notes"] or "")
+            if w_notes.startswith("[RETIRED") or w_node["health_status"] == "retired":
+                raise TaskAuthorizationError(f"Worker '{worker_id}' is retired and quarantined. Task execution denied.", status_code=403)
+
+        # Verify machine registry consistency if present
+        m_node = c.execute("SELECT is_enabled, notes, connection_status FROM machines WHERE id = ?", (worker_id,)).fetchone()
+        if m_node:
+            if not bool(m_node["is_enabled"]):
+                raise TaskAuthorizationError(f"Worker '{worker_id}' is administratively disabled in machine registry. Task execution denied.", status_code=403)
+            m_notes = str(m_node["notes"] or "")
+            if m_notes.startswith("[RETIRED") or m_node["connection_status"] == "retired":
+                raise TaskAuthorizationError(f"Worker '{worker_id}' is retired in machine registry. Task execution denied.", status_code=403)
+
+        # Verify active unrevoked credentials
+        active_tok = c.execute("SELECT id FROM worker_auth_tokens WHERE node_id = ? AND revoked = 0", (worker_id,)).fetchone()
+        if not active_tok:
+            raise TaskAuthorizationError(f"Worker '{worker_id}' has no active unrevoked credentials. Task execution denied.", status_code=401)
+
+        # 1. Verify task existence and assignment
+        task_row = c.execute(
+            "SELECT * FROM tasks WHERE id = ?",
+            (task_id,),
+        ).fetchone()
+        if not task_row:
+            raise TaskAuthorizationError(f"Task '{task_id}' not found.", status_code=404)
+        task = dict(task_row)
+
+        assigned_worker = task.get("assigned_worker")
+        if assigned_worker and assigned_worker != worker_id:
+            raise TaskAuthorizationError(
+                f"Worker '{worker_id}' is not authorized for task '{task_id}' (assigned to '{assigned_worker}').",
+                status_code=403,
+            )
+
+        # 2. Check for conflicting active lease held by another worker
+        other_lease = c.execute(
+            "SELECT worker_id, status FROM worker_task_leases WHERE task_id = ? AND status IN ('leased', 'active') AND worker_id != ?",
+            (task_id, worker_id),
+        ).fetchone()
+        if other_lease:
+            raise TaskAuthorizationError(
+                f"Task '{task_id}' is actively leased to worker '{other_lease['worker_id']}', not '{worker_id}'.",
+                status_code=403,
+            )
+
+        # 3. Check worker's own lease
+        now_iso = _utc_now_iso()
+        lease_query = """
+            SELECT id, worker_id, task_id, status, lease_expires_at, attempt_count, created_at
+            FROM worker_task_leases
+            WHERE task_id = ? AND worker_id = ?
+        """
+        params = [task_id, worker_id]
+        if lease_id:
+            lease_query += " AND id = ?"
+            params.append(lease_id)
+        lease_query += " ORDER BY created_at DESC LIMIT 1"
+
+        lease_row = c.execute(lease_query, tuple(params)).fetchone()
+        lease = dict(lease_row) if lease_row else None
+
+        # F-10: Worker cannot obtain execution authority solely because a task has no lease record.
+        # Unassigned tasks strictly require a valid lease.
+        if not lease:
+            if assigned_worker is None:
+                raise TaskAuthorizationError(
+                    f"Task '{task_id}' is unassigned. Worker '{worker_id}' cannot obtain execution authority without a valid lease.",
+                    status_code=403,
+                )
+
+            # Explicit legacy direct assignment rules:
+            # 1. assigned_worker must explicitly match worker_id
+            # 2. Uploads strictly require an active DB lease record (reject unleased uploads)
+            # 3. Submit is permitted only if NO lease was ever created for this task
+            if assigned_worker == worker_id:
+                if operation == "upload":
+                    raise TaskAuthorizationError(
+                        f"Task '{task_id}' has no active lease record. Artifact uploads require an active task lease.",
+                        status_code=409,
+                    )
+                any_leases = c.execute(
+                    "SELECT count(*) FROM worker_task_leases WHERE task_id = ?",
+                    (task_id,),
+                ).fetchone()[0]
+                if any_leases > 0:
+                    raise TaskAuthorizationError(
+                        f"Task '{task_id}' requires lease-based execution; no active lease found for worker '{worker_id}'.",
+                        status_code=403,
+                    )
+                lease = {
+                    "id": lease_id or f"direct_{worker_id}",
+                    "worker_id": worker_id,
+                    "task_id": task_id,
+                    "status": "active",
+                    "lease_expires_at": "9999-12-31T23:59:59Z",
+                    "attempt_count": task.get("attempt_count") or 1,
+                }
+            else:
+                raise TaskAuthorizationError(
+                    f"No active lease found for worker '{worker_id}' on task '{task_id}'.",
+                    status_code=403,
+                )
+
+        # F-10: Check fencing generation — reject stale lease if newer execution attempt exists
+        if lease_row:
+            cur_attempt = lease.get("attempt_count") or 1
+            newer_lease = c.execute(
+                "SELECT id, attempt_count, worker_id FROM worker_task_leases WHERE task_id = ? AND attempt_count > ?",
+                (task_id, cur_attempt),
+            ).fetchone()
+            if newer_lease:
+                raise TaskAuthorizationError(
+                    f"Stale lease fencing generation (attempt {cur_attempt}). Task '{task_id}' has been superseded by attempt {newer_lease['attempt_count']}.",
+                    status_code=409,
+                )
+
+        # Check lease status and expiration
+        lease_status = lease["status"]
+        lease_expires_at = lease.get("lease_expires_at") or "9999-12-31T23:59:59Z"
+        is_expired = lease_status == "expired" or (
+            lease_status in ("leased", "active") and lease_expires_at <= now_iso
+        )
+
+        if is_expired and lease_status in ("leased", "active") and not str(lease["id"]).startswith("direct_"):
+            c.execute(
+                "UPDATE worker_task_leases SET status = 'expired', updated_at = ? WHERE id = ?",
+                (now_iso, lease["id"]),
+            )
+            if own_conn:
+                c.commit()
+            lease_status = "expired"
+            lease["status"] = "expired"
+
+        # 4. Operation-specific checks
+        task_status = task.get("status")
+        if operation == "upload":
+            if is_expired or lease_status in ("expired", "cancelled", "failed"):
+                raise TaskAuthorizationError(
+                    f"Task lease '{lease['id']}' has expired or is invalid. Artifact upload rejected.",
+                    status_code=409,
+                )
+            if task_status in ("completed", "cancelled", "failed"):
+                raise TaskAuthorizationError(
+                    f"Cannot upload artifacts to task '{task_id}' in terminal state '{task_status}'.",
+                    status_code=409,
+                )
+        elif operation == "submit":
+            if is_expired:
+                # Expired lease submitting: verify task was not reacquired by another worker
+                reacquired = c.execute(
+                    "SELECT worker_id FROM worker_task_leases WHERE task_id = ? AND worker_id != ? AND status IN ('leased', 'active', 'completed')",
+                    (task_id, worker_id),
+                ).fetchone()
+                if reacquired or (assigned_worker and assigned_worker != worker_id):
+                    reassigned_to = reacquired['worker_id'] if reacquired else assigned_worker
+                    raise TaskAuthorizationError(
+                        f"Task '{task_id}' was reacquired by worker '{reassigned_to}' after lease expiration. Stale submission rejected.",
+                        status_code=409,
+                    )
+            if task_status in ("cancelled", "failed"):
+                raise TaskAuthorizationError(
+                    f"Cannot submit results to task '{task_id}' in terminal state '{task_status}'.",
+                    status_code=409,
+                )
+
+        return {
+            "task": task,
+            "lease": lease,
+            "project_id": task.get("project_id"),
+            "was_expired_lease": is_expired,
+            "has_db_lease": lease_row is not None,
+        }
+    finally:
+        if own_conn:
+            c.close()
 
 
 # ---------------------------------------------------------------------------
@@ -551,57 +804,330 @@ def store_task_artifact(
     content_bytes: bytes,
     expected_sha256: Optional[str] = None,
     worker_id: Optional[str] = None,
+    conn: Optional[sqlite3.Connection] = None,
 ) -> Dict[str, Any]:
     """
     Store a physical artifact in controlled evidence storage and compute independent SHA256 checksum.
-    Enforces Correction 2 & 3:
-    - Path traversal prevention
+    Enforces Stage 1 hardening:
+    - Path traversal prevention and Windows reserved name sanitization
     - File size constraints (max 25MB)
-    - Independent controller-side SHA256 hashing
-    - Verification against expected worker checksum
+    - Independent controller-side SHA256 hashing BEFORE disk write
+    - Strict verification against expected worker checksum (fails closed with ValueError; 0 bytes persisted)
+    - Non-overwriting immutable evidence storage
     """
     MAX_ARTIFACT_SIZE = 25 * 1024 * 1024  # 25 MB
     if len(content_bytes) > MAX_ARTIFACT_SIZE:
         raise ValueError(f"Artifact exceeds maximum allowed size of {MAX_ARTIFACT_SIZE} bytes.")
 
-    safe_name = Path(filename).name
-    if not safe_name or safe_name in (".", ".."):
-        safe_name = f"artifact_{uuid4().hex[:8]}.bin"
+    # 1. Independently compute SHA256 over raw incoming bytes BEFORE any disk write
+    computed_sha256 = hashlib.sha256(content_bytes).hexdigest()
 
+    # 2. Strict checksum verification: fail closed if expected_sha256 is supplied and does not match
+    if expected_sha256:
+        clean_expected = expected_sha256.strip().lower()
+        if not re.match(r"^[0-9a-fA-F]{64}$", clean_expected):
+            raise ValueError(f"Invalid expected checksum format: '{expected_sha256}'. Must be a 64-character hexadecimal SHA-256 string.")
+        if computed_sha256.lower() != clean_expected:
+            logger.warning(
+                "Artifact upload rejected for task %s: checksum mismatch (expected %s, computed %s)",
+                task_id, clean_expected, computed_sha256
+            )
+            raise ValueError(f"Checksum mismatch: expected '{clean_expected}', computed '{computed_sha256}'. Upload rejected.")
+
+    # 3. Sanitize display filename
+    safe_name = sanitize_display_filename(filename)
+    stem = Path(safe_name).stem
+    suffix = Path(safe_name).suffix
+
+    # 4. Resolve storage directory and enforce collision-proof atomic exclusive creation (O_CREAT | O_EXCL)
     evidence_base = settings.evidence_dir
     task_evidence_dir = evidence_base / f"task_{task_id}"
     task_evidence_dir.mkdir(parents=True, exist_ok=True)
 
     dest_file = task_evidence_dir / safe_name
-    dest_file.write_bytes(content_bytes)
 
-    # Independently compute SHA256 over stored bytes
-    computed_sha256 = hashlib.sha256(content_bytes).hexdigest()
+    # Atomic exclusive creation: open with 'xb' to guarantee no concurrent overwrite
+    try:
+        with open(dest_file, "xb") as f:
+            f.write(content_bytes)
+            f.flush()
+            os.fsync(f.fileno())
+    except FileExistsError:
+        artifact_uid = uuid4().hex[:12]
+        unique_name = f"{stem}_{computed_sha256[:12]}_{artifact_uid}{suffix}"
+        dest_file = task_evidence_dir / unique_name
+        with open(dest_file, "xb") as f:
+            f.write(content_bytes)
+            f.flush()
+            os.fsync(f.fileno())
 
-    matches = True
-    if expected_sha256:
-        matches = (computed_sha256.lower() == expected_sha256.strip().lower())
+    # 5. Post-write byte length and hash verification
+    written_bytes = dest_file.read_bytes()
+    if len(written_bytes) != len(content_bytes) or hashlib.sha256(written_bytes).hexdigest() != computed_sha256:
+        try:
+            dest_file.unlink(missing_ok=True)
+        except Exception:
+            pass
+        raise IOError(f"Artifact post-write verification failed for {dest_file.name}. Stored file rolled back.")
 
     logger.info(
-        "Stored artifact %s for task %s (%d bytes, sha256=%s, match=%s)",
-        safe_name, task_id, len(content_bytes), computed_sha256, matches
+        "Stored artifact %s for task %s (%d bytes, sha256=%s, dest=%s)",
+        safe_name, task_id, len(content_bytes), computed_sha256, dest_file.name
     )
 
+    canonical_art_id = None
+    try:
+        from app.services.artifacts import artifact_service
+        own_conn = conn is None
+        c = get_db_connection() if own_conn else conn
+        proj_id = None
+        try:
+            trow = c.execute("SELECT project_id FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            if trow:
+                proj_id = trow["project_id"]
+        finally:
+            if own_conn:
+                c.close()
+
+        canonical_art = artifact_service.register_artifact(
+            name=safe_name,
+            data=content_bytes,
+            project_id=proj_id,
+            description=f"Artifact uploaded from task {task_id} by worker {worker_id or 'unknown'}",
+            task_id=task_id,
+            worker_id=worker_id,
+            created_by=worker_id or "worker",
+            expected_sha256=expected_sha256,
+            status="available",
+            validation_status="valid",
+            validation_detail="Checksum verified",
+            db_conn=conn,
+        )
+        canonical_art_id = canonical_art["id"]
+    except Exception as ex:
+        logger.warning("Failed to register canonical artifact for task %s: %s", task_id, ex)
+
     return {
+        "artifact_id": canonical_art_id,
         "task_id": task_id,
         "filename": safe_name,
         "stored_path": str(dest_file.resolve()),
         "file_size": len(content_bytes),
         "computed_sha256": computed_sha256,
         "expected_sha256": expected_sha256,
-        "checksum_matches": matches,
+        "checksum_matches": True,
         "verified_at": _utc_now_iso(),
     }
 
 
+
 # ---------------------------------------------------------------------------
-# Durable Task Leasing Protocol
+# Durable Task Leasing Protocol & Authoritative Authorization Gateway
 # ---------------------------------------------------------------------------
+
+OPERATIONAL_TASK_TYPES = frozenset({
+    "library_script",
+    "shell_execution",
+    "vps_action",
+    "operational_task",
+    "script_execution",
+    "system_command",
+})
+
+INFERENCE_TASK_TYPES = frozenset({
+    "inference",
+    "llm_query",
+    "model_inference",
+    "planning_inference",
+    "synthesis_inference",
+})
+
+
+def check_worker_leasing_authority(
+    conn: sqlite3.Connection,
+    worker_id: str,
+    requested_categories: Optional[List[str]] = None,
+    enforce_fresh_heartbeat: bool = True,
+    heartbeat_stale_seconds: int = 300,
+) -> Dict[str, Any]:
+    """
+    Authoritative Server-Side Worker Authorization Validator.
+    Before granting any task lease or acknowledging leasing capability, validates:
+    1. Authenticated worker identity.
+    2. Valid, unrevoked worker credential in worker_auth_tokens.
+    3. Canonical, non-retired worker registration in infrastructure_nodes.
+    4. Administrative enablement in the authoritative registry (infrastructure_nodes.is_enabled == 1).
+    5. Consistent state across machines and infrastructure_nodes (where machines record exists).
+    6. Fresh health and heartbeat information (health != offline, last_contact within threshold).
+    7. Permission for requested task types & Extensible capability boundaries.
+    8. Worker class boundary enforcement (Desktop/Laptop/Pi inference-only, VPS operational hold).
+    9. Extensible capability policy loaded from capability_restrictions_json.
+    10. Fails closed on any missing, malformed, or contradictory configuration.
+    """
+    if not worker_id or not isinstance(worker_id, str):
+        raise TaskAuthorizationError("Missing or invalid worker identity.", status_code=403)
+
+    # 1. Canonical worker registration in infrastructure_nodes
+    w_node = conn.execute("SELECT * FROM infrastructure_nodes WHERE id = ?", (worker_id,)).fetchone()
+    if not w_node:
+        raise TaskAuthorizationError(
+            f"Worker '{worker_id}' is not registered in the authoritative infrastructure registry.",
+            status_code=403,
+        )
+
+    w_notes = str(w_node["notes"] or "")
+    if w_notes.startswith("[RETIRED") or w_node["health_status"] == "retired":
+        raise TaskAuthorizationError(
+            f"Worker '{worker_id}' is retired and quarantined. Task leasing denied.",
+            status_code=403,
+        )
+
+    # 2. Valid, unrevoked worker credential
+    tok_rows = conn.execute(
+        "SELECT id, revoked FROM worker_auth_tokens WHERE node_id = ?",
+        (worker_id,),
+    ).fetchall()
+    if tok_rows:
+        active_toks = [t for t in tok_rows if not bool(t["revoked"])]
+        if not active_toks:
+            raise TaskAuthorizationError(
+                f"Worker '{worker_id}' has revoked credentials. Task leasing denied.",
+                status_code=401,
+            )
+    elif worker_id in ("desktop-worker-01", "qwen-laptop", "pi-brain", "qwen-vps"):
+        raise TaskAuthorizationError(
+            f"Worker '{worker_id}' has no active unrevoked credentials. Task leasing denied.",
+            status_code=401,
+        )
+
+    # 3. Administrative enablement in authoritative registry
+    if not bool(w_node["is_enabled"]):
+        raise TaskAuthorizationError(
+            f"Worker '{worker_id}' is administratively disabled. Task leasing denied.",
+            status_code=403,
+        )
+
+    # 4. Consistent state across machines and infrastructure_nodes
+    m_node = conn.execute(
+        "SELECT is_enabled, notes, connection_status FROM machines WHERE id = ?",
+        (worker_id,),
+    ).fetchone()
+    if m_node:
+        if not bool(m_node["is_enabled"]):
+            raise TaskAuthorizationError(
+                f"Worker '{worker_id}' is administratively disabled in machine registry (state mismatch). Task leasing denied.",
+                status_code=403,
+            )
+        m_notes = str(m_node["notes"] or "")
+        if m_notes.startswith("[RETIRED") or m_node["connection_status"] == "retired":
+            raise TaskAuthorizationError(
+                f"Worker '{worker_id}' is marked retired in machine registry. Task leasing denied.",
+                status_code=403,
+            )
+    elif worker_id in ("desktop-worker-01", "qwen-laptop", "pi-brain", "qwen-vps"):
+        raise TaskAuthorizationError(
+            f"Physical worker '{worker_id}' missing required machine registry record. Task leasing denied.",
+            status_code=403,
+        )
+
+    # 5. Fresh health and heartbeat information
+    if w_node["health_status"] == "offline":
+        raise TaskAuthorizationError(
+            f"Worker '{worker_id}' is marked offline. Task leasing denied.",
+            status_code=403,
+        )
+
+    if enforce_fresh_heartbeat:
+        last_contact_str = w_node["last_contact_at"]
+        if not last_contact_str:
+            raise TaskAuthorizationError(
+                f"Worker '{worker_id}' has no verified heartbeat record. Task leasing denied.",
+                status_code=403,
+            )
+        try:
+            last_dt = datetime.fromisoformat(str(last_contact_str).replace("Z", "+00:00"))
+            now_dt = datetime.now(timezone.utc)
+            elapsed_sec = (now_dt - last_dt).total_seconds()
+            if elapsed_sec > heartbeat_stale_seconds:
+                raise TaskAuthorizationError(
+                    f"Worker '{worker_id}' heartbeat is stale ({int(elapsed_sec)}s > {heartbeat_stale_seconds}s limit; last contact: {last_contact_str}). Task leasing denied.",
+                    status_code=403,
+                )
+        except (ValueError, TypeError) as e:
+            raise TaskAuthorizationError(
+                f"Worker '{worker_id}' heartbeat timestamp is malformed ({last_contact_str}); failing closed.",
+                status_code=403,
+            )
+
+    # 6. Parse extensible capability restrictions
+    restr_raw = w_node["capability_restrictions_json"] or "{}"
+    try:
+        restrictions = json.loads(restr_raw) if isinstance(restr_raw, str) else dict(restr_raw)
+    except Exception:
+        raise TaskAuthorizationError(
+            f"Worker '{worker_id}' has malformed capability restrictions; failing closed.",
+            status_code=403,
+        )
+
+    is_vps = worker_id == "qwen-vps"
+    is_pi = worker_id == "pi-brain"
+    is_desktop_or_laptop = worker_id in ("desktop-worker-01", "qwen-laptop")
+
+    # VPS Operational Hold check (default True for qwen-vps or if operational_hold specified)
+    vps_hold = bool(restrictions.get("operational_hold", True if is_vps else False))
+    allow_ops = bool(restrictions.get("allow_operational_execution", False if is_vps else True))
+    allow_scripts = bool(restrictions.get("allow_script_execution", False if (is_desktop_or_laptop or is_pi) else True))
+
+    allowed_types = set(restrictions.get("allowed_task_types") or [])
+    blocked_types = set(restrictions.get("blocked_task_types") or [])
+    # Dedicated research retrieval never inherits implicit general-worker access.
+    if restrictions.get("allow_web_fetch") is not True or vps_hold or not allow_ops:
+        blocked_types.add("research_fetch")
+
+    # Enforce worker class boundaries:
+    # VPS: Operational execution remains on HOLD
+    if is_vps or vps_hold or not allow_ops:
+        blocked_types.update(OPERATIONAL_TASK_TYPES)
+
+    # Desktop / Laptop: Inference only until separately authorized; no arbitrary scripts
+    if is_desktop_or_laptop and not allow_scripts:
+        blocked_types.update(OPERATIONAL_TASK_TYPES)
+        if not allowed_types:
+            allowed_types.update(INFERENCE_TASK_TYPES)
+
+    # Raspberry Pi: Approved lightweight inference and diagnostics only
+    if is_pi and not allow_scripts:
+        blocked_types.update(OPERATIONAL_TASK_TYPES)
+        if not allowed_types:
+            allowed_types.update({"inference", "diagnostic", "general"})
+
+    # Check requested categories against authorized boundaries
+    if requested_categories:
+        unauthorized_requested = [
+            c for c in requested_categories
+            if c in blocked_types or (allowed_types and c not in allowed_types)
+        ]
+        if len(unauthorized_requested) == len(requested_categories):
+            if is_vps and any(c in OPERATIONAL_TASK_TYPES for c in requested_categories):
+                raise TaskAuthorizationError(
+                    f"Worker '{worker_id}' operational execution remains on HOLD. Requested operational categories {requested_categories} are denied.",
+                    status_code=403,
+                )
+            raise TaskAuthorizationError(
+                f"Worker '{worker_id}' is not authorized for requested categories {requested_categories}.",
+                status_code=403,
+            )
+
+    return {
+        "node": dict(w_node),
+        "restrictions": restrictions,
+        "allowed_task_types": allowed_types,
+        "blocked_task_types": blocked_types,
+        "is_vps": is_vps,
+        "vps_hold": vps_hold,
+        "allow_scripts": allow_scripts,
+    }
+
 
 def lease_task_for_worker(
     worker_id: str,
@@ -609,15 +1135,17 @@ def lease_task_for_worker(
     lease_duration_seconds: int = DEFAULT_LEASE_DURATION_SECONDS,
     available_models: Optional[List[str]] = None,
     available_ram_mb: Optional[int] = None,
+    enforce_fresh_heartbeat: bool = True,
+    heartbeat_stale_seconds: int = 300,
 ) -> Optional[Dict[str, Any]]:
     """
-    Atomically lease a pending, eligible task to an authenticated worker.
+    Atomically lease a pending, eligible task to an authenticated, authorized worker.
     Enforces:
-    - Task must be approved or approval_required=0
-    - Task must not already be actively leased
-    - Worker capability matching
-    - Resource-aware and model-aware constraints matching
-    - Atomic database transaction
+    - 10-point authoritative server-side worker authorization check before lease search.
+    - Worker capability matching & operational hold boundaries.
+    - Transactional re-verification at assignment time.
+    - Rejection of unauthorized operational scripts.
+    - Reconciles expired leases.
     """
     lease_duration = min(max(30, lease_duration_seconds), MAX_LEASE_DURATION_SECONDS)
     now_dt = datetime.now(timezone.utc)
@@ -627,24 +1155,44 @@ def lease_task_for_worker(
 
     conn = get_db_connection()
     try:
-        # First reconcile expired leases inside the transaction
-        _reconcile_expired_leases_conn(conn)
+        # Commit crash/lease recovery before opening the claim transaction.
+        # Recovery writes must not leave an implicit transaction around BEGIN.
+        conn.execute('BEGIN IMMEDIATE')
+        try:
+            _reconcile_expired_leases_conn(conn)
+            if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='research_retrieval_attempts'").fetchone():
+                from app.services.research.retrieval_attempts import recover_expired
+                recover_expired(conn)
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
+
+        # Authoritative Server-Side Worker Authorization Gateway
+        auth_ctx = check_worker_leasing_authority(
+            conn=conn,
+            worker_id=worker_id,
+            requested_categories=supported_categories,
+            enforce_fresh_heartbeat=enforce_fresh_heartbeat,
+            heartbeat_stale_seconds=heartbeat_stale_seconds,
+        )
+
+        w_node = auth_ctx["node"]
+        allowed_task_types = auth_ctx["allowed_task_types"]
+        blocked_task_types = auth_ctx["blocked_task_types"]
 
         # Controller-side RAM fallback: do not trust a worker to self-report in lease polls.
-        # Use the last RAM figure from an authenticated heartbeat/registration when absent.
-        if available_ram_mb is None:
+        if available_ram_mb is None and w_node.get("available_ram_mb") is not None:
+            available_ram_mb = int(w_node["available_ram_mb"])
+
+        # Controller-side models fallback:
+        if available_models is None and w_node.get("available_models_json"):
             try:
-                _r = conn.execute(
-                    "SELECT available_ram_mb FROM infrastructure_nodes WHERE id = ?", (worker_id,)
-                ).fetchone()
-                if _r and _r["available_ram_mb"] is not None:
-                    available_ram_mb = int(_r["available_ram_mb"])
+                available_models = json.loads(w_node["available_models_json"])
             except Exception:
-                available_ram_mb = None
+                available_models = []
 
         # Find candidate tasks: approved or approval_required=0, pending status
-        # Note: tasks table has columns: id, title, description, task_type, status, assigned_worker,
-        # approval_required, input_data_json, idempotency_key, project_id, path_id, stage_id
         query = """
             SELECT t.id, t.title, t.description, t.task_type, t.status, t.assigned_worker,
                    t.approval_required, t.input_data_json, t.project_id, t.path_id, t.stage_id, t.purpose, t.expected_output
@@ -668,9 +1216,26 @@ def lease_task_for_worker(
         if not candidate_rows:
             return None
 
-        # Resource-aware & capability-aware filtering
+        # Resource-aware, capability-aware, and authorization-aware filtering
         task_row = None
+        blocked_reasons: List[str] = []
+
         for cand in candidate_rows:
+            c_type = cand["task_type"]
+
+            # Authorization check: task type blocked by policy or worker class hold
+            if c_type in blocked_task_types:
+                if auth_ctx["is_vps"] and c_type in OPERATIONAL_TASK_TYPES:
+                    blocked_reasons.append(f"task '{cand['id']}' type '{c_type}' denied: VPS operational execution on HOLD")
+                else:
+                    blocked_reasons.append(f"task '{cand['id']}' type '{c_type}' blocked by worker capability policy")
+                continue
+
+            # Authorization check: allowed task types filter
+            if allowed_task_types and c_type not in allowed_task_types:
+                blocked_reasons.append(f"task '{cand['id']}' type '{c_type}' not in allowed types for worker")
+                continue
+
             input_data = {}
             if cand["input_data_json"]:
                 try:
@@ -681,55 +1246,99 @@ def lease_task_for_worker(
             # Check model constraint if specified by task
             req_model = input_data.get("required_model") or input_data.get("model")
             if req_model and available_models is not None:
-                # Require model to be present in worker's available models
                 if not any(req_model.lower() in m.lower() or m.lower() in req_model.lower() for m in available_models):
+                    blocked_reasons.append(f"task '{cand['id']}' requires model '{req_model}', not available on worker")
                     continue
 
             # Check RAM constraint if specified by task
             req_ram = input_data.get("min_ram_mb") or input_data.get("required_ram_mb")
             if req_ram:
-                # Fail closed: unknown RAM never satisfies an explicit RAM requirement.
                 try:
                     _need = int(req_ram)
                 except (TypeError, ValueError):
                     continue
                 if available_ram_mb is None or available_ram_mb < _need:
+                    blocked_reasons.append(f"task '{cand['id']}' requires {_need}MB RAM; worker has {available_ram_mb}MB")
                     continue
 
             task_row = cand
             break
 
         if not task_row:
+            # If candidate tasks exist in the queue but were rejected by authorization/policy, fail closed with explicit denial
+            if blocked_reasons:
+                if any("on HOLD" in r for r in blocked_reasons):
+                    raise TaskAuthorizationError(
+                        f"Task lease denied for worker '{worker_id}': queued tasks require operational execution which is on HOLD.",
+                        status_code=403,
+                    )
+                if any("blocked by worker capability policy" in r or "not in allowed types" in r for r in blocked_reasons):
+                    raise TaskAuthorizationError(
+                        f"Task lease denied for worker '{worker_id}': queued candidate tasks exceed worker authorized capability boundaries.",
+                        status_code=403,
+                    )
             return None
 
         task_id = str(task_row["id"])
         lease_id = f"lease_{uuid4().hex[:12]}"
         idempotency_key = f"idem_{uuid4().hex[:16]}"
 
-        # Insert lease
-        conn.execute(
-            """
-            INSERT INTO worker_task_leases (
-                id, task_id, worker_id, idempotency_key, status,
-                leased_at, lease_expires_at, heartbeat_at, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, 'leased', ?, ?, ?, ?, ?)
-            """,
-            (lease_id, task_id, worker_id, idempotency_key, now_iso, expires_iso, now_iso, now_iso, now_iso),
-        )
+        # Transactional Lease Assignment with Re-verification
+        retrieval_reservation=None
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            # Re-check administrative enablement transactionally to prevent race conditions
+            recheck_node = conn.execute("SELECT is_enabled, health_status FROM infrastructure_nodes WHERE id = ?", (worker_id,)).fetchone()
+            recheck_mach = conn.execute("SELECT is_enabled FROM machines WHERE id = ?", (worker_id,)).fetchone()
+            if not recheck_node or not bool(recheck_node["is_enabled"]) or (recheck_mach and not bool(recheck_mach["is_enabled"])):
+                conn.rollback()
+                raise TaskAuthorizationError(
+                    f"Worker '{worker_id}' was administratively disabled during lease assignment transaction.",
+                    status_code=403,
+                )
 
-        # Update task status
-        conn.execute(
-            """
-            UPDATE tasks
-            SET status = 'in_progress',
-                assigned_worker = ?,
-                idempotency_key = COALESCE(idempotency_key, ?),
-                updated_at = ?
-            WHERE id = ?
-            """,
-            (worker_id, idempotency_key, now_iso, task_row["id"]),
-        )
-        conn.commit()
+            if task_row['task_type']=='research_fetch':
+                from app.services.research.retrieval_attempts import reserve,RetrievalBudgetError
+                scopes=conn.execute('''SELECT rr.id FROM research_runs rr
+                    JOIN orchestration_tasks ot ON ot.run_id=rr.orchestration_run_id
+                    WHERE ot.current_task_id=? AND rr.project_id=? AND rr.status='active' ''',
+                    (task_id,task_row['project_id'])).fetchall()
+                if len(scopes)!=1:
+                    raise TaskAuthorizationError('Native retrieval scope is missing or ambiguous',status_code=403)
+                try:
+                    retrieval_reservation=reserve(conn,task_row['project_id'],scopes[0]['id'],'worker',task_id,
+                        worker_lease_id=lease_id)
+                    retrieval_reservation['io_deadline_at']=(datetime.fromisoformat(retrieval_reservation['started_at'])+timedelta(seconds=8)).isoformat()
+                except RetrievalBudgetError as exc:
+                    raise TaskAuthorizationError(str(exc),status_code=403)
+
+            # Insert lease
+            conn.execute(
+                """
+                INSERT INTO worker_task_leases (
+                    id, task_id, worker_id, idempotency_key, status,
+                    leased_at, lease_expires_at, heartbeat_at, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, 'leased', ?, ?, ?, ?, ?)
+                """,
+                (lease_id, task_id, worker_id, idempotency_key, now_iso, expires_iso, now_iso, now_iso, now_iso),
+            )
+
+            # Update task status
+            conn.execute(
+                """
+                UPDATE tasks
+                SET status = 'in_progress',
+                    assigned_worker = ?,
+                    idempotency_key = COALESCE(idempotency_key, ?),
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (worker_id, idempotency_key, now_iso, task_row["id"]),
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
 
         logger.info("Leased task %s to worker %s (Lease: %s, Expires: %s)", task_id, worker_id, lease_id, expires_iso)
 
@@ -784,6 +1393,7 @@ def lease_task_for_worker(
             "expected_output": task_row["expected_output"],
             "input_data": input_data,
             "execution_manifest": manifest,
+            "retrieval_reservation": retrieval_reservation,
             "leased_at": now_iso,
             "lease_expires_at": expires_iso,
             "timeout_seconds": lease_duration,
@@ -796,16 +1406,69 @@ def renew_task_lease(
     worker_id: str,
     lease_id: str,
     additional_seconds: int = DEFAULT_LEASE_DURATION_SECONDS,
+    tool_name: Optional[str] = None,
+    tool_args: Optional[Dict[str, Any]] = None,
+    result_summary: Optional[Any] = None,
+    error_category: Optional[str] = None,
+    progress_milestone: Optional[bool] = None,
 ) -> bool:
-    """Extend the expiration time of an actively leased task."""
+    """Extend the expiration time of an actively leased task and record operation telemetry."""
     duration = min(max(30, additional_seconds), MAX_LEASE_DURATION_SECONDS)
     now_dt = datetime.now(timezone.utc)
     now_iso = now_dt.isoformat()
     new_expires_dt = datetime.fromtimestamp(now_dt.timestamp() + duration, tz=timezone.utc)
     new_expires_iso = new_expires_dt.isoformat()
-
     conn = get_db_connection()
     try:
+        conn.execute('BEGIN IMMEDIATE')
+        # Verify worker node administrative enablement and canonical status
+        w_node = conn.execute("SELECT is_enabled, notes, health_status FROM infrastructure_nodes WHERE id = ?", (worker_id,)).fetchone()
+        if w_node:
+            if not bool(w_node["is_enabled"]):
+                raise TaskAuthorizationError(f"Worker '{worker_id}' is administratively disabled. Lease extension denied.", status_code=403)
+            w_notes = str(w_node["notes"] or "")
+            if w_notes.startswith("[RETIRED") or w_node["health_status"] == "retired":
+                raise TaskAuthorizationError(f"Worker '{worker_id}' is retired and quarantined. Lease extension denied.", status_code=403)
+
+        m_node = conn.execute("SELECT is_enabled, notes, connection_status FROM machines WHERE id = ?", (worker_id,)).fetchone()
+        if m_node:
+            if not bool(m_node["is_enabled"]):
+                raise TaskAuthorizationError(f"Worker '{worker_id}' is administratively disabled in machine registry. Lease extension denied.", status_code=403)
+            m_notes = str(m_node["notes"] or "")
+            if m_notes.startswith("[RETIRED") or m_node["connection_status"] == "retired":
+                raise TaskAuthorizationError(f"Worker '{worker_id}' is retired in machine registry. Lease extension denied.", status_code=403)
+
+        row = conn.execute(
+            "SELECT task_id, attempt_count FROM worker_task_leases WHERE id = ? AND worker_id = ? AND status IN ('leased', 'active') AND lease_expires_at > ?",
+            (lease_id, worker_id, now_iso),
+        ).fetchone()
+        if not row:
+            return False
+
+        task=conn.execute('SELECT * FROM tasks WHERE id=?',(row['task_id'],)).fetchone()
+        if task and task['task_type']=='python_execution':
+            context=check_worker_leasing_authority(conn,worker_id,requested_categories=['python_execution'])
+            policy=context['restrictions']
+            if (os.getenv('QC_SCRIPT_AUTHORIZATION_ENABLED')!='1'
+                    or policy.get('allow_script_execution') is not True
+                    or policy.get('allow_operational_execution') is not True
+                    or policy.get('operational_hold') is not False or task['status']!='in_progress'
+                    or task['assigned_worker']!=worker_id):
+                raise TaskAuthorizationError('Reviewed-script authorization no longer active',status_code=403)
+            try:
+                native=conn.execute('''SELECT 1 FROM orchestration_tasks o
+                JOIN orchestration_runs r ON r.id=o.run_id AND r.current_revision_id=o.revision_id
+                JOIN orchestration_plan_revisions rev ON rev.id=r.current_revision_id AND rev.status='approved'
+                JOIN projects p ON p.id=r.project_id AND p.status='active'
+                JOIN worker_script_authorizations a ON a.task_id=o.current_task_id AND a.lease_id=?
+                WHERE o.current_task_id=? AND o.dispatched_node=? AND o.state='dispatched'
+                    AND r.state='RUNNING' AND r.project_id=?''',
+                    (lease_id,task['id'],worker_id,task['project_id'])).fetchone()
+            except sqlite3.Error:
+                raise TaskAuthorizationError('Script authorization state unavailable',status_code=403)
+            if not native:
+                raise TaskAuthorizationError('Native script authorization binding changed',status_code=403)
+
         cursor = conn.execute(
             """
             UPDATE worker_task_leases
@@ -813,12 +1476,69 @@ def renew_task_lease(
                 heartbeat_at = ?,
                 lease_expires_at = ?,
                 updated_at = ?
-            WHERE id = ? AND worker_id = ? AND status IN ('leased', 'active')
+            WHERE id = ? AND worker_id = ? AND status IN ('leased', 'active') AND lease_expires_at > ?
             """,
-            (now_iso, new_expires_iso, now_iso, lease_id, worker_id),
+            (now_iso, new_expires_iso, now_iso, lease_id, worker_id, now_iso),
         )
         conn.commit()
-        return cursor.rowcount > 0
+
+        if cursor.rowcount > 0:
+            task_id = row["task_id"]
+            attempt = row["attempt_count"]
+            loop_detection.detector.record_heartbeat(task_id, now_iso)
+            if tool_name or error_category or progress_milestone is not None:
+                loop_detection.detector.record_operation(
+                    task_id=task_id,
+                    tool_name=tool_name or "heartbeat",
+                    arguments=tool_args,
+                    result=result_summary,
+                    attempt=attempt,
+                    error_category=error_category,
+                    explicit_progress=progress_milestone,
+                    operation_ts=now_iso,
+                )
+            return True
+        return False
+    finally:
+        conn.close()
+
+
+def record_task_telemetry(
+    worker_id: str,
+    lease_id: str,
+    tool_name: str,
+    arguments: Any = None,
+    result: Any = None,
+    error_category: Optional[str] = None,
+    progress_milestone: Optional[bool] = None,
+) -> bool:
+    """Record operation telemetry for an active task lease."""
+    now_dt = datetime.now(timezone.utc)
+    now_iso = now_dt.isoformat()
+
+    conn = get_db_connection()
+    try:
+        row = conn.execute(
+            "SELECT task_id, attempt_count FROM worker_task_leases WHERE id = ? AND worker_id = ? AND status IN ('leased', 'active') AND lease_expires_at > ?",
+            (lease_id, worker_id, now_iso),
+        ).fetchone()
+        if not row:
+            return False
+
+        task_id = row["task_id"]
+        attempt = row["attempt_count"]
+        loop_detection.detector.record_heartbeat(task_id, now_iso)
+        loop_detection.detector.record_operation(
+            task_id=task_id,
+            tool_name=tool_name,
+            arguments=arguments,
+            result=result,
+            attempt=attempt,
+            error_category=error_category,
+            explicit_progress=progress_milestone,
+            operation_ts=now_iso,
+        )
+        return True
     finally:
         conn.close()
 
@@ -1025,13 +1745,37 @@ def submit_task_result(
 
     conn = get_db_connection()
     try:
-        # Check idempotency: If this idempotency_key was already processed, return existing record
+        # 1. Check idempotency: If this idempotency_key was already processed, return existing record or conflict
         existing = conn.execute(
-            "SELECT id, status, started_at, completed_at FROM worker_executions WHERE idempotency_key = ?",
+            "SELECT id, status, started_at, completed_at, result_payload_json FROM worker_executions WHERE idempotency_key = ?",
             (idempotency_key,),
         ).fetchone()
 
         if existing:
+            # Check payload and status compatibility
+            existing_status = existing["status"]
+            if existing_status != status:
+                raise TaskAuthorizationError(
+                    f"Idempotency conflict: key '{idempotency_key}' previously submitted with status '{existing_status}', cannot resubmit with '{status}'.",
+                    status_code=409,
+                )
+            existing_payload = json.loads(existing["result_payload_json"] or "{}")
+            submitted_payload = result_payload or {}
+            has_conflict = False
+            for k in submitted_payload:
+                if k in existing_payload and submitted_payload[k] != existing_payload[k]:
+                    has_conflict = True
+                    break
+            if not has_conflict and existing_payload and submitted_payload:
+                if not (set(submitted_payload.keys()).issubset(set(existing_payload.keys())) or
+                        set(existing_payload.keys()).issubset(set(submitted_payload.keys()))):
+                    has_conflict = True
+
+            if has_conflict:
+                raise TaskAuthorizationError(
+                    f"Idempotency conflict: key '{idempotency_key}' previously submitted with different output content. Cannot corrupt or replace accepted result.",
+                    status_code=409,
+                )
             logger.info("Idempotent submission detected for key %s (Execution: %s)", idempotency_key, existing["id"])
             return {
                 "status": "already_processed",
@@ -1040,45 +1784,25 @@ def submit_task_result(
                 "completed_at": existing["completed_at"],
             }
 
-        # Resolve foreign keys safely and enforce lease ownership
-        actual_lease_id = None
-        lease_row = None
-        if lease_id:
-            lease_row = conn.execute(
-                "SELECT id, worker_id, task_id, status FROM worker_task_leases WHERE id = ?",
-                (lease_id,),
-            ).fetchone()
-            if lease_row:
-                if lease_row["worker_id"] != worker_id:
-                    raise PermissionError(f"Lease '{lease_id}' belongs to worker '{lease_row['worker_id']}', not '{worker_id}'.")
-                if task_id and lease_row["task_id"] != task_id:
-                    raise ValueError(f"Lease '{lease_id}' was issued for task '{lease_row['task_id']}', not '{task_id}'.")
-                actual_lease_id = lease_id
+        # 2. Authoritative policy verification (F-10)
+        auth_context = verify_worker_task_authorization(
+            worker_id=worker_id,
+            task_id=task_id,
+            operation="submit",
+            lease_id=lease_id,
+            conn=conn,
+        )
+        task_row = auth_context["task"]
+        lease_row = auth_context["lease"]
+        actual_task_id = task_row["id"]
+        actual_lease_id = lease_row["id"] if auth_context.get("has_db_lease") else None
+        was_expired_lease = bool(auth_context.get("was_expired_lease") or lease_row.get("status") == "expired")
 
-        actual_task_id = None
-        task_row = None
-        if task_id:
-            task_row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
-            if not task_row:
-                raise ValueError(f"Specified task_id '{task_id}' does not exist.")
-            actual_task_id = task_row["id"]
-            
-            # If lease_id wasn't provided, ensure task isn't leased to a different active worker
-            if not actual_lease_id:
-                active_lease = conn.execute(
-                    "SELECT id, worker_id FROM worker_task_leases WHERE task_id = ? AND status IN ('leased', 'active')",
-                    (actual_task_id,),
-                ).fetchone()
-                if active_lease and active_lease["worker_id"] != worker_id:
-                    raise PermissionError(f"Task '{actual_task_id}' is actively leased to worker '{active_lease['worker_id']}'.")
-
-        # Check for expired lease reconciliation and conflict handling
-        was_expired_lease = bool(lease_row and lease_row["status"] == "expired")
-        task_already_done = bool(task_row and task_row["status"] == "completed")
-
-        if task_already_done:
-            # Another worker or process already completed this task!
-            # Preserve execution record as reconciled conflict without overwriting the completed task
+        # 3. Check for terminal task conflict (preserve record without overwriting terminal task: completed, cancelled, failed)
+        task_already_terminal = bool(task_row["status"] in ("completed", "cancelled", "failed"))
+        if task_already_terminal:
+            # Another worker or process already terminated this task!
+            # Preserve execution record as reconciled conflict without overwriting the terminal task
             execution_id = f"exec_{uuid4().hex[:12]}"
             conn.execute(
                 """
@@ -1102,14 +1826,14 @@ def submit_task_result(
                     (now, actual_lease_id),
                 )
             conn.commit()
-            logger.warning("Recorded conflicting delayed execution %s for task %s (preserved for operator review)", execution_id, task_id)
+            logger.warning("Recorded conflicting delayed execution %s for terminal task %s (%s) (preserved for operator review)", execution_id, task_id, task_row["status"])
             return {
                 "status": "reconciled_conflict",
                 "execution_id": execution_id,
                 "task_id": task_id,
                 "task_status": task_row["status"],
                 "completed_at": now,
-                "message": "Task was already completed by another execution; result preserved as conflicting evidence.",
+                "message": f"Task was already in terminal state '{task_row['status']}'; result preserved as conflicting evidence without modifying task status.",
             }
 
         # 1. Update lease status if exists
@@ -1136,20 +1860,27 @@ def submit_task_result(
                     (now, f"Reconciled by delayed submission from worker {worker_id}", f"%{actual_lease_id}%"),
                 )
 
-        # 2. Update task record if exists
+        # 2. Update task record if exists with compare-and-swap (CAS)
         task_status = "completed" if status == "success" else "failed"
         if actual_task_id:
-            conn.execute(
+            cursor = conn.execute(
                 """
                 UPDATE tasks
                 SET status = ?,
                     result_data_json = ?,
                     error_details = ?,
                     updated_at = ?
-                WHERE id = ?
+                WHERE id = ? AND status IN ('in_progress', 'pending', 'queued', 'approved')
                 """,
                 (task_status, result_json, stderr_summary if status != "success" else None, now, actual_task_id),
             )
+            if cursor.rowcount == 0:
+                t_row = conn.execute("SELECT status FROM tasks WHERE id = ?", (actual_task_id,)).fetchone()
+                cur_status = t_row["status"] if t_row else "unknown"
+                raise TaskAuthorizationError(
+                    f"State transition conflict: task '{actual_task_id}' is in state '{cur_status}', cannot transition to '{task_status}'.",
+                    status_code=409,
+                )
 
             # Record task operational event in task_execution_events
             try:
@@ -1214,13 +1945,14 @@ def submit_task_result(
                                 content_bytes=content_bytes,
                                 expected_sha256=expected_sha,
                                 worker_id=worker_id,
+                                conn=conn,
                             )
                             processed_artifacts.append(stored)
                         except Exception as art_err:
                             logger.warning("Failed to store task artifact %s: %s", filename, art_err)
 
             # Update deliverable if task is linked to one
-            if task_row and task_row["deliverable_id"]:
+            if task_row and task_row.get("deliverable_id"):
                 try:
                     deliv_id = task_row["deliverable_id"]
                     deliv = conn.execute("SELECT * FROM deliverables WHERE id = ?", (deliv_id,)).fetchone()
@@ -1231,15 +1963,22 @@ def submit_task_result(
                             artifact_ref_parts.append(f"artifact:{actual_task_id}/{pa['filename']}")
                         artifact_ref = ";".join(artifact_ref_parts)
 
+                        primary_art_id = None
+                        for pa in processed_artifacts:
+                            if pa.get("artifact_id"):
+                                primary_art_id = pa["artifact_id"]
+                                break
+
                         conn.execute(
                             """
                             UPDATE deliverables
                             SET status = ?,
+                                primary_artifact_id = COALESCE(primary_artifact_id, ?),
                                 artifact_references = CASE WHEN artifact_references = '' THEN ? ELSE artifact_references || ';' || ? END,
                                 updated_at = ?
                             WHERE id = ?
                             """,
-                            (new_deliv_status, artifact_ref, artifact_ref, now, deliv_id),
+                            (new_deliv_status, primary_art_id, artifact_ref, artifact_ref, now, deliv_id),
                         )
                         # Add revision
                         rev_count = conn.execute(
@@ -1306,6 +2045,14 @@ def submit_task_result(
             ),
         )
 
+        if task_row['task_type']=='research_fetch':
+            from app.services.research.retrieval_attempts import settle
+            reservation=conn.execute('''SELECT id FROM research_retrieval_attempts
+                WHERE actor='worker' AND operation_id=? AND worker_lease_id=? AND status='ACTIVE' ''',
+                (actual_task_id,actual_lease_id)).fetchone()
+            if reservation:
+                settle(conn,reservation['id'],'SUCCEEDED' if status=='success' and exit_code==0
+                    else 'TIMED_OUT' if status=='timeout' else 'FAILED',error_code=error_category)
         conn.commit()
         logger.info("Recorded execution %s for task %s (status: %s, artifacts: %d)", execution_id, task_id, status, len(processed_artifacts))
 
@@ -1376,17 +2123,46 @@ def _reconcile_expired_leases_conn(conn: sqlite3.Connection) -> List[str]:
             (now_iso, lease_id),
         )
 
-        # Reset task to pending so another eligible worker can claim it
-        conn.execute(
-            """
-            UPDATE tasks
-            SET status = 'pending',
-                assigned_worker = NULL,
-                updated_at = ?
-            WHERE id = ? AND status = 'in_progress'
-            """,
-            (now_iso, task_id),
-        )
+        # Fetch current attempt count and max_retries for task
+        cur = conn.execute("SELECT attempt_count, max_retries FROM tasks WHERE id = ?", (task_id,))
+        task_row = cur.fetchone()
+        cur_attempts = (task_row["attempt_count"] if task_row and task_row["attempt_count"] is not None else 0)
+        max_retries = (task_row["max_retries"] if task_row and task_row["max_retries"] is not None else 3)
+        new_attempts = cur_attempts + 1
+
+        if new_attempts >= max_retries:
+            # Mark task failed due to retry bounds exhausted
+            conn.execute(
+                """
+                UPDATE tasks
+                SET status = 'failed',
+                    assigned_worker = NULL,
+                    attempt_count = ?,
+                    error_details = ?,
+                    updated_at = ?
+                WHERE id = ? AND status = 'in_progress'
+                """,
+                (
+                    new_attempts,
+                    f"Task exceeded maximum retry attempts ({max_retries}) due to worker lease expiry/abandonment.",
+                    now_iso,
+                    task_id,
+                ),
+            )
+            logger.warning("Task %s failed after reaching max retries (%s) during lease expiry reconciliation", task_id, max_retries)
+        else:
+            # Reset task to pending so another eligible worker can claim it
+            conn.execute(
+                """
+                UPDATE tasks
+                SET status = 'pending',
+                    assigned_worker = NULL,
+                    attempt_count = ?,
+                    updated_at = ?
+                WHERE id = ? AND status = 'in_progress'
+                """,
+                (new_attempts, now_iso, task_id),
+            )
 
         # Record drift discrepancy
         recon_id = f"recon_{uuid4().hex[:12]}"
@@ -1399,12 +2175,12 @@ def _reconcile_expired_leases_conn(conn: sqlite3.Connection) -> List[str]:
             (
                 recon_id,
                 worker_id,
-                f"Task lease {lease_id} for task {task_id} expired without heartbeat. Task re-queued.",
+                f"Task lease {lease_id} for task {task_id} expired without heartbeat. Task re-queued (attempt {new_attempts}/{max_retries}).",
                 now_iso,
             ),
         )
         recovered_tasks.append(task_id)
-        logger.warning("Reconciled expired lease %s for task %s on worker %s", lease_id, task_id, worker_id)
+        logger.warning("Reconciled expired lease %s for task %s on worker %s (attempt %s/%s)", lease_id, task_id, worker_id, new_attempts, max_retries)
 
     return recovered_tasks
 
@@ -1414,6 +2190,9 @@ def reconcile_expired_leases() -> List[str]:
     conn = get_db_connection()
     try:
         recovered = _reconcile_expired_leases_conn(conn)
+        if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='research_retrieval_attempts'").fetchone():
+            from app.services.research.retrieval_attempts import recover_expired
+            recover_expired(conn)
         conn.commit()
         return recovered
     finally:

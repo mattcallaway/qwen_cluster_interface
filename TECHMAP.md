@@ -1,19 +1,23 @@
+> **Development review overlay â€” 2026-10-27.** [Verified implementation overlay and capability map](docs/verified-work/TECHMAP.md). Candidate changes are not deployed. Existing production-readiness claims below are historical; they do not override the current holds or evidence limitations.
+
 # Qwen Collective: Technical Architecture Map (TECHMAP)
 
-## 1. Architectural Philosophy & Roles
+## 1. Architectural Philosophy & Mental Model
 
-Qwen Collective is structured as a **hybrid, distributed coordination system** engineered to maximize sovereign hardware efficiency, prevent AI hallucinations about real-world infrastructure, and enforce strict human approval boundaries before execution.
+Qwen Collective is a **sovereign, distributed AI coordination and execution platform**. It is engineered to maximize sovereign hardware efficiency, prevent AI hallucinations about real-world infrastructure, enforce strict human approval boundaries before execution, and ensure every useful output becomes a durable, discoverable, versioned, reusable project asset.
 
 ```text
 +-----------------------------------------------------------------------------------+
 |                        LAYER 1: CENTRAL AUTHORITATIVE CONTROLLER                  |
 |                        Windows Host (Local / Tailscale Mesh)                      |
 |                                                                                   |
-|  - Authoritative Database (SQLite WAL Mode, FTS5 Search)                          |
-|  - Project & Execution Governance (Projects, Paths, Tasks, Deliverables, Gates)   |
+|  - Authoritative SQLite Database (WAL Mode, FTS5 Full-Text Search)                |
+|  - Autonomous Project Orchestrator (Intake, Task Graph, Checkpoints, Approvals)   |
+|  - Unified Deliverables & Artifact Manager (CAS Storage, Versioning, Lineage)     |
+|  - Continuous Web Research Engine (Multi-provider Search, Verification, Citations)|
+|  - System Observatory & Telemetry (Real-time Cluster Metrics, Alerts, Snapshots)  |
 |  - Infrastructure & Capability Registry (Hardware Inventory, Probe Verification)  |
 |  - Durable Knowledge Vault (Obsidian Markdown Notes, Dual-Store Index)            |
-|  - Human Approval Workflow & Audit Event Ledger                                   |
 |  - WinSW Windows Service Wrapper (Auto-recovery, Rotating Logs)                   |
 +-----------------------------------------------------------------------------------+
                                          |
@@ -25,35 +29,37 @@ Qwen Collective is structured as a **hybrid, distributed coordination system** e
 |  Linux Laptops / Workstations      |           |   Cloud VPS Execution Companion    |
 |                                    |           |                                    |
 | - Low-Power Compute Nodes (4GB RAM)|           | - Dedicated Python Worker Agent    |
-| - Quantized Qwen2.5 (0.5B - 7B)    |           | - Outbound Pull-Based Task Leasing |
-| - llama.cpp / llama-server         |           | - Sandboxed Python/Shell Jobs      |
-| - Read-Only Diagnostic Probes (SSH)|           | - Systemd Services & Timers        |
-| - Reasoning & Proposal Generation  |           | - Offline Disconnect Result Buffer |
+| - Quantized Qwen2.5 (0.5B - 14B)   |           | - Outbound Pull-Based Task Leasing |
+| - Distributed Pipeline Parallelism |           | - Sandboxed Python/Shell Jobs      |
+| - Searchable Paged KV Virtual Mem  |           | - Systemd Services & Timers        |
+| - llama.cpp / Ollama / llama-server|           | - Offline Disconnect Result Buffer |
+| - Read-Only Diagnostic Probes (SSH)|           | - Intermediate Pipeline Runner     |
+| - Reasoning & Planning Sub-agents  |           |                                    |
 +------------------------------------+           +------------------------------------+
                                          ^
-                                         | (Ingests Context & Emits Findings)
+                                         | (Ingests Context & Emits Verified Assets)
 +-----------------------------------------------------------------------------------+
 |                        LAYER 4: PERSISTENT KNOWLEDGE ENGINE                       |
 |  - Raw Markdown files in an Obsidian-compatible vault (100% human-readable)       |
 |  - Dynamic SQLite FTS5 Full-Text search indexing with BM25 ranking                |
-|  - Staged inbox for external research before human promotion into system memory   |
+|  - Reusable Deliverable & Knowledge Impact Promotion Engine                       |
 +-----------------------------------------------------------------------------------+
 ```
 
 ---
 
-## 2. Database Schema & Migration Progression
+## 2. Complete Database Schema & Migration Progression (M0 – M10)
 
 The authoritative controller database uses **SQLite 3 in WAL (Write-Ahead Logging) mode** with busy timeouts and foreign key constraints enabled. Schema evolution is managed via sequential, transaction-safe migrations in `app/migrations.py`:
 
 ```text
-M0 (Baseline)
+M0 (Baseline Security & Auth)
   ├── users (Administrator accounts, bcrypt password hashes, last login)
   ├── sessions (Signed cookie tokens, expiration timestamps)
   ├── login_attempts (Rate-limiting brute force protection, bounded storage)
   ├── machines (Legacy compute nodes, SSH connection metadata)
   ├── models (Inference models, VRAM/RAM allocations, port bindings)
-  ├── tasks (Execution tasks, state, parameters, results)
+  ├── tasks (Legacy execution tasks, state, parameters, results)
   └── audit_log (Immutable security and operational event ledger)
 
 M1 (Knowledge Vault Integration)
@@ -88,103 +94,158 @@ M6 (Infrastructure Self-Awareness & Capability Registry)
   ├── infrastructure_capabilities (15 typed categories, Declared/Discovered/Verified status)
   ├── infrastructure_reconciliations (Architecture drift detection, severity, resolution audit)
   └── infrastructure_verifications (Audit trail for side-effect-free capability probes)
+
+M7 (System Observatory & Real-Time Telemetry)
+  ├── observatory_snapshots (Cluster health state snapshots across all nodes)
+  ├── observatory_events (Telemetry events: latency, errors, queue depths, memory)
+  ├── observatory_alerts (Enforceable alert thresholds, active/resolved statuses)
+  └── observatory_baselines (Statistical baseline metrics for anomaly detection)
+
+M8 (Web Research Engine & Evidence Citations)
+  ├── research_runs (Research cycles linked to projects and tasks)
+  ├── research_queries (Audit trail of external queries, execution time, providers)
+  ├── research_search_results (Ranked search engine results from DuckDuckGo/SearXNG/Custom)
+  ├── research_sources (Persistent source library, canonical URLs, full extracted text)
+  ├── research_claims (Extracted factual claims linked to source passages)
+  ├── research_evidence (Corroborated evidence links with confidence scoring)
+  ├── research_citations (Deterministic inline citation audits mapping claims to sources)
+  ├── research_provider_status (Provider health, consecutive failures, rate-limiting)
+  └── research_budgets (Enforceable query, document, token, and browser time limits)
+
+M9 (Autonomous Project Orchestrator)
+  ├── orchestration_runs (Run state machine: DRAFT → PLANNING → RUNNING → COMPLETED)
+  ├── orchestration_plan_revisions (Immutable plan revisions, validation results, JSON)
+  ├── orchestration_tasks (DAG tasks, status, attempts, assigned node, action specs)
+  ├── orchestration_task_deps (Explicit topological dependencies between tasks)
+  ├── orchestration_attempts (Execution attempt history, runtimes, outputs, error classes)
+  ├── orchestration_approvals (Human-in-the-loop review requests: plan, gate, failure)
+  ├── orchestration_events (Audit event stream tracking orchestrator transitions)
+  ├── orchestration_checkpoints (Resumption checkpoints for multi-phase workflows)
+  └── orchestration_scheduler_lock (Concurrency mutex ensuring single-engine scheduler)
+
+M10 (Unified Deliverables & Artifact System)
+  ├── artifacts (Universal asset catalog: project, deliverable, source task, mime type)
+  ├── artifact_versions (Immutable versions, SHA-256 CAS storage path, byte size, author)
+  ├── artifact_lineage (Upstream/downstream DAG lineage tracking asset provenance)
+  ├── artifact_task_links (Bidirectional task input/output association)
+  ├── artifact_reviews (Human and automated quality validations, status, notes)
+  ├── artifact_access_audit (Access, download, preview, and reuse logging)
+  └── artifact_search_fts (Virtual FTS5 full-text table for content/metadata search)
+
+M11 – M18 (Web Research, Persistent Knowledge & Audit Containment)
+  ├── research_runs & research_sources (Source provenance, session tracking, lineage)
+  ├── content_addressed_blobs (CAS storage engine, cryptographic verification)
+  ├── knowledge_vault_governance (Trust tiers, review ledger, conflict resolution)
+  └── software_review_items (Append-only out-of-process verification ledger with immutability triggers)
+
+M19 (Distributed Pipeline Parallelism & Searchable Paged KV Cache)
+  ├── kv_cache_pages (Cryptographic page hashes, model/layer bindings, token chunks, storage paths)
+  └── pipeline_cluster_stages (Cluster pipeline topologies, layer allocation ranges, active endpoints)
+
+M20 (Deliberate Task-Solving Loop, Requirement Ledger & Procedure Registry)
+  ├── project_requirement_items (Durable requirement ledger: hard/soft constraints, exclusions, assumptions, gaps, dependencies)
+  ├── project_requirement_revisions (Append-only audit trail of requirement revisions and mid-flight steering/cancellations)
+  ├── project_memory_state (Durable project working memory: cycle phase, escalation step, decisions, contradictions, budgets)
+  └── procedure_outcome_registry (Scoped verified procedure/outcome memory with provenance and revocation)
+
+M21 & M22 (Live Database-Backed Working Memory, Task Contracts, Epistemic Ledger & Verification Receipts)
+  ├── project_task_contracts (Explicit task-to-project contracts: bound_objective, bound_requirement_revision, contract_revision, bound_requirement_ids, owned_fields)
+  ├── project_epistemic_items (8-category epistemic ledger: user_instruction_or_decision, source_observation, supported_claim, derived_result, hypothesis_or_estimate, model_proposal, verified_artifact, verification_failure)
+  ├── project_epistemic_fts (FTS5 full-text search index over epistemic items with explicit project_id scoping)
+  ├── project_working_checkpoints (Immutable append-only checkpoints with SQLite triggers forbidding UPDATE/DELETE)
+  ├── project_artifact_publication_journal (Two-phase crash recovery journal for CAS artifact writes, revision snapshots, and database commits)
+  └── project_verification_receipts (Controller-signed TrustedVerificationReceipt records bound to requirement/contract revisions and artifact digests)
 ```
 
 ---
 
-## 3. Infrastructure Self-Awareness & Capability Architecture
+## 3. Subsystem Deep Dives
 
-### 3.1 Three-Tier Capability Separation
-To prevent AI models from hallucinating capabilities or assuming software availability equals execution authorization, capabilities are separated into three distinct lifecycle tiers:
+### 3.1 Autonomous Project Orchestrator Engine (`app/services/orchestration/`)
+The orchestrator drives complex, multi-stage projects autonomously while preserving human governance:
+- **Intake & Gap Analysis**: Analyzes user project requests, separates discoverable facts from assumptions, and prompts for clarification if critical info is missing.
+- **Dynamic Task Graph**: Compiles plans conforming to `qc.plan.v1` schema into a directed acyclic graph (DAG). Enforces cycle prevention, node pinning, library script registration, and input validation.
+- **Bounded Model Repair**: Models generate plans with `PLANNER_MAX_TOKENS = 2048`. Truncated JSON streams are automatically repaired via bracket/quote balancing (`try_repair_truncated_json`), and schema violations are healed with bounded repair iterations.
+- **Controller-Step vs Worker Execution**: Deterministic workflows (research fetching, browser extraction, evidence synthesis, report assembly) run on the secure controller. Distributed computation (Python scripts, LLM reasoning) is dispatched to verified workers.
+- **State Machine**: Strictly audited transitions (`DRAFT` → `ANALYZING` → `PLANNING` → `AWAITING_PLAN_APPROVAL` → `READY` → `RUNNING` → `EVALUATING` → `COMPLETED` / `BLOCKED` / `PAUSED`).
 
-1. **Declared**: What configuration or administrators state a node *should* support.
-2. **Discovered**: Software runtimes, packages, and system utilities verified by read-only inspection.
-3. **Verified**: Operational capabilities proven ready through controlled, side-effect-free test probes.
+### 3.2 Continuous Web Research Engine (`app/services/research/`)
+Allows autonomous projects to gather real-world intelligence with strict verifiability:
+- **Multi-Provider Search**: Pluggable search backend (DuckDuckGo HTML, SearXNG, Custom Search API) with health tracking and automatic failover.
+- **Secure Retrieval & Extraction**: Validates external URLs against SSRF/loopback blocklists, enforces size limits, and sanitizes HTML. Detects Single Page Applications (SPAs) and triggers headless Chromium fallback when needed.
+- **Deterministic Evidence Ledger**: Extracts claims, computes passage similarity, assigns confidence scores, and audits citations so every claim in a generated deliverable links to an immutable source record.
+- **Resource Budgets**: Hard limits on query count, document count, token usage, and headless browser runtime prevent runaway costs or resource exhaustion.
 
-```text
-[ Declared ]  --(Read-Only Inspection)-->  [ Discovered ]  --(Side-Effect-Free Probe)-->  [ Verified ]
-     |                                           |                                             |
-     +-------------------------------------------+---------------------------------------------+
-                                                 |
-                                     (Architecture Drift Detected)
-                                                 v
-                                 [ Infrastructure Reconciliation ]
-```
+### 3.3 Unified Deliverables & Artifact System (`app/services/artifacts/`)
+Transforms transient outputs into durable, reusable project assets:
+- **Content-Addressable Storage (CAS)**: Files are stored at `data/artifacts/{sha256[:2]}/{sha256}` with strict hash verification. Identical files are deduplicated automatically.
+- **Dual-Storage Engine**: Metadata, lineage, and lifecycle status are maintained in SQLite; raw content is stored as immutable binary blobs on disk.
+- **Full-Text Search (FTS5)**: Extracted text, markdown, and code are indexed in `artifact_search_fts` for instant BM25 search across all project deliverables.
+- **Lineage & Cross-Project Reuse**: Deliverables from previous projects or earlier tasks can be transferred as inputs to new projects with complete provenance history.
+- **Knowledge Promotion**: High-value deliverables can be promoted directly to the Obsidian-compatible Knowledge Vault with one click, tracking knowledge impact across future plans.
 
-### 3.2 15 Structured Capability Categories
-Capabilities are strictly categorized to enable deterministic worker eligibility matching:
-1. `ai_inference`: Quantized LLM text generation and embeddings.
-2. `web_retrieval`: HTTP fetching, documentation extraction, and link crawling.
-3. `search`: Web search API queries and indexed search.
-4. `browser_automation`: Headless browser execution (Playwright, Chromium).
-5. `python_execution`: Controlled execution of approved Python scripts.
-6. `approved_shell`: Pre-authorized POSIX or Windows shell commands.
-7. `file_processing`: Parsing, transformation, and manipulation of local files.
-8. `document_extraction`: PDF, DOCX, and Markdown parsing and indexing.
-9. `data_transformation`: Structured JSON, CSV, and tabular data pipelines.
-10. `api_integrations`: Outbound communication with external third-party APIs.
-11. `scheduled_execution`: Systemd timer or cron-based recurring execution.
-12. `persistent_services`: Background daemons managed by systemd or WinSW.
-13. `monitoring`: System resource metrics, telemetry, and health reporting.
-14. `software_deployment`: Installing, updating, or configuring authorized packages.
-15. `reporting`: Markdown, HTML, or PDF deliverable synthesis.
+### 3.4 Infrastructure Self-Awareness & Capability Registry (`app/services/infrastructure/`)
+Ensures AI agents plan tasks only on verified, capable hardware:
+- **Three-Tier Capability Separation**: `Declared` (admin intent) → `Discovered` (read-only inspection) → `Verified` (side-effect-free test probes).
+- **15 Typed Categories**: `ai_inference`, `web_retrieval`, `search`, `browser_automation`, `python_execution`, `approved_shell`, `file_processing`, `document_extraction`, `data_transformation`, `api_integrations`, `scheduled_execution`, `persistent_services`, `monitoring`, `software_deployment`, and `reporting`.
+- **Token-Budgeted Context Packets**: Dynamically synthesizes live infrastructure facts into token-budgeted prompt packets (500 to 4,000 tokens) with priority pruning so small local models receive exact hardware state without context overflow.
 
----
+### 3.5 VPS Worker Protocol (`vps_agent/`)
+- **Outbound Pull-Based Model**: The cloud VPS worker connects inbound to the controller over private Tailscale WireGuard. No open ports on the controller.
+- **Durable Task Leasing**: Atomic lease claims (`status = 'leased'`, `lease_expires_at = now + 300s`) with heartbeat renewals and idempotency keys.
+- **Local Disconnect Buffering**: If network connectivity drops, the VPS worker completes active tasks and buffers outputs in a local SQLite database (`vps_agent.db`) until connection is restored.
 
-## 4. VPS Worker Communication & Leasing Protocol
+### 3.6 Distributed Pipeline Parallelism & Searchable Paged KV Cache (`app/services/paged_kv/`, `app/services/pipeline_parallel/`)
+Scales model reasoning across heterogeneous nodes while eliminating RAM exhaustion:
+- **Searchable Paged KV Cache (`app/services/paged_kv/`)**:
+  - **Virtual Block Paging**: Segments continuous attention states into fixed 16-token pages, mapping logical context sequences to physical blocks via virtual block tables (`VirtualBlockTable`, `PhysicalBlockPool`).
+  - **Cryptographic Prefix Hashing, Trusted Loader & Radix Tree**: Chains SHA-256 digests across token blocks bound to `ExecutionNamespace/1.0`. `TrustedLocalModelLoader` (`model_loader.py`) verifies pinned local artifacts via streaming SHA-256 before and after offline loading, binds the live model instance, and issues `IssuedReuseAuthority` tokens (`F-26`). `PyTorchPagedKVAdapter` reuses `DynamicCache` prefix blocks on local GPU (`3.41x–4.77x` warmed prefill speedup on `Qwen/Qwen2.5-0.5B-Instruct`, `0.029–0.051` FP16 max logit diff within `<= 0.1` tolerance, 100% greedy token agreement; warm-prefill gains do not establish end-to-end request gains).
+  - **Tiered Memory Hierarchy**: Active blocks reside in Tier 1 RAM/VRAM (`max_ram_bytes`); evicted pages flush to HMAC-SHA256 authenticated `QCKVP2` disk envelopes (`data/kv_cache/{hash[:2]}/{hash}.qckv`, `max_disk_bytes`) (Tier 2); metadata schema defined in `kv_cache_pages` (Tier 3).
+  - **Sidecar Inference Hook (Default Off)**: Integrated into `app/services/inference.py` (`send_chat_completion`) with `QC_PAGED_KV_ENABLED=false` by default and `fail_closed`/`bypass` error policies (`F-18`). Production Ollama/llama.cpp HTTP servers remain closed binaries without external KV tensor injection hooks.
+- **Distributed Pipeline Parallelism (`app/services/pipeline_parallel/`)**:
+  - **Layer Partitioning & Local Split Execution**: `PipelineTopology` validates contiguous layer slices; `LocalSplitPipelineEngine` (`pytorch_split_engine.py`) executes 2-stage and 3-stage splits on local GPU with `Qwen/Qwen2.5-0.5B-Instruct` (`0.000000` bit-exact parity; local partition equivalence does not establish distributed speedup, and `generate_greedy` recomputes the prefix with `use_cache=False`). Remote split execution with real transformer weights on `qwen-laptop` remains unimplemented (`qwen-laptop` lacks PyTorch/transformers).
+  - **Activation Streaming Protocol**: Passes compact FP16/BF16 hidden state activation vectors ($1 \times \text{hidden\_dim}$ per token, ~3–7 KB) over Tailscale with HMAC frame authentication (`ActivationProtocol`) and bounded timeouts.
+  - **Disaggregated Stage Storage**: Each node allocates memory and paged KV caches strictly for its assigned layer subset.
 
-The VPS worker operates strictly in an **outbound pull-based model**. The controller never makes unauthenticated inbound calls to the VPS, and the VPS never has administrative access to the controller.
-
-```text
-VPS Worker Agent                                         Windows Controller
-      |                                                           |
-      |--- 1. POST /api/v1/worker/register (Bearer Auth) -------->| (Records node & capabilities)
-      |                                                           |
-      |--- 2. POST /api/v1/worker/heartbeat (Health & Usage) ---->| (Updates live health state)
-      |                                                           |
-      |--- 3. POST /api/v1/worker/tasks/lease ------------------->| (Locks pending approved task)
-      |<-- 4. Leased Task Payload (Idempotency Key, Limits) ------|
-      |                                                           |
-      | [Executes in non-root sandbox]                            |
-      |                                                           |
-      |--- 5. POST /api/v1/worker/tasks/{id}/heartbeat ---------->| (Renews task lease)
-      |                                                           |
-      |--- 6. POST /api/v1/worker/tasks/{id}/submit ------------->| (Validates & saves deliverables)
-      |<-- 7. 200 OK (Task Closed) -------------------------------|
-```
-
-### 4.1 Durable Leasing & Concurrency Rules
-- **Atomic Lease Claims**: Tasks are leased using an atomic SQLite transaction (`status = 'leased'`, `lease_expires_at = now + 300s`).
-- **Idempotency Keys**: Every task execution carries a unique UUID idempotency key to prevent double execution across retries.
-- **Heartbeat Renewals**: Long-running jobs send heartbeats every 30 seconds; if 3 consecutive heartbeats are missed, the lease expires and the task is reclaimed.
-- **Local Disconnect Buffering**: If the network link to the controller is interrupted, the VPS worker completes active tasks and buffers results in a local SQLite database (`vps_agent.db`) until connection is restored.
+### 3.7 Deliberate Task-Solving Loop, Live Working Memory, Requirement Ledger & Tool Catalogue (`app/services/orchestration/deliberate_loop.py`, `working_memory.py`, `intake.py`, `tool_catalogue.py`, `context_manager.py`)
+Enables dependable multi-stage task completion on resource-constrained local Qwen models (`qwen2.5:3b` and `qwen2.5:1.5b`):
+- **Persisted Task-Solving Cycle**: Implements `Understand -> clarify material gaps -> plan -> select next action -> retrieve context -> execute -> inspect results -> verify -> revise or deliver` with dual modes (**Direct-Response Mode** for simple questions and **Durable-Project Mode** for multi-deliverable/multi-constraint assignments via `/api/v1/chat/deliberate`).
+- **Live Database-Backed Working Memory (`working_memory.py`, Migrations 21 & 22)**: Coordinates three memory levels—Level A (`WorkingSetCache` & `assemble_scoped_work_packet` with pinned project intent that raises `ContextBudgetExceededError` rather than silently truncating), Level B (SQLite WAL tables: `project_task_contracts`, `project_epistemic_items`, `project_epistemic_fts`, `project_working_checkpoints`, `project_artifact_publication_journal`, `project_verification_receipts`), and Level C (CAS artifacts staged as `'pending'` and published atomically by `artifact_id`, `version`, and `sha256`). Derives `derive_authoritative_project_state` directly from SQLite tables across 8 epistemic categories, enforces explicit task contracts (`register_task_contract`, `verify_project_task_integration`), requires controller-signed `TrustedVerificationReceipt` records (`issue_trusted_verification_receipt`, `validate_trusted_verification_receipt` — never trusting raw callback/model flags), executes long operations outside DB transactions with single-transaction atomic compare-and-swap revision fencing (`execute_checkpointed_work_boundary`, `reconcile_crash_publication_journal`), invalidates only the transitive dependency closure (`invalidate_dependency_closure`), provides SQL-filtered paginated operational queries (`WorkingMemoryRetriever`), and enforces authoritative park/resume/cancellation (`requested -> dispatch_stopped -> draining -> cleanup_confirmed`, `ParkOrCancelCleanupError`) and field-level parallel merges (`ParallelConflictError`).
+- **Durable Requirement Ledger (`intake.py`)**: Persists structured requirements (`project_requirement_items`, `project_requirement_revisions`) with hard/soft constraint classification, exclusions, explicit assumptions, material missing info, and artifact dependencies. Supports mid-flight user steering (`apply_user_steering_update`) with selective downstream artifact invalidation while preserving unaffected verified work, and strips untrusted source directive injection (`inspect_untrusted_source_for_directive_injection`).
+- **Durable Project Memory & Qualifier-Preserving Context (`context_manager.py`)**: Persists `project_memory_state` across restarts; fixes missing claim `verification_status` so unverified claims default to `UNKNOWN` (never `SUPPORTED`); preserves negations, dates, units, and uncertainty qualifiers during prompt budget truncation; and invalidates downstream decisions when upstream inputs change.
+- **Typed Tool Catalogue & Bounded Verification (`tool_catalogue.py`)**: Provides 7 typed tool domains including exact `Decimal` multi-revision supplier quote arithmetic (`resolve_quote_revisions`, `calculate_option_total_cost`, `compare_options_against_constraints`), WindowsJob-bounded Python verification (`run_bounded_python_verification`), web application DOM/interaction checks (`verify_web_application_behavior`), and structured dataset outlier analysis (`analyze_structured_dataset`).
+- **7-Step Escalation Ladder, Role Routing & Scoped Procedure Registry (`deliberate_loop.py`)**: Coordinates `MAX_NUM_PREDICT = 2048` and `MAX_OUTPUT_CHARS = 12000` across `planner.py` and `vps_agent/executor.py`, detects truncated model output, routes complex reasoning/JSON/code to `qwen2.5:3b` and fast extraction/status checks to `qwen2.5:1.5b`, redacts hidden oracle literals during repair (`build_sanitized_repair_feedback`), and records verified procedures with revocation (`procedure_outcome_registry`).
 
 ---
 
-## 5. Security & Boundary Architecture
+## 4. Security & Zero-Trust Enforcements
 
-| Barrier | Defensive Mechanism |
+| Defense Layer | Implementation Detail |
 |---|---|
-| **Identity & Authentication** | Scoped Bearer tokens per worker machine; bcrypt-hashed administrator passwords; PBKDF2 CSRF tokens on all mutating HTTP routes. |
-| **Network Isolation** | Controller binds to `127.0.0.1` by default; remote access is multiplexed via private Tailscale WireGuard mesh (`tailscale serve`); no open public ports. |
-| **Worker Privileges** | VPS agent executes under dedicated unprivileged Linux user (`qwen-worker`); no `sudo` privileges; Docker socket access strictly forbidden. |
-| **Prompt Injection Defense** | Retrieved web content, logs, and external deliverables are tagged as untrusted data; secret scrubbers redact keys and credentials before prompts are built. |
-| **Brute-Force Lockout** | SQLite-backed `login_attempts` tracker locks out both the client IP and username after 5 failed attempts for 300 seconds. |
-| **Side-Effect-Free Probes** | Probes use in-memory AST syntax compilation, local permission checks, and loopback socket tests without executing external code. |
+| **Identity & Authentication** | Per-node Bearer tokens, bcrypt-hashed passwords, CSRF tokens on mutating routes. |
+| **Network Isolation** | Controller binds to loopback; remote nodes connect via private Tailscale WireGuard mesh. |
+| **Sandbox Execution** | VPS agent executes under unprivileged `qwen-worker` user; no `sudo`; Docker socket forbidden. |
+| **SSRF Prevention** | External fetchers block `127.0.0.0/8`, `10.0.0.0/8`, `192.168.0.0/16`, `169.254.0.0/16`, and local hostnames. |
+| **Prompt Injection Protection** | Untrusted user data, search results, and extracted documents are wrapped in boundary markers (`<<<OBJECTIVE...OBJECTIVE>>>`) and scanned for privileged instruction injections. |
+| **Secret Scrubbing** | Passwords, API tokens, and SSH keys are automatically redacted from prompts, logs, and knowledge notes. |
+| **Brute-Force Rate Limiting**| SQLite-backed `login_attempts` tracker locks out client IP and username after 5 failed attempts. |
 
 ---
 
-## 6. Architecture Context Packet Hierarchy
+## 5. Technology Stack Summary
 
-For local Qwen models with finite context windows, the controller generates token-budgeted prompt packets (500 to 4,000 tokens) using a strict priority hierarchy:
+- **Backend**: Python 3.12+, FastAPI, Uvicorn, SQLite 3 (WAL + FTS5), Pydantic v2
+- **Frontend**: Server-rendered Jinja2 templates, HTMX for reactive interactions, Vanilla CSS (no heavy JS framework overhead)
+- **Host Wrapper**: WinSW (Windows Service Wrapper) for Windows background controller service
+- **Networking**: Tailscale WireGuard mesh with TLS
+- **Inference Runtimes**: Ollama, llama.cpp / llama-server, Quantized Qwen2.5 models
 
-1. **Header & Freshness**: Controller role, local timestamp, and verification cutoff.
-2. **Controller Status**: Host OS, CPU, RAM, storage, and service state.
-3. **Execution Workers**: List of active compute nodes and operational state.
-4. **Verified Capabilities**: Capabilities proven ready via verification probes.
-5. **Active Deployments**: Current running services and scheduled timers.
-6. **Security Boundaries**: Enforced approval rules, file restrictions, and network egress rules.
-7. **Operational Failures**: Recent error classifications and recovery attempts.
-8. **Knowledge Excerpts**: Relevant architectural guidelines from the durable vault.
+---
 
-If a token budget is exceeded, lower-tier items are deterministically pruned and replaced with an explicit omission notice informing the model that additional details can be retrieved via typed tools.
+## 6. Technical Specifications & References
+
+- [LLM System Explainer](COLLECTIVE_EXPLAINER_FOR_LLMS.md) — Comprehensive operating mental model & invariant rules for LLMs
+- [System Interaction Patterns](SYSTEM_INTERACTION_PATTERNS.md) — Visual Mermaid sequence diagrams & execution flows
+- [API & Integration Specification](API_AND_INTEGRATION_SPECIFICATION.md) — Complete REST endpoints, schemas & worker protocol
+- [LLM Prompt & Schema Playbook](LLM_PROMPT_AND_SCHEMA_PLAYBOOK.md) — Context packets, action catalogs & valid vs invalid plan examples
+- [Operations & Incident Runbook](OPERATIONS_AND_RUNBOOK.md) — Service controls, backups, CAS audits & troubleshooting trees

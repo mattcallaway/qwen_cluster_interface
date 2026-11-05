@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import httpx
 
 from app.services.research.providers.base import QueryResult, SearchProvider, SearchResult
+from app.services.research.retrieval import PinningHTTPTransport
 
 logger = logging.getLogger("qwen_collective.research.providers.searxng")
 
@@ -60,7 +61,8 @@ class SearXNGProvider(SearchProvider):
             headers["Authorization"] = f"Bearer {self.api_key}"
 
         try:
-            with httpx.Client(timeout=self.timeout_seconds, follow_redirects=True) as client:
+            transport = PinningHTTPTransport(trust_env=False)
+            with httpx.Client(transport=transport, timeout=self.timeout_seconds, follow_redirects=True) as client:
                 resp = client.get(endpoint, params=params, headers=headers)
                 resp.raise_for_status()
                 data = resp.json()

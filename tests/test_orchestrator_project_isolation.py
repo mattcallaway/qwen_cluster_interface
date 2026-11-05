@@ -189,12 +189,12 @@ def test_task_self_reference_in_inputs_rejected_or_sanitized(test_fleet):
     assert not val_raw["valid"]
     assert any("uses output of itself ('t1') as an input" in err for err in val_raw["errors"])
 
-    # 2. Normalization must safely strip self-references from inputs and depends_on
+    # 2. Normalization must preserve declared inputs and depends_on without silent mutation
     norm = task_graph.normalize_plan(raw_plan, test_fleet)
-    assert norm["tasks"][0]["action"]["inputs"] == [], "Self-reference must be stripped from inputs"
-    assert norm["tasks"][0]["depends_on"] == [], "Self-reference must be stripped from depends_on"
+    assert norm["tasks"][0]["action"]["inputs"] == ["t1"], "Self-reference must not be silently stripped from inputs"
     val_norm = task_graph.validate_plan(norm, test_fleet)
-    assert val_norm["valid"], "After normalization sanitization, plan should be valid"
+    assert not val_norm["valid"], "Validation must reject the self-referencing inputs"
+    assert any("uses output of itself ('t1') as an input" in err for err in val_norm["errors"])
 
 
 def test_task_depends_on_self_rejected(test_fleet):
@@ -273,14 +273,19 @@ def test_auto_repair_converts_hallucinated_scripts_and_sanitizes_dependencies(te
     raw_val = task_graph.validate_plan(failed_plan, test_fleet)
     assert not raw_val["valid"]
 
-    # Run bounded auto-repair
+    # Run bounded auto-repair (Stage 2: Anti-substitution enforced, no silent dependency mutation)
     repaired, remaining_errors = task_graph.auto_repair_plan(failed_plan, raw_val["errors"], test_fleet)
 
-    assert remaining_errors == [], f"All errors should be deterministically repaired: {remaining_errors}"
-    assert repaired["tasks"][0]["action"]["inputs"] == []
-    assert repaired["tasks"][1]["action"]["type"] == "inference", "Hallucinated script converted to inference"
-    assert repaired["tasks"][2]["action"]["step"] == "assemble_report", "Hallucinated step repaired to assemble_report"
+    # Execution bindings are preserved verbatim without silent mutation:
+    assert repaired["tasks"][0]["action"]["inputs"] == ["t1"]
     assert repaired["deliverables"][0]["type"] == "document", "Deliverable type 'response' mapped to 'document'"
+
+    # Silent action substitutions are strictly rejected (F-01 remediation):
+    assert repaired["tasks"][1]["action"]["type"] == "library_script"
+    assert repaired["tasks"][1]["action"]["script_id"] == "generate_natural_response"
+    assert repaired["tasks"][2]["action"]["step"] == "assemble_response"
+    assert any("references unknown script 'generate_natural_response'" in err for err in remaining_errors)
+    assert any("has unknown controller step 'assemble_response'" in err for err in remaining_errors)
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,260 @@
+{
+  "t": "2026-10-22T01:16:46.255223+00:00",
+  "timeline": [
+    {
+      "project_id": "prj-bc2bca9d593744c88306d05734c02b5a",
+      "event": "created",
+      "t": "2026-10-22T01:16:56.679445+00:00"
+    },
+    {
+      "state": "DRAFT",
+      "planning_error": "Planning state has no in-flight request (controller restarted?).",
+      "seconds": 12.3,
+      "event": "planning_result",
+      "t": "2026-10-22T01:17:00.942274+00:00"
+    },
+    {
+      "event": "replan_model_mode_clicked",
+      "t": "2026-10-22T01:17:54.936265+00:00"
+    },
+    {
+      "state": "PLANNING",
+      "planning_error": "",
+      "seconds": 417.9,
+      "event": "planning_result",
+      "t": "2026-10-22T01:24:52.783417+00:00"
+    }
+  ],
+  "project_id": "prj-bc2bca9d593744c88306d05734c02b5a",
+  "final_status": {
+    "run": {
+      "id": "run-3ed0a2b98ea94cba",
+      "project_id": "prj-bc2bca9d593744c88306d05734c02b5a",
+      "state": "PLANNING",
+      "autonomy_level": 2,
+      "block_reason": "",
+      "planning_error": "",
+      "created_at": "2026-10-22T01:16:48.734372+00:00",
+      "updated_at": "2026-10-22T01:17:55.017969+00:00",
+      "started_at": null,
+      "completed_at": null,
+      "current_revision_id": null,
+      "resume_state": null
+    },
+    "intake": {
+      "constraints": "No code execution. No external network. Inference only.",
+      "deliverables": "One markdown note under 150 words.",
+      "objective": "Write a short plain-language explanation (under 150 words) of how drought affects municipal water supply reservoirs, as a single markdown note."
+    },
+    "analysis": {
+      "assumptions": [
+        "No success criteria were given; acceptance will rely on deterministic output checks.",
+        "No deadline given; no schedule pressure assumed."
+      ],
+      "critical_missing": [],
+      "discoverable": [
+        "Available workers/models are read from the live node registry: node-d35568f5(python_execution), qwen-vps(python_execution), qwen-laptop(inference,python_execution), desktop-worker-01(inference,python_execution), worker-A(python_execution), worker-B(python_execution), t-vps(python_execution), t-laptop(inference,python_execution), pi-brain(inference,python_execution), worker-10c8a595(python_execution), worker-fee2b5bd(python_execution), worker-38ad13b9(python_execution), worker-3c4fa7e4(python_execution), worker-f610a93d(python_execution), phase3-demo-vps-1792617484(python_execution), phase3-demo-vps-1792617513(python_execution), phase3-demo-vps-1792617545(python_execution), phase3-demo-vps-1792617560(python_execution), worker-rc1-staging(python_execution)"
+      ],
+      "research_match": false,
+      "template_match": false
+    },
+    "progress": {
+      "total": 0,
+      "accepted": 0,
+      "percent": 0,
+      "active": 0,
+      "remaining": 0
+    },
+    "tasks": [],
+    "stages": [],
+    "decisions_required": [],
+    "blockers": [],
+    "budget": {
+      "run_id": "run-3ed0a2b98ea94cba",
+      "max_tasks": 40,
+      "max_concurrent": 2,
+      "max_inference_requests": 30,
+      "max_tokens": 60000,
+      "max_runtime_seconds": 7200,
+      "max_retries_total": 12,
+      "max_storage_bytes": 104857600,
+      "used_tasks": 0,
+      "used_inference_requests": 0,
+      "used_tokens": 0,
+      "used_retries": 0,
+      "used_storage_bytes": 0,
+      "used_runtime_seconds": 0.0,
+      "updated_at": "2026-10-22T01:16:48.735384+00:00"
+    },
+    "last_activity": "2026-10-22T01:22:45.518249+00:00",
+    "revisions": [],
+    "models": [
+      {
+        "node": "controller-local",
+        "model": "qwen2.5:3b",
+        "ready": false,
+        "health": "online",
+        "authenticated": false,
+        "requests": 0,
+        "successes": 0,
+        "avg_latency_s": null,
+        "tokens_per_second": null
+      },
+      {
+        "node": "qwen-laptop",
+        "model": "llama3.2:1b",
+        "ready": false,
+        "health": "online",
+        "authenticated": true,
+        "requests": 5,
+        "successes": 5,
+        "avg_latency_s": 35.9414,
+        "tokens_per_second": 5.1488213542438706
+      },
+      {
+        "node": "qwen-laptop",
+        "model": "qwen2.5:1.5b",
+        "ready": false,
+        "health": "online",
+        "authenticated": true,
+        "requests": 74,
+        "successes": 65,
+        "avg_latency_s": 80.57552307692308,
+        "tokens_per_second": 8.526981275065081
+      },
+      {
+        "node": "desktop-worker-01",
+        "model": "qwen2.5:3b",
+        "ready": false,
+        "health": "online",
+        "authenticated": true,
+        "requests": 0,
+        "successes": 0,
+        "avg_latency_s": null,
+        "tokens_per_second": null
+      },
+      {
+        "node": "desktop-worker-01",
+        "model": "qwen2.5:1.5b",
+        "ready": false,
+        "health": "online",
+        "authenticated": true,
+        "requests": 10,
+        "successes": 10,
+        "avg_latency_s": 4.9350000000000005,
+        "tokens_per_second": 43.441380811184764
+      },
+      {
+        "node": "t-laptop",
+        "model": "qwen2.5:1.5b",
+        "ready": false,
+        "health": "offline",
+        "authenticated": true,
+        "requests": 0,
+        "successes": 0,
+        "avg_latency_s": null,
+        "tokens_per_second": null
+      },
+      {
+        "node": "pi-brain",
+        "model": "qwen2.5:0.5b",
+        "ready": true,
+        "health": "online",
+        "authenticated": true,
+        "requests": 3,
+        "successes": 0,
+        "avg_latency_s": null,
+        "tokens_per_second": null
+      },
+      {
+        "node": "phase3-demo-vps-1792617484",
+        "model": "qwen2.5:1.5b",
+        "ready": false,
+        "health": "offline",
+        "authenticated": false,
+        "requests": 0,
+        "successes": 0,
+        "avg_latency_s": null,
+        "tokens_per_second": null
+      },
+      {
+        "node": "phase3-demo-vps-1792617484",
+        "model": "llama3.2:1b",
+        "ready": false,
+        "health": "offline",
+        "authenticated": false,
+        "requests": 0,
+        "successes": 0,
+        "avg_latency_s": null,
+        "tokens_per_second": null
+      },
+      {
+        "node": "phase3-demo-vps-1792617513",
+        "model": "qwen2.5:1.5b",
+        "ready": false,
+        "health": "offline",
+        "authenticated": false,
+        "requests": 0,
+        "successes": 0,
+        "avg_latency_s": null,
+        "tokens_per_second": null
+      },
+      {
+        "node": "phase3-demo-vps-1792617513",
+        "model": "llama3.2:1b",
+        "ready": false,
+        "health": "offline",
+        "authenticated": false,
+        "requests": 0,
+        "successes": 0,
+        "avg_latency_s": null,
+        "tokens_per_second": null
+      },
+      {
+        "node": "phase3-demo-vps-1792617545",
+        "model": "qwen2.5:1.5b",
+        "ready": false,
+        "health": "offline",
+        "authenticated": false,
+        "requests": 0,
+        "successes": 0,
+        "avg_latency_s": null,
+        "tokens_per_second": null
+      },
+      {
+        "node": "phase3-demo-vps-1792617545",
+        "model": "llama3.2:1b",
+        "ready": false,
+        "health": "offline",
+        "authenticated": false,
+        "requests": 0,
+        "successes": 0,
+        "avg_latency_s": null,
+        "tokens_per_second": null
+      },
+      {
+        "node": "phase3-demo-vps-1792617560",
+        "model": "qwen2.5:1.5b",
+        "ready": false,
+        "health": "offline",
+        "authenticated": false,
+        "requests": 0,
+        "successes": 0,
+        "avg_latency_s": null,
+        "tokens_per_second": null
+      },
+      {
+        "node": "phase3-demo-vps-1792617560",
+        "model": "llama3.2:1b",
+        "ready": false,
+        "health": "offline",
+        "authenticated": false,
+        "requests": 0,
+        "successes": 0,
+        "avg_latency_s": null,
+        "tokens_per_second": null
+      }
+    ],
+    "scheduler_lock_held_by_this_process": true
+  }
+}

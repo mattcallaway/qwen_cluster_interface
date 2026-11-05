@@ -3,6 +3,7 @@
 Task completion does not automatically mean Deliverable acceptance. Acceptance requires
 defined criteria, verification results, and recorded human decision.
 """
+import logging
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -10,6 +11,8 @@ from typing import Any, Dict, List, Optional
 
 from app.database import db_transaction, get_db_connection
 from app.services.projects import NotFound, ValidationError, NAME_MAX, TEXT_MAX, record_decision
+
+logger = logging.getLogger("qwen_collective.deliverables")
 
 DELIVERABLE_TYPES = [
     "document", "dataset", "report", "software_artifact", "configuration",
@@ -171,7 +174,8 @@ def submit_deliverable(
     deliverable_id: str,
     user: str,
     artifact_references: str,
-    verification_results: str = ""
+    verification_results: str = "",
+    primary_artifact_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """Submit a deliverable for formal review with artifact evidence."""
     clean_artifacts = _clean(artifact_references, "Artifact references", required=True)
@@ -182,12 +186,37 @@ def submit_deliverable(
         if cur["status"] not in ("planned", "in_progress", "changes_requested"):
             raise ValidationError(f"Cannot submit deliverable from '{cur['status']}' state.")
 
+        # Resolve primary artifact ID if not explicitly passed
+        target_art_id = primary_artifact_id or cur.get("primary_artifact_id")
+        if not target_art_id and "art-" in clean_artifacts:
+            import re
+            m = re.search(r"(art-[a-f0-9]{8,32})", clean_artifacts)
+            if m:
+                target_art_id = m.group(1)
+
         now = _now()
         conn.execute("""
-            UPDATE deliverables SET status = 'submitted', artifact_references = ?,
-                   verification_results = ?, updated_at = ?
+            UPDATE deliverables
+            SET status = 'submitted',
+                artifact_references = ?,
+                verification_results = ?,
+                primary_artifact_id = COALESCE(?, primary_artifact_id),
+                updated_at = ?
             WHERE id = ?
-        """, (clean_artifacts, clean_verif, now, deliverable_id))
+        """, (clean_artifacts, clean_verif, target_art_id, now, deliverable_id))
+
+        if target_art_id:
+            conn.execute(
+                "UPDATE artifacts SET status = 'needs_review', updated_at = ? WHERE id = ?",
+                (now, target_art_id)
+            )
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO artifact_project_links (id, artifact_id, project_id, role, added_at, added_by)
+                VALUES (?, ?, ?, 'deliverable_backing', ?, ?)
+                """,
+                (f"apl-{uuid.uuid4().hex[:12]}", target_art_id, cur["project_id"], now, user)
+            )
 
         # Record revision history
         rev_count = conn.execute(
@@ -235,6 +264,14 @@ def review_deliverable(
             WHERE id = ?
         """, (new_status, verif, clean_rat, accepted_by, accepted_at, now, deliverable_id))
 
+        target_art_id = cur.get("primary_artifact_id")
+        if target_art_id:
+            art_status = "accepted" if new_status == "accepted" else ("failed" if new_status == "rejected" else "needs_review")
+            conn.execute(
+                "UPDATE artifacts SET status = ?, updated_at = ? WHERE id = ?",
+                (art_status, now, target_art_id)
+            )
+
         # Snapshot into revision history
         rev_count = conn.execute(
             "SELECT COUNT(*) FROM deliverable_revisions WHERE deliverable_id = ?",
@@ -259,6 +296,14 @@ def review_deliverable(
             to_value=new_status
         )
         conn.execute("UPDATE projects SET last_activity_at = ? WHERE id = ?", (now, cur["project_id"]))
+
+    # Automatic knowledge extraction upon acceptance
+    if new_status == "accepted" and target_art_id:
+        try:
+            from app.services.artifacts import artifact_service
+            artifact_service.extract_knowledge_from_artifact(target_art_id, actor=reviewer)
+        except Exception as ex:
+            logger.warning("Automatic knowledge extraction for accepted deliverable %s failed: %s", deliverable_id, ex)
 
     return get_deliverable(deliverable_id)  # type: ignore[return-value]
 

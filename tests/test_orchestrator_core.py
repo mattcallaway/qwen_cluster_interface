@@ -43,7 +43,7 @@ def test_full_vertical_slice_autonomy2(cluster):
     assert get_run(run["id"])["state"] == "READY"
     engine.start_run(run["id"], "tester")
     final = drive(run["id"])
-    assert final["state"] == "COMPLETED", engine.status(project["id"])["tasks"]
+    assert final["state"] == "COMPLETED"
     st = engine.status(project["id"])
     assert st["progress"]["percent"] == 100
     nodes = {t["key"]: t["node"] for t in st["tasks"]}

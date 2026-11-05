@@ -1,0 +1,103 @@
+{
+  "isolation_proof": {
+    "test_root": "C:\\Users\\Matt C\\AppData\\Local\\Temp\\qc_isolated_test_klai2asb",
+    "effective_db_path": "C:\\Users\\Matt C\\AppData\\Local\\Temp\\qc_isolated_test_klai2asb\\qwen_collective.db",
+    "effective_evidence_dir": "C:\\Users\\Matt C\\AppData\\Local\\Temp\\qc_isolated_test_klai2asb\\evidence",
+    "database_list": [
+      {
+        "seq": 0,
+        "name": "main",
+        "file": "C:\\Users\\Matt C\\AppData\\Local\\Temp\\qc_isolated_test_klai2asb\\qwen_collective.db"
+      }
+    ]
+  },
+  "cases": {
+    "1_no_credentials": {
+      "expected_status": 401,
+      "actual_status": 401,
+      "detail": "Missing worker authentication token. Provide 'Authorization: Bearer <token>'.",
+      "pass": true,
+      "finding_verdict": "AUTHENTICATION_REQUIRED_401"
+    },
+    "2_invalid_credentials": {
+      "expected_status": 401,
+      "actual_status": 401,
+      "detail": "Invalid or revoked worker authentication token.",
+      "pass": true,
+      "finding_verdict": "INVALID_TOKEN_REJECTED_401"
+    },
+    "3_cross_worker_authorization": {
+      "desired_secure_status": 403,
+      "actual_status": 200,
+      "vulnerability_demonstrated": true,
+      "response_payload": {
+        "status": "stored",
+        "artifact": {
+          "artifact_id": "art-d0fb960be1cf4399",
+          "task_id": "task-assigned-to-A",
+          "filename": "cross_worker_file.txt",
+          "stored_path": "C:\\Users\\Matt C\\AppData\\Local\\Temp\\qc_isolated_test_klai2asb\\evidence\\task_task-assigned-to-A\\cross_worker_file.txt",
+          "file_size": 50,
+          "computed_sha256": "0370bd08194bf0f8955b6e35652bf245a1a049b8e82e5204a86cdd3752e7345c",
+          "expected_sha256": "0370bd08194bf0f8955b6e35652bf245a1a049b8e82e5204a86cdd3752e7345c",
+          "checksum_matches": true,
+          "verified_at": "2026-10-19T05:18:24.831693+00:00"
+        }
+      },
+      "finding_verdict": "VULNERABLE_CROSS_WORKER_UPLOAD_PERMITTED_200"
+    },
+    "4_expired_lease_fencing": {
+      "desired_secure_status": 409,
+      "actual_status": 200,
+      "vulnerability_demonstrated": true,
+      "response_payload": {
+        "status": "stored",
+        "artifact": {
+          "artifact_id": "art-48716a784a474624",
+          "task_id": "task-assigned-to-A",
+          "filename": "expired_lease_file.txt",
+          "stored_path": "C:\\Users\\Matt C\\AppData\\Local\\Temp\\qc_isolated_test_klai2asb\\evidence\\task_task-assigned-to-A\\expired_lease_file.txt",
+          "file_size": 41,
+          "computed_sha256": "af4c04d0d7aae7caf96a8111a73520601c33a7d4fcd64303a74aefbd3309a2df",
+          "expected_sha256": "af4c04d0d7aae7caf96a8111a73520601c33a7d4fcd64303a74aefbd3309a2df",
+          "checksum_matches": true,
+          "verified_at": "2026-10-19T05:18:24.875495+00:00"
+        }
+      },
+      "finding_verdict": "VULNERABLE_EXPIRED_LEASE_UPLOAD_PERMITTED_200"
+    },
+    "5_checksum_integrity_and_rejection": {
+      "desired_secure_status": 400,
+      "actual_status": 200,
+      "file_persisted_to_evidence_dir": true,
+      "persisted_file_path": "C:\\Users\\Matt C\\AppData\\Local\\Temp\\qc_isolated_test_klai2asb\\evidence\\task_task-assigned-to-A\\bad_checksum.txt",
+      "persisted_sha256": "89331823636c1c85f3756398db1ba99fb5dfb928fd3c6f11d712341dc3c28ca1",
+      "response_payload": {
+        "status": "stored",
+        "artifact": {
+          "artifact_id": null,
+          "task_id": "task-assigned-to-A",
+          "filename": "bad_checksum.txt",
+          "stored_path": "C:\\Users\\Matt C\\AppData\\Local\\Temp\\qc_isolated_test_klai2asb\\evidence\\task_task-assigned-to-A\\bad_checksum.txt",
+          "file_size": 22,
+          "computed_sha256": "89331823636c1c85f3756398db1ba99fb5dfb928fd3c6f11d712341dc3c28ca1",
+          "expected_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "checksum_matches": false,
+          "verified_at": "2026-10-19T05:18:24.897921+00:00"
+        }
+      },
+      "vulnerability_demonstrated": true,
+      "finding_verdict": "VULNERABLE_CHECKSUM_MISMATCH_STORED_WITH_200"
+    },
+    "6_repeated_upload_immutability": {
+      "status_code_v1": 200,
+      "status_code_v2": 200,
+      "evidence_file_path": "C:\\Users\\Matt C\\AppData\\Local\\Temp\\qc_isolated_test_klai2asb\\evidence\\task_task-assigned-to-A\\repeat_test.txt",
+      "bytes_v1_matches": true,
+      "bytes_v2_matches": true,
+      "mutably_overwritten_in_place": true,
+      "vulnerability_demonstrated": true,
+      "finding_verdict": "VULNERABLE_MUTABLY_OVERWRITTEN_IN_PLACE"
+    }
+  }
+}

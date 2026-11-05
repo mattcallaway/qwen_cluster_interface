@@ -1,0 +1,129 @@
+PYTEST INVOCATION: .venv/Scripts/python.exe -m pytest tests -q
+WORKING DIRECTORY: C:\Users\Matt C\.gemini\antigravity-ide\scratch\qwen-collective
+PYTEST EXIT CODE: 1
+PYTHON VERSION: 3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]
+PYTEST VERSION: 9.1.1
+TOTAL STATS: {'passed': 460, 'failed': 2, 'skipped': 0, 'xfail': 0, 'error': 0}
+TOTAL COLLECTED: 462
+
+Module                                                  | Collected | Passed | Failed | Skipped | Error
+----------------------------------------------------------------------------------------------------
+tests/test_audit_repairs.py                             |        17 |     17 |      0 |       0 |     0
+tests/test_audit_security.py                            |        19 |     19 |      0 |       0 |     0
+tests/test_auth.py                                      |         2 |      2 |      0 |       0 |     0
+tests/test_auth_ratelimit.py                            |         5 |      5 |      0 |       0 |     0
+tests/test_chat_isolation.py                            |         4 |      4 |      0 |       0 |     0
+tests/test_chat_project_integration.py                  |         3 |      3 |      0 |       0 |     0
+tests/test_continuous_research_knowledge.py             |         8 |      8 |      0 |       0 |     0
+tests/test_deliverable_artifact_resolution.py           |         2 |      2 |      0 |       0 |     0
+tests/test_distributed_artifact_lifecycle.py            |         1 |      1 |      0 |       0 |     0
+tests/test_end_to_end_repair.py                         |         1 |      1 |      0 |       0 |     0
+tests/test_inference.py                                 |         3 |      3 |      0 |       0 |     0
+tests/test_infrastructure.py                            |         7 |      7 |      0 |       0 |     0
+tests/test_infrastructure_routes.py                     |         9 |      9 |      0 |       0 |     0
+tests/test_knowledge.py                                 |         4 |      4 |      0 |       0 |     0
+tests/test_knowledge_meta.py                            |        19 |     19 |      0 |       0 |     0
+tests/test_live_multistage_research_integration.py      |         1 |      1 |      0 |       0 |     0
+tests/test_live_web_research.py                         |         1 |      1 |      0 |       0 |     0
+tests/test_machines.py                                  |         5 |      5 |      0 |       0 |     0
+tests/test_markdown_safety.py                           |         3 |      3 |      0 |       0 |     0
+tests/test_metric_integrity.py                          |        11 |     11 |      0 |       0 |     0
+tests/test_migration_compatibility.py                   |         3 |      3 |      0 |       0 |     0
+tests/test_migrations.py                                |         8 |      8 |      0 |       0 |     0
+tests/test_milestone2.py                                |         8 |      8 |      0 |       0 |     0
+tests/test_milestone2_routes.py                         |         6 |      6 |      0 |       0 |     0
+tests/test_milestone3.py                                |         9 |      9 |      0 |       0 |     0
+tests/test_milestone3_routes.py                         |         6 |      6 |      0 |       0 |     0
+tests/test_milestone4.py                                |         6 |      6 |      0 |       0 |     0
+tests/test_milestone4_routes.py                         |         7 |      7 |      0 |       0 |     0
+tests/test_milestone5.py                                |         5 |      5 |      0 |       0 |     0
+tests/test_milestone5_routes.py                         |         5 |      5 |      0 |       0 |     0
+tests/test_milestone_2_acceptance.py                    |         1 |      1 |      0 |       0 |     0
+tests/test_model_discovery.py                           |         4 |      4 |      0 |       0 |     0
+tests/test_observatory.py                               |         9 |      9 |      0 |       0 |     0
+tests/test_orchestrator_core.py                         |         1 |      1 |      0 |       0 |     0
+tests/test_orchestrator_project_isolation.py            |         8 |      8 |      0 |       0 |     0
+tests/test_orchestrator_routes.py                       |         7 |      7 |      0 |       0 |     0
+tests/test_orchestrator_units.py                        |        67 |     66 |      1 |       0 |     0
+tests/test_probe_parser.py                              |         9 |      9 |      0 |       0 |     0
+tests/test_projects_m1.py                               |        30 |     30 |      0 |       0 |     0
+tests/test_projects_routes.py                           |        19 |     19 |      0 |       0 |     0
+tests/test_research_engine.py                           |         7 |      7 |      0 |       0 |     0
+tests/test_research_security.py                         |         6 |      6 |      0 |       0 |     0
+tests/test_ssrf_advanced.py                             |         9 |      9 |      0 |       0 |     0
+tests/test_tasks.py                                     |         4 |      4 |      0 |       0 |     0
+tests/test_ui_states.py                                 |         3 |      3 |      0 |       0 |     0
+tests/test_unified_artifact_deliverables.py             |         9 |      9 |      0 |       0 |     0
+tests/test_vps.py                                       |         1 |      1 |      0 |       0 |     0
+tests/test_vps_agent.py                                 |        23 |     23 |      0 |       0 |     0
+tests/test_vps_daemon.py                                |        16 |     16 |      0 |       0 |     0
+tests/test_vps_security.py                              |         6 |      6 |      0 |       0 |     0
+tests/test_vps_worker.py                                |         5 |      5 |      0 |       0 |     0
+tests/test_web_routes.py                                |         7 |      6 |      1 |       0 |     0
+tests/test_worker_api.py                                |        10 |     10 |      0 |       0 |     0
+tests/test_worker_reliability.py                        |         7 |      7 |      0 |       0 |     0
+tests/test_worker_service.py                            |         6 |      6 |      0 |       0 |     0
+
+====================================================================================================
+RAW PYTEST EXECUTION SUMMARY & FAILURE TRACEBACKS
+====================================================================================================
+
+........................................................................ [ 15%]
+........................................................................ [ 31%]
+........................................................................ [ 46%]
+........................F............................................... [ 62%]
+........................................................................ [ 77%]
+........................................................................ [ 93%]
+...F..........................                                           [100%]
+
+================================== FAILURES ===================================
+______________ test_extract_json_object_handles_prose_and_fences ______________
+
+    def test_extract_json_object_handles_prose_and_fences():
+        txt = 'Sure! Here you go:\n```json\n{"a": {"b": "}"}, "c": [1,2]}\n```\nbye'
+>       assert planner.extract_json_object(txt) == {"a": {"b": "}"}, "c": [1, 2]}
+E       assert None == {'a': {'b': '}'}, 'c': [1, 2]}
+E        +  where None = <function extract_json_object at 0x000001C8227E25C0>('Sure! Here you go:\n```json\n{"a": {"b": "}"}, "c": [1,2]}\n```\nbye')
+E        +    where <function extract_json_object at 0x000001C8227E25C0> = planner.extract_json_object
+
+tests\test_orchestrator_units.py:187: AssertionError
+_____________________________ test_knowledge_page _____________________________
+
+auth_client = <starlette.testclient.TestClient object at 0x000001C826C71640>
+
+    def test_knowledge_page(auth_client):
+        response = auth_client.get("/knowledge")
+        assert response.status_code == 200
+>       assert "Persistent Knowledge Repository" in response.text
+E       assert 'Persistent Knowledge Repository' in '<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-wi... Record</button>\n      </div>\n    </form>\n  </div>\n</div>\n\n      </main>\n    </div>\n  </div>\n</body>\n</html>'
+E        +  where '<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-wi... Record</button>\n      </div>\n    </form>\n  </div>\n</div>\n\n      </main>\n    </div>\n  </div>\n</body>\n</html>' = <Response [200 OK]>.text
+
+tests\test_web_routes.py:36: AssertionError
+---------------------------- Captured stdout call -----------------------------
+2026-10-18 22:05:47 [INFO] httpx: HTTP Request: GET http://testserver/knowledge "HTTP/1.1 200 OK"
+------------------------------ Captured log call ------------------------------
+INFO     httpx:_client.py:1025 HTTP Request: GET http://testserver/knowledge "HTTP/1.1 200 OK"
+============================== warnings summary ===============================
+tests\test_audit_security.py:6
+  C:\Users\Matt C\.gemini\antigravity-ide\scratch\qwen-collective\tests\test_audit_security.py:6: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient
+
+tests\test_live_web_research.py:17
+  C:\Users\Matt C\.gemini\antigravity-ide\scratch\qwen-collective\tests\test_live_web_research.py:17: PytestUnknownMarkWarning: Unknown pytest.mark.integration - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.integration
+
+tests/test_vps_daemon.py::test_rejected_enrollment_token_halts_retry_loops
+tests/test_vps_daemon.py::test_revoked_worker_token_suspends_polling
+tests/test_vps_daemon.py::test_intermittent_connectivity_and_recovery
+tests/test_worker_api.py::test_vps_agent_persists_token_and_authenticates_on_restart
+tests/test_worker_reliability.py::test_offline_buffer_flush_reconciled_conflict_clears_queue
+tests/test_worker_reliability.py::test_offline_buffer_quarantines_invalid_payload_without_blocking_queue
+tests/test_worker_reliability.py::test_offline_buffer_auth_rejection_suspends_retries
+  C:\Users\Matt C\.gemini\antigravity-ide\scratch\qwen-collective\.venv\Lib\site-packages\httpx\_client.py:1144: StarletteDeprecationWarning: You should not use the 'timeout' argument with the TestClient. See https://github.com/Kludex/starlette/issues/1108 for more information.
+    return self.request(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_orchestrator_units.py::test_extract_json_object_handles_prose_and_fences
+FAILED tests/test_web_routes.py::test_knowledge_page - assert 'Persistent Kno...
+2 failed, 460 passed, 9 warnings in 173.31s (0:02:53)

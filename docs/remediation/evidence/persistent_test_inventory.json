@@ -1,0 +1,321 @@
+{
+  "database_path": "C:\\Users\\Matt C\\.qwen-collective\\data\\qwen_collective.db",
+  "infrastructure_nodes": [
+    {
+      "id": "worker-A",
+      "name": "Worker Node A",
+      "role": "vps_worker",
+      "hostname": "",
+      "ip_address": "",
+      "tailscale_ip": "",
+      "tailscale_status": "unknown",
+      "os_name": "Linux",
+      "os_version": "",
+      "architecture": "x86_64",
+      "cpu_info": "1 CPU cores",
+      "installed_ram_mb": 1024,
+      "available_ram_mb": 512,
+      "storage_total_gb": 20.0,
+      "storage_free_gb": 10.0,
+      "installed_runtimes_json": "[\"python3\"]",
+      "registered_services_json": "[\"qwen-worker.service\"]",
+      "available_models_json": "[]",
+      "health_status": "online",
+      "last_contact_at": "2026-10-19T05:08:36.266199+00:00",
+      "last_inventory_at": "2026-10-19T05:07:01.891444+00:00",
+      "capability_restrictions_json": "{}",
+      "notes": "",
+      "is_enabled": 1,
+      "created_at": "2026-10-19T05:07:01.891444+00:00",
+      "updated_at": "2026-10-19T05:08:36.266199+00:00"
+    },
+    {
+      "id": "worker-B",
+      "name": "Worker Node B",
+      "role": "vps_worker",
+      "hostname": "",
+      "ip_address": "",
+      "tailscale_ip": "",
+      "tailscale_status": "unknown",
+      "os_name": "Linux",
+      "os_version": "",
+      "architecture": "x86_64",
+      "cpu_info": "1 CPU cores",
+      "installed_ram_mb": 1024,
+      "available_ram_mb": 512,
+      "storage_total_gb": 20.0,
+      "storage_free_gb": 10.0,
+      "installed_runtimes_json": "[\"python3\"]",
+      "registered_services_json": "[\"qwen-worker.service\"]",
+      "available_models_json": "[]",
+      "health_status": "online",
+      "last_contact_at": "2026-10-19T05:08:36.311769+00:00",
+      "last_inventory_at": "2026-10-19T05:07:01.935705+00:00",
+      "capability_restrictions_json": "{}",
+      "notes": "",
+      "is_enabled": 1,
+      "created_at": "2026-10-19T05:07:01.935705+00:00",
+      "updated_at": "2026-10-19T05:08:36.311769+00:00"
+    }
+  ],
+  "worker_auth_tokens": [
+    {
+      "id": "tok_8b078195746b",
+      "node_id": "worker-A",
+      "token_hash": "31988e49bdb79811cafc9639d57849230c803c13034aa36356c6b1ab0793a714",
+      "token_prefix": "qcw_1keCNQ...",
+      "created_at": "2026-10-19T05:07:01.901065+00:00",
+      "last_used_at": null,
+      "revoked": 0
+    },
+    {
+      "id": "tok_503f704e2549",
+      "node_id": "worker-A",
+      "token_hash": "22d7b4a57e383b78c14a4fe88381cf23ee58a9ddd2d1adfab4766fdfc562648b",
+      "token_prefix": "qcw_WB_cW1...",
+      "created_at": "2026-10-19T05:07:17.158329+00:00",
+      "last_used_at": null,
+      "revoked": 0
+    },
+    {
+      "id": "tok_ac29630e9c51",
+      "node_id": "worker-A",
+      "token_hash": "a12bd74a80b36eb921d25c1d718d85d0b4aefe3717a9fb4580e9dc5731f2a5b1",
+      "token_prefix": "qcw_nYyf9t...",
+      "created_at": "2026-10-19T05:07:35.125255+00:00",
+      "last_used_at": null,
+      "revoked": 0
+    },
+    {
+      "id": "tok_4a5967fbaa18",
+      "node_id": "worker-A",
+      "token_hash": "3fbeb799e86920d7c80332c552b592992de42bb114d1eb993241201f8d610361",
+      "token_prefix": "qcw_3Tcp5q...",
+      "created_at": "2026-10-19T05:07:49.120979+00:00",
+      "last_used_at": null,
+      "revoked": 0
+    },
+    {
+      "id": "tok_fbc8757b5e1c",
+      "node_id": "worker-A",
+      "token_hash": "10a38b047ff48caed3dbaab66bc507e6174413888915ac72646f68776e6fa745",
+      "token_prefix": "qcw_tGFa89...",
+      "created_at": "2026-10-19T05:08:01.071903+00:00",
+      "last_used_at": null,
+      "revoked": 0
+    },
+    {
+      "id": "tok_b7a6a8c86867",
+      "node_id": "worker-A",
+      "token_hash": "5aecb3a5705d5a826ad09cd7173d912d44d127c2752bb3f35cba2c52a2f4b644",
+      "token_prefix": "qcw_TVGUwW...",
+      "created_at": "2026-10-19T05:08:36.277216+00:00",
+      "last_used_at": "2026-10-19T05:08:36.617440+00:00",
+      "revoked": 0
+    },
+    {
+      "id": "tok_0e210547dc6e",
+      "node_id": "worker-B",
+      "token_hash": "806f811a8812c5a948c0102b258e9277c33932d83817dc071279512f644772a7",
+      "token_prefix": "qcw_Kc4yYF...",
+      "created_at": "2026-10-19T05:07:01.945161+00:00",
+      "last_used_at": null,
+      "revoked": 0
+    },
+    {
+      "id": "tok_6ffc1f5a8858",
+      "node_id": "worker-B",
+      "token_hash": "41d1ded08f84ca7fd82bd276d7736c6226d97f39f7faaf90f1a832ba85d01d46",
+      "token_prefix": "qcw_zxzEkM...",
+      "created_at": "2026-10-19T05:07:17.202563+00:00",
+      "last_used_at": null,
+      "revoked": 0
+    },
+    {
+      "id": "tok_6ca89455771c",
+      "node_id": "worker-B",
+      "token_hash": "85e0a525a197d1253278fbad479ad99014b59cc9ea36c0fd7525976106898668",
+      "token_prefix": "qcw_QKhbcL...",
+      "created_at": "2026-10-19T05:07:35.188916+00:00",
+      "last_used_at": null,
+      "revoked": 0
+    },
+    {
+      "id": "tok_e6b1a016cd96",
+      "node_id": "worker-B",
+      "token_hash": "4fb3aedef0d36c80d1c3e680fdc9c7397f82eccb8c071a8b11fdd0e140c682e0",
+      "token_prefix": "qcw_0BNO59...",
+      "created_at": "2026-10-19T05:07:49.165587+00:00",
+      "last_used_at": null,
+      "revoked": 0
+    },
+    {
+      "id": "tok_6937ae91e739",
+      "node_id": "worker-B",
+      "token_hash": "2e45fc8bdbddcd63048879bb102137653b7f8415bc9bb51067ea44d8ac720949",
+      "token_prefix": "qcw_YTd3KD...",
+      "created_at": "2026-10-19T05:08:01.119342+00:00",
+      "last_used_at": null,
+      "revoked": 0
+    },
+    {
+      "id": "tok_648b67c53c68",
+      "node_id": "worker-B",
+      "token_hash": "de6f91bf5c6fd5402e1d722302b875af64603cfb1758999cfb1e416a1a70332e",
+      "token_prefix": "qcw_8dk1Mo...",
+      "created_at": "2026-10-19T05:08:36.322748+00:00",
+      "last_used_at": "2026-10-19T05:08:36.370201+00:00",
+      "revoked": 0
+    }
+  ],
+  "projects": [
+    {
+      "id": "prj-82ca6f9c852142c7a3d3364cd17b9b83",
+      "name": "Test Project c1c7ff",
+      "description": "",
+      "objective": "",
+      "scope": "",
+      "constraints_text": "",
+      "success_criteria": "",
+      "priority": "medium",
+      "status": "draft",
+      "parent_id": null,
+      "owner": "admin",
+      "selected_path_id": null,
+      "knowledge_dir": "projects/test-project-c1c7ff-d17b9b83",
+      "start_date": null,
+      "target_date": null,
+      "completed_date": null,
+      "review_date": null,
+      "created_at": "2026-10-19T05:08:36.333877+00:00",
+      "updated_at": "2026-10-19T05:08:36.333877+00:00",
+      "last_activity_at": "2026-10-19T05:08:36.333877+00:00"
+    },
+    {
+      "id": "prj-b369e83d93bf4680a4e4df3a97cab305",
+      "name": "Test Project 1c2319",
+      "description": "",
+      "objective": "",
+      "scope": "",
+      "constraints_text": "",
+      "success_criteria": "",
+      "priority": "medium",
+      "status": "draft",
+      "parent_id": null,
+      "owner": "admin",
+      "selected_path_id": null,
+      "knowledge_dir": "projects/test-project-1c2319-97cab305",
+      "start_date": null,
+      "target_date": null,
+      "completed_date": null,
+      "review_date": null,
+      "created_at": "2026-10-19T05:08:01.131203+00:00",
+      "updated_at": "2026-10-19T05:08:01.131203+00:00",
+      "last_activity_at": "2026-10-19T05:08:01.131203+00:00"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-assigned-to-A",
+      "title": "Task A",
+      "description": null,
+      "task_type": "general",
+      "status": "in_progress",
+      "assigned_worker": "worker-A",
+      "attempt_count": 0,
+      "max_retries": 3,
+      "approval_required": 0,
+      "idempotency_key": null,
+      "input_data_json": "{}",
+      "result_data_json": "{}",
+      "error_details": null,
+      "related_knowledge_path": null,
+      "created_at": "2026-10-19 05:08:36",
+      "updated_at": "2026-10-19 05:08:36",
+      "project_id": "prj-82ca6f9c852142c7a3d3364cd17b9b83",
+      "path_id": null,
+      "stage_id": null,
+      "purpose": null,
+      "expected_output": null,
+      "completion_criteria": null,
+      "deliverable_id": null
+    }
+  ],
+  "worker_task_leases": [
+    {
+      "id": "lease-expired",
+      "task_id": "task-assigned-to-A",
+      "worker_id": "worker-A",
+      "idempotency_key": "idemp-key-1",
+      "status": "expired",
+      "leased_at": "2026-10-19 03:08:36",
+      "lease_expires_at": "2026-10-19 04:08:36",
+      "heartbeat_at": "2026-10-19 03:08:36",
+      "attempt_count": 1,
+      "created_at": "2026-10-19 03:08:36",
+      "updated_at": "2026-10-19 04:08:36"
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "art-b8c5fcf41234433f",
+      "display_name": "worker_b_file.txt",
+      "checksum_sha256": "e1d5591d546ae56892168070e6794ce52fbb028ebcbf6c8a449d3d485f165f56",
+      "origin_task_id": "task-assigned-to-A",
+      "storage_key": "prj-82ca6f9c852142c7a3d3364cd17b9b83/art-b8c5fcf41234433f/v1_worker_b_file.txt"
+    },
+    {
+      "id": "art-2e74d618717648ed",
+      "display_name": "worker_a_file.txt",
+      "checksum_sha256": "05d99a45b7f6bf03da88060dccd49d0f0ae86acdccb2f7a2af903949a40afa30",
+      "origin_task_id": "task-assigned-to-A",
+      "storage_key": "prj-82ca6f9c852142c7a3d3364cd17b9b83/art-2e74d618717648ed/v1_worker_a_file.txt"
+    },
+    {
+      "id": "art-4c61f1b52f7d4610",
+      "display_name": "overwrite_test.txt",
+      "checksum_sha256": "1bca46fdb03f94c31c99a75f457f67fd89ddcd13180463a80ce13416b3af90ea",
+      "origin_task_id": "task-assigned-to-A",
+      "storage_key": "prj-82ca6f9c852142c7a3d3364cd17b9b83/art-4c61f1b52f7d4610/v1_overwrite_test.txt"
+    },
+    {
+      "id": "art-c3d206804da64887",
+      "display_name": "overwrite_test.txt",
+      "checksum_sha256": "f2cb4d0c0a0c4003b7f44ce8aca68358e4897981c93130cd12fbbed5ed970e24",
+      "origin_task_id": "task-assigned-to-A",
+      "storage_key": "prj-82ca6f9c852142c7a3d3364cd17b9b83/art-c3d206804da64887/v1_overwrite_test.txt"
+    }
+  ],
+  "artifact_versions": [
+    {
+      "id": "artver-ffa0fd149af84ccf",
+      "artifact_id": "art-2e74d618717648ed",
+      "version_number": 1,
+      "checksum_sha256": "05d99a45b7f6bf03da88060dccd49d0f0ae86acdccb2f7a2af903949a40afa30"
+    },
+    {
+      "id": "artver-41bd8a07ee9948bf",
+      "artifact_id": "art-4c61f1b52f7d4610",
+      "version_number": 1,
+      "checksum_sha256": "1bca46fdb03f94c31c99a75f457f67fd89ddcd13180463a80ce13416b3af90ea"
+    },
+    {
+      "id": "artver-7b7c85bf3a814997",
+      "artifact_id": "art-b8c5fcf41234433f",
+      "version_number": 1,
+      "checksum_sha256": "e1d5591d546ae56892168070e6794ce52fbb028ebcbf6c8a449d3d485f165f56"
+    },
+    {
+      "id": "artver-2c67e49e87bc4a85",
+      "artifact_id": "art-c3d206804da64887",
+      "version_number": 1,
+      "checksum_sha256": "f2cb4d0c0a0c4003b7f44ce8aca68358e4897981c93130cd12fbbed5ed970e24"
+    }
+  ],
+  "evidence_files": [
+    "C:\\Users\\Matt C\\.qwen-collective\\data\\evidence\\task_task-assigned-to-A\\bad_checksum.txt",
+    "C:\\Users\\Matt C\\.qwen-collective\\data\\evidence\\task_task-assigned-to-A\\overwrite_test.txt",
+    "C:\\Users\\Matt C\\.qwen-collective\\data\\evidence\\task_task-assigned-to-A\\worker_a_file.txt",
+    "C:\\Users\\Matt C\\.qwen-collective\\data\\evidence\\task_task-assigned-to-A\\worker_b_file.txt"
+  ]
+}

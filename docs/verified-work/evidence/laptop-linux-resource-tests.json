@@ -1,0 +1,212 @@
+{
+  "schema": "qc.linux_canary.v1",
+  "started_at": "2026-10-28T04:47:02.439009+00:00",
+  "mode": "reviewed laptop fixtures only",
+  "generated_code_executed": false,
+  "production_approved": false,
+  "services_before": {
+    "qwen-worker.service": "MainPID=554427\nActiveState=active\nSubState=running",
+    "ollama.service": "MainPID=1432\nActiveState=active\nSubState=running",
+    "qc-ollama-ts.service": "MainPID=519545\nActiveState=active\nSubState=running"
+  },
+  "tests": [
+    {
+      "name": "smoke",
+      "result": {
+        "reason": "completed",
+        "executed": true,
+        "exit_code": 0,
+        "cleanup_confirmed": true,
+        "unit": "qc-sandbox-bd6b3c231f3c4e5486e0290ea163a186.service",
+        "source_sha256": "378d60860dae64e89c245bc43bf9a275432560930b3b6473c90b34cbf80c6034",
+        "image_sha256": "43b057aa6a7133de2bbed57a8caaeecd07aea9228fa7cb6bec1608286b967b61",
+        "stdout": "{\"fixture\": \"linux-smoke\", \"uid\": 61457, \"pid\": 1546954}\n",
+        "stderr": "",
+        "captured_bytes": 57,
+        "output_bytes_seen": 57,
+        "backend_verified": false,
+        "accepted": false,
+        "certification_eligible": false,
+        "observations": [
+          {
+            "manager": {
+              "main_done": false,
+              "exit_code": null,
+              "service_result": "success",
+              "cgroup": "/system.slice/qc-sandbox-bd6b3c231f3c4e5486e0290ea163a186.service"
+            },
+            "effective_properties": "RuntimeMaxUSec=8s\nCPUQuotaPerSecUSec=1s\nMemoryMax=134217728\nMemorySwapMax=0\nTasksMax=16\nRootImage=/var/lib/qwen-sandbox/images/43b057aa6a7133de2bbed57a8caaeecd07aea9228fa7cb6bec1608286b967b61.raw\nPrivateNetwork=yes\nNoNewPrivileges=yes\nKillMode=control-group\n",
+            "kernel_limits": {
+              "memory.max": "134217728",
+              "memory.swap.max": "0",
+              "pids.max": "16",
+              "cpu.max": "100000 100000"
+            }
+          },
+          {
+            "manager": {
+              "main_done": true,
+              "exit_code": 0,
+              "service_result": "success",
+              "cgroup": "/system.slice/qc-sandbox-bd6b3c231f3c4e5486e0290ea163a186.service"
+            },
+            "effective_properties": "RuntimeMaxUSec=8s\nCPUQuotaPerSecUSec=1s\nMemoryMax=134217728\nMemorySwapMax=0\nTasksMax=16\nRootImage=/var/lib/qwen-sandbox/images/43b057aa6a7133de2bbed57a8caaeecd07aea9228fa7cb6bec1608286b967b61.raw\nPrivateNetwork=yes\nNoNewPrivileges=yes\nKillMode=control-group\n"
+          }
+        ],
+        "stdout_sha256": "703a588cd2a4cf1a5977a81234c17fa5cb50e02b7a19dc91d582a039f2b0e37a",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "memory_limit",
+      "result": {
+        "reason": "service_failure",
+        "executed": true,
+        "exit_code": null,
+        "cleanup_confirmed": true,
+        "unit": "qc-sandbox-544c7f9588c74ea5bb759fadfe5db448.service",
+        "source_sha256": "6b2fe21c33b6dca0aef9c4bfada6f9c60a46d4142ea29159128035e53bf2386b",
+        "image_sha256": "43b057aa6a7133de2bbed57a8caaeecd07aea9228fa7cb6bec1608286b967b61",
+        "stdout": "memory fixture\n",
+        "stderr": "",
+        "captured_bytes": 15,
+        "output_bytes_seen": 15,
+        "backend_verified": false,
+        "accepted": false,
+        "certification_eligible": false,
+        "observations": [
+          {
+            "manager": {
+              "main_done": false,
+              "exit_code": null,
+              "service_result": "success",
+              "cgroup": "/system.slice/qc-sandbox-544c7f9588c74ea5bb759fadfe5db448.service"
+            },
+            "effective_properties": "RuntimeMaxUSec=8s\nCPUQuotaPerSecUSec=1s\nMemoryMax=67108864\nMemorySwapMax=0\nTasksMax=16\nRootImage=/var/lib/qwen-sandbox/images/43b057aa6a7133de2bbed57a8caaeecd07aea9228fa7cb6bec1608286b967b61.raw\nPrivateNetwork=yes\nNoNewPrivileges=yes\nKillMode=control-group\n",
+            "kernel_limits": {
+              "memory.max": "67108864",
+              "memory.swap.max": "0",
+              "pids.max": "16",
+              "cpu.max": "100000 100000"
+            }
+          },
+          {
+            "manager": {
+              "main_done": true,
+              "exit_code": null,
+              "service_result": "oom-kill",
+              "cgroup": "/system.slice/qc-sandbox-544c7f9588c74ea5bb759fadfe5db448.service"
+            },
+            "effective_properties": "RuntimeMaxUSec=8s\nCPUQuotaPerSecUSec=1s\nMemoryMax=67108864\nMemorySwapMax=0\nTasksMax=16\nRootImage=/var/lib/qwen-sandbox/images/43b057aa6a7133de2bbed57a8caaeecd07aea9228fa7cb6bec1608286b967b61.raw\nPrivateNetwork=yes\nNoNewPrivileges=yes\nKillMode=control-group\n"
+          }
+        ],
+        "stdout_sha256": "25b5b0c382582d7f13854b6331599d8c5f6085166658bbfe8e72de574aa97a38",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "pid_limit",
+      "result": {
+        "reason": "completed",
+        "executed": true,
+        "exit_code": 0,
+        "cleanup_confirmed": true,
+        "unit": "qc-sandbox-b244b301ed9c475f8681c45b33cee23c.service",
+        "source_sha256": "19d13063c38793f5ab1b8223530882541fbc729a441634cd9af4ec16ebd59642",
+        "image_sha256": "43b057aa6a7133de2bbed57a8caaeecd07aea9228fa7cb6bec1608286b967b61",
+        "stdout": "{\"pid_limit_denied\": true, \"spawned\": 7}\n",
+        "stderr": "",
+        "captured_bytes": 41,
+        "output_bytes_seen": 41,
+        "backend_verified": false,
+        "accepted": false,
+        "certification_eligible": false,
+        "observations": [
+          {
+            "manager": {
+              "main_done": false,
+              "exit_code": null,
+              "service_result": "success",
+              "cgroup": "/system.slice/qc-sandbox-b244b301ed9c475f8681c45b33cee23c.service"
+            },
+            "effective_properties": "RuntimeMaxUSec=8s\nCPUQuotaPerSecUSec=1s\nMemoryMax=134217728\nMemorySwapMax=0\nTasksMax=8\nRootImage=/var/lib/qwen-sandbox/images/43b057aa6a7133de2bbed57a8caaeecd07aea9228fa7cb6bec1608286b967b61.raw\nPrivateNetwork=yes\nNoNewPrivileges=yes\nKillMode=control-group\n",
+            "kernel_limits": {
+              "memory.max": "134217728",
+              "memory.swap.max": "0",
+              "pids.max": "8",
+              "cpu.max": "100000 100000"
+            }
+          },
+          {
+            "manager": {
+              "main_done": true,
+              "exit_code": 0,
+              "service_result": "success",
+              "cgroup": "/system.slice/qc-sandbox-b244b301ed9c475f8681c45b33cee23c.service"
+            },
+            "effective_properties": "RuntimeMaxUSec=8s\nCPUQuotaPerSecUSec=1s\nMemoryMax=134217728\nMemorySwapMax=0\nTasksMax=8\nRootImage=/var/lib/qwen-sandbox/images/43b057aa6a7133de2bbed57a8caaeecd07aea9228fa7cb6bec1608286b967b61.raw\nPrivateNetwork=yes\nNoNewPrivileges=yes\nKillMode=control-group\n"
+          }
+        ],
+        "stdout_sha256": "a6b1c57e6f05d6c718b10b7e691aa85e3bd3325ab486593bd1657aa6ab65533b",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "client_loss",
+      "unit": "qc-sandbox-f7c098c8742d4ad4b8dfef5fb839528d.service",
+      "observed_running_before_client_loss": true,
+      "manager_after_client_loss": {
+        "main_done": true,
+        "exit_code": null,
+        "service_result": "timeout",
+        "cgroup": "/system.slice/qc-sandbox-f7c098c8742d4ad4b8dfef5fb839528d.service"
+      },
+      "service_ended_within_seconds": 2.452302911086008,
+      "cleanup_confirmed": true,
+      "observations": [
+        {
+          "manager": {
+            "main_done": false,
+            "exit_code": null,
+            "service_result": "success",
+            "cgroup": "/system.slice/qc-sandbox-f7c098c8742d4ad4b8dfef5fb839528d.service"
+          },
+          "effective_properties": "RuntimeMaxUSec=2s\nCPUQuotaPerSecUSec=1s\nMemoryMax=268435456\nMemorySwapMax=0\nTasksMax=32\nRootImage=/var/lib/qwen-sandbox/images/43b057aa6a7133de2bbed57a8caaeecd07aea9228fa7cb6bec1608286b967b61.raw\nPrivateNetwork=yes\nNoNewPrivileges=yes\nKillMode=control-group\n",
+          "kernel_limits": {
+            "memory.max": "268435456",
+            "memory.swap.max": "0",
+            "pids.max": "32",
+            "cpu.max": "100000 100000"
+          }
+        },
+        {
+          "manager": {
+            "main_done": true,
+            "exit_code": null,
+            "service_result": "timeout",
+            "cgroup": "/system.slice/qc-sandbox-f7c098c8742d4ad4b8dfef5fb839528d.service"
+          },
+          "effective_properties": "RuntimeMaxUSec=2s\nCPUQuotaPerSecUSec=1s\nMemoryMax=268435456\nMemorySwapMax=0\nTasksMax=32\nRootImage=/var/lib/qwen-sandbox/images/43b057aa6a7133de2bbed57a8caaeecd07aea9228fa7cb6bec1608286b967b61.raw\nPrivateNetwork=yes\nNoNewPrivileges=yes\nKillMode=control-group\n"
+        }
+      ]
+    }
+  ],
+  "image_sha256": "43b057aa6a7133de2bbed57a8caaeecd07aea9228fa7cb6bec1608286b967b61",
+  "image_size_bytes": 12591104,
+  "rootfs_directory": "/var/lib/qwen-sandbox/audit/f75e576ff19344479a419e2883a8393d/rootfs",
+  "backend_source_sha256": "1e6055473af8dad95445f64e1cb4a0603370d1eb6af551210829eca3ba14121c",
+  "audit_directory": "/var/lib/qwen-sandbox/audit/1d693961ff944f9d996407d5beeab19d",
+  "smoke_passed": true,
+  "memory_limit_passed": true,
+  "pid_limit_passed": true,
+  "client_loss_passed": true,
+  "host_policy_removed": true,
+  "services_after": {
+    "qwen-worker.service": "MainPID=554427\nActiveState=active\nSubState=running",
+    "ollama.service": "MainPID=1432\nActiveState=active\nSubState=running",
+    "qc-ollama-ts.service": "MainPID=519545\nActiveState=active\nSubState=running"
+  },
+  "existing_service_pids_unchanged": true,
+  "backend_verified": false,
+  "finished_at": "2026-10-28T04:47:10.036361+00:00"
+}

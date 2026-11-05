@@ -60,6 +60,7 @@ class SearchManager:
         max_results: int = 10,
         research_task_id: Optional[str] = None,
         task_id: Optional[str] = None,
+        research_run_id: Optional[str] = None,
         **kwargs: Any,
     ) -> QueryResult:
         """Convenience alias for execute_query."""
@@ -67,6 +68,7 @@ class SearchManager:
         return self.execute_query(
             project_id=project_id,
             query=query,
+            research_run_id=research_run_id,
             task_id=actual_task_id,
             max_results=max_results,
             **kwargs,

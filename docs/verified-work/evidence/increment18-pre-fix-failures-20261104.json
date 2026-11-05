@@ -1,0 +1,67 @@
+{
+  "evidence_type": "pre_fix_regression_reproduction",
+  "recorded_at_utc": "2026-11-04T23:34:16Z",
+  "branch": "feature/increment18-deliberate-task-solving-loop",
+  "pre_fix_commit_sha": "2cc6dab4e9e4e1c539f024cfe062f55f36732e8b",
+  "python_version": "3.12.10",
+  "sqlite_version": "3.49.1",
+  "pytest_command": "python -m pytest tests/test_increment18_repair_regressions.py -v --tb=short",
+  "pre_fix_source_hashes_sha256": {
+    "app/migrations.py": "14fbb8db5e16bd9d305cb3612b6e6bec2fb09c16528fc5686a917c9a3e7507fc",
+    "app/routes/chat.py": "da51e54e7ca6b1d4ffbef1576ff25ce9638bdb5a831f9394dfc95f2253b7a037",
+    "app/routes/orchestration.py": "383a2ca8e3b58d6a55505b37f6d6a85e3fe86f3b2bffe1a620485742b98c250a",
+    "app/services/worker.py": "67f1a6e224657759a99fc7dc5f65fc9b39fcebb0d946cc59c1a44eebfe8f8d94",
+    "app/services/orchestration/deliberate_loop.py": "384c760421f6935de7898eb4d003c30df4500cff159fc59ed04bceb783ebe255",
+    "app/services/orchestration/working_memory.py": "44ebe32842897cd98a6e7f4911cb114a4a777e4dd1169a7729ca9cfcdd54102a",
+    "app/services/orchestration/acceptance_harness.py": "073af44f8b680a6a1988c9870a87091062d7e891dad0b42e66740df8b0a7e45d",
+    "app/services/orchestration/context_manager.py": "3d953619fc6f381d504cd73e6da3151a3bafbda42fb6d489cedb591d06354ea0",
+    "app/services/orchestration/intake.py": "4bdfdbbcd50719dae5952ab354dd3b48ee65567f2045fd3fff3cdd12a9b58de6",
+    "app/services/orchestration/engine.py": "7fb930f310feccc6ec8481222032eb2b968bc18b313f6b77a814bfb8c7e53406",
+    "app/services/orchestration/model_router.py": "e2c4c507c92aba0da6ff87d9de8bb35cdfae6a3572b61f51108e5bba461ba0ab",
+    "app/services/orchestration/tool_catalogue.py": "92f74df491900388637aa04d0a4013f5442db7e59dd7ec9d60eb0f404772f195"
+  },
+  "summary": {
+    "collected": 6,
+    "passed": 0,
+    "failed": 6
+  },
+  "reproduced_failures": [
+    {
+      "finding_id": "F1",
+      "test": "tests/test_increment18_repair_regressions.py::test_f1_no_synthetic_self_enrollment_or_direct_sql_2099_lease",
+      "error": "AssertionError: Controller must not execute vps_agent.executor.execute_task in-process!",
+      "location": "app/services/orchestration/deliberate_loop.py:458"
+    },
+    {
+      "finding_id": "F2",
+      "test": "tests/test_increment18_repair_regressions.py::test_f2_acceptance_evidence_separates_fixtures_and_unknown_defaults",
+      "error": "AssertionError: assert 0 == 'not_evaluated'",
+      "location": "app/services/orchestration/acceptance_harness.py:130"
+    },
+    {
+      "finding_id": "F3",
+      "test": "tests/test_increment18_repair_regressions.py::test_f3_caller_cleanup_boolean_ignored_when_active_or_expired_lease_exists",
+      "error": "Failed: DID NOT RAISE ParkOrCancelCleanupError",
+      "location": "app/services/orchestration/working_memory.py:1079"
+    },
+    {
+      "finding_id": "F4",
+      "test": "tests/test_increment18_repair_regressions.py::test_f4_raw_callback_verified_flag_cannot_self_certify",
+      "error": "AssertionError: assert 'verified' != 'verified'",
+      "location": "app/services/orchestration/working_memory.py:725"
+    },
+    {
+      "finding_id": "F5",
+      "test": "tests/test_increment18_repair_regressions.py::test_f5_atomic_revision_fence_with_pre_commit_barrier_and_crash_recovery",
+      "error": "TypeError: execute_checkpointed_work_boundary() got an unexpected keyword argument 'pre_commit_barrier'",
+      "location": "app/services/orchestration/working_memory.py:669"
+    },
+    {
+      "finding_id": "F6",
+      "test": "tests/test_increment18_repair_regressions.py::test_f6_chat_deliberate_direct_answer_and_durable_consumer",
+      "error": "AssertionError: assert ('response' in {'ok': True, 'mode': 'direct_response', ...})",
+      "location": "app/routes/chat.py:40"
+    }
+  ]
+}
+

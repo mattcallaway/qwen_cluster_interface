@@ -1,0 +1,238 @@
+{
+  "batch_id": "dc601e1e6f674a5290fd8e548caf7625",
+  "evidence_class": "fixed independent fixture oracles; not live model dispatch or public-key certification",
+  "scenario_counts": {
+    "correct": 2,
+    "wrong": 1,
+    "forged": 1,
+    "timeout": 1,
+    "output_limit": 1
+  },
+  "actual_executions": 18,
+  "checks": [
+    {
+      "name": "exact six final controller API scenarios",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-2e88f8a8a1234e40bc1c754d894fe160.json: exact case inventory",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-2e88f8a8a1234e40bc1c754d894fe160.json: signed binding matches native records",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-2e88f8a8a1234e40bc1c754d894fe160.json: all process groups empty",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-2e88f8a8a1234e40bc1c754d894fe160.json: completed root nonce cannot replay",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-2e88f8a8a1234e40bc1c754d894fe160.json: temporary policy absent",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-2e88f8a8a1234e40bc1c754d894fe160.json: existing service PIDs/status unchanged",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-2e88f8a8a1234e40bc1c754d894fe160.json: all cleanup confirmed",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-2e88f8a8a1234e40bc1c754d894fe160.json: no certification authority",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-2e88f8a8a1234e40bc1c754d894fe160.json: successful exit is distinct from oracle answer",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-5db65514d4134f0b8fffa9e2348105a4.json: exact case inventory",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-5db65514d4134f0b8fffa9e2348105a4.json: signed binding matches native records",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-5db65514d4134f0b8fffa9e2348105a4.json: all process groups empty",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-5db65514d4134f0b8fffa9e2348105a4.json: completed root nonce cannot replay",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-5db65514d4134f0b8fffa9e2348105a4.json: temporary policy absent",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-5db65514d4134f0b8fffa9e2348105a4.json: existing service PIDs/status unchanged",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-5db65514d4134f0b8fffa9e2348105a4.json: all cleanup confirmed",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-5db65514d4134f0b8fffa9e2348105a4.json: no certification authority",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-5db65514d4134f0b8fffa9e2348105a4.json: successful exit is distinct from oracle answer",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-6424cab2217c497f89030442785d95c3.json: exact case inventory",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-6424cab2217c497f89030442785d95c3.json: signed binding matches native records",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-6424cab2217c497f89030442785d95c3.json: all process groups empty",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-6424cab2217c497f89030442785d95c3.json: completed root nonce cannot replay",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-6424cab2217c497f89030442785d95c3.json: temporary policy absent",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-6424cab2217c497f89030442785d95c3.json: existing service PIDs/status unchanged",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-6424cab2217c497f89030442785d95c3.json: all cleanup confirmed",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-6424cab2217c497f89030442785d95c3.json: no certification authority",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-7b805e9f896346e78266692ccfdb466b.json: exact case inventory",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-7b805e9f896346e78266692ccfdb466b.json: signed binding matches native records",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-7b805e9f896346e78266692ccfdb466b.json: all process groups empty",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-7b805e9f896346e78266692ccfdb466b.json: completed root nonce cannot replay",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-7b805e9f896346e78266692ccfdb466b.json: temporary policy absent",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-7b805e9f896346e78266692ccfdb466b.json: existing service PIDs/status unchanged",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-7b805e9f896346e78266692ccfdb466b.json: all cleanup confirmed",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-7b805e9f896346e78266692ccfdb466b.json: no certification authority",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-8c51181c072c4c54a8441485b89ab8b8.json: exact case inventory",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-8c51181c072c4c54a8441485b89ab8b8.json: signed binding matches native records",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-8c51181c072c4c54a8441485b89ab8b8.json: all process groups empty",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-8c51181c072c4c54a8441485b89ab8b8.json: completed root nonce cannot replay",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-8c51181c072c4c54a8441485b89ab8b8.json: temporary policy absent",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-8c51181c072c4c54a8441485b89ab8b8.json: existing service PIDs/status unchanged",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-8c51181c072c4c54a8441485b89ab8b8.json: all cleanup confirmed",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-8c51181c072c4c54a8441485b89ab8b8.json: no certification authority",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-8c51181c072c4c54a8441485b89ab8b8.json: successful exit is distinct from oracle answer",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-f72de4d60f1445c6877f19e46e537232.json: exact case inventory",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-f72de4d60f1445c6877f19e46e537232.json: signed binding matches native records",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-f72de4d60f1445c6877f19e46e537232.json: all process groups empty",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-f72de4d60f1445c6877f19e46e537232.json: completed root nonce cannot replay",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-f72de4d60f1445c6877f19e46e537232.json: temporary policy absent",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-f72de4d60f1445c6877f19e46e537232.json: existing service PIDs/status unchanged",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-f72de4d60f1445c6877f19e46e537232.json: all cleanup confirmed",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-f72de4d60f1445c6877f19e46e537232.json: no certification authority",
+      "passed": true
+    },
+    {
+      "name": "laptop-verifier-f72de4d60f1445c6877f19e46e537232.json: successful exit is distinct from oracle answer",
+      "passed": true
+    },
+    {
+      "name": "two successful code/probe scenarios plus four failing scenarios",
+      "passed": true
+    },
+    {
+      "name": "eighteen actual confined executions",
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "accepted": false,
+  "certification_eligible": false,
+  "production_approved": false
+}

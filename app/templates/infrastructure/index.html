@@ -32,12 +32,24 @@
 </div>
 {% endif %}
 
+{# Partition nodes dynamically #}
+{% set active_nodes = [] %}
+{% set retired_nodes = [] %}
+{% for n in nodes %}
+  {% if '[RETIRED' in (n.notes or '') or n.health_status == 'retired' %}
+    {% set _ = retired_nodes.append(n) %}
+  {% else %}
+    {% set _ = active_nodes.append(n) %}
+  {% endif %}
+{% endfor %}
+{% set final_archived = (archived_nodes if (archived_nodes is defined and archived_nodes) else retired_nodes) %}
+
 {# Top KPI Summary #}
 <div class="grid-cols-4" style="margin-bottom:20px;">
   <div class="stat-widget">
-    <div class="stat-label">Registered Nodes</div>
-    <div class="stat-value">{{ nodes|length }}</div>
-    <div class="stat-sub">{{ online_nodes|length }} online · {{ (nodes|length) - (online_nodes|length) }} offline/unknown</div>
+    <div class="stat-label">Registered Physical Nodes</div>
+    <div class="stat-value">{{ active_nodes|length }}</div>
+    <div class="stat-sub">{{ online_nodes|length }} online · {{ (active_nodes|length) - (online_nodes|length) }} offline/unknown</div>
   </div>
 
   <div class="stat-widget">
@@ -65,13 +77,14 @@
 
 {# Tab Navigation #}
 <div style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
-  {% for t in ['overview', 'workers', 'capabilities', 'reconciliation', 'architecture'] %}
+  {% for t in ['overview', 'workers', 'capabilities', 'reconciliation', 'architecture', 'archived'] %}
     <a id="tab-{{ t }}" href="/infrastructure?tab={{ t }}" class="btn btn-sm {% if tab == t %}btn-primary{% else %}btn-secondary{% endif %}">
       {% if t == 'overview' %}System Overview
-      {% elif t == 'workers' %}Worker Inventory ({{ nodes|length }})
+      {% elif t == 'workers' %}Active Workers ({{ active_nodes|length }})
       {% elif t == 'capabilities' %}Capabilities ({{ capabilities|length }})
       {% elif t == 'reconciliation' %}Drift & Reconciliation ({{ reconciliations|length }})
       {% elif t == 'architecture' %}Architecture Context Inspector
+      {% elif t == 'archived' %}Quarantined Fixtures ({{ final_archived|length }})
       {% endif %}
     </a>
   {% endfor %}
@@ -150,7 +163,7 @@
         </tr>
       </thead>
       <tbody>
-        {% for n in nodes %}
+        {% for n in active_nodes %}
         <tr>
           <td><strong>{{ n.name }}</strong><br><span style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">{{ n.id }}</span></td>
           <td><span class="badge badge-role">{{ n.role|replace('_', ' ')|title }}</span></td>
@@ -189,7 +202,7 @@
   </div>
 
   <div style="display:flex; flex-direction:column; gap:16px;">
-    {% for n in nodes %}
+    {% for n in active_nodes %}
     <div class="card" style="background:var(--bg-secondary); border:1px solid var(--border-color); margin-bottom:0;">
       <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
         <div>
@@ -436,4 +449,69 @@
 </div>
 {% endif %}
 
+{# ============================ ARCHIVED TAB ============================ #}
+{% if tab == 'archived' %}
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <div>
+      <h3 class="card-title" style="margin:0;">Archived & Quarantined Test Records ({{ archived_nodes|length }})</h3>
+      <p style="font-size:0.8rem; color:var(--text-muted); margin:4px 0 0 0;">
+        Nonexistent machines, test fixtures, and legacy registry entries permanently excluded from operational scheduling and active fleet views.
+      </p>
+    </div>
+    <span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3);">
+      Quarantined: Zero Fleet Impact
+    </span>
+  </div>
+
+  <div class="alert" style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25); color: var(--text-main); margin-bottom: 16px; border-radius: 6px; padding: 12px 16px; font-size: 0.85rem;">
+    <strong>Hygiene Notice:</strong> These records are tombstoned to preserve historical artifact provenance, audit trails, and execution logs. They cannot receive leases, cannot advertise capabilities, and are excluded from architecture context packets and model routing prompts.
+  </div>
+
+  {% if final_archived %}
+  <div style="overflow-x:auto;">
+    <table class="table" style="width:100%; font-size:0.85rem;">
+      <thead>
+        <tr>
+          <th>Node Identity</th>
+          <th>Original Role</th>
+          <th>Address / Hostname</th>
+          <th>Administrative State</th>
+          <th>Retirement Disposition & Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for n in final_archived %}
+        <tr>
+          <td>
+            <strong>{{ n.name }}</strong><br>
+            <span style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">{{ n.id }}</span>
+          </td>
+          <td><span class="badge badge-role">{{ n.role|replace('_', ' ')|title }}</span></td>
+          <td>
+            <code>{{ n.ip_address or '—' }}</code>
+            {% if n.hostname %}<div style="font-size:0.75rem; color:var(--text-muted);">{{ n.hostname }}</div>{% endif %}
+          </td>
+          <td>
+            <span class="badge badge-offline" style="font-size:0.7rem;">Disabled</span>
+            <span class="badge" style="background:#374151; color:#9ca3af; border:1px solid #4b5563; font-size:0.7rem;">Retired</span>
+          </td>
+          <td style="font-size:0.8rem; color:var(--text-muted); font-family:var(--font-mono);">
+            {{ n.notes }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <h4 style="font-size:1rem; margin-bottom:4px;">No Quarantined Records</h4>
+    <p style="font-size:0.85rem; color:var(--text-muted);">All active registry nodes match verified physical infrastructure.</p>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
 {% endblock %}
+

@@ -1,0 +1,777 @@
+{
+  "execution_start_utc": "2026-10-21T21:19:18.985278+00:00",
+  "preflight": {
+    "timestamp": "2026-10-21T21:19:18.986047+00:00",
+    "controller": {
+      "registered_nodes_count": 18,
+      "registered_nodes": [
+        {
+          "id": "controller-local",
+          "name": "Windows Controller (DESKTOP-44H6QVP)",
+          "role": "controller",
+          "health_status": "online",
+          "last_contact_at": "2026-10-21T07:14:58.824722+00:00"
+        },
+        {
+          "id": "node-d35568f5",
+          "name": "Linode",
+          "role": "compute_worker",
+          "health_status": "offline",
+          "last_contact_at": "2026-10-14T20:38:46.130972+00:00"
+        },
+        {
+          "id": "qwen-vps",
+          "name": "Qwen VPS",
+          "role": "vps_worker",
+          "health_status": "online",
+          "last_contact_at": "2026-10-21T21:19:09.780778+00:00"
+        },
+        {
+          "id": "qwen-laptop",
+          "name": "Qwen Laptop",
+          "role": "inference_node",
+          "health_status": "online",
+          "last_contact_at": "2026-10-21T21:19:10.645394+00:00"
+        },
+        {
+          "id": "desktop-worker-01",
+          "name": "Windows Desktop Companion",
+          "role": "compute_worker",
+          "health_status": "online",
+          "last_contact_at": "2026-10-21T21:19:08.065559+00:00"
+        },
+        {
+          "id": "worker-A",
+          "name": "Worker Node A",
+          "role": "vps_worker",
+          "health_status": "online",
+          "last_contact_at": "2026-10-19T05:08:36.266199+00:00"
+        },
+        {
+          "id": "worker-B",
+          "name": "Worker Node B",
+          "role": "vps_worker",
+          "health_status": "online",
+          "last_contact_at": "2026-10-19T05:08:36.311769+00:00"
+        },
+        {
+          "id": "t-vps",
+          "name": "t-vps",
+          "role": "vps_worker",
+          "health_status": "online",
+          "last_contact_at": "2026-10-21T07:38:00.359773+00:00"
+        },
+        {
+          "id": "t-laptop",
+          "name": "t-laptop",
+          "role": "inference_node",
+          "health_status": "online",
+          "last_contact_at": "2026-10-21T07:38:00.374580+00:00"
+        },
+        {
+          "id": "pi-brain",
+          "name": "Pi-Brain (Raspberry Pi 4)",
+          "role": "inference_node",
+          "health_status": "online",
+          "last_contact_at": "2026-10-21T21:19:06.636369+00:00"
+        },
+        {
+          "id": "worker-10c8a595",
+          "name": "Test Node",
+          "role": "vps_worker",
+          "health_status": "online",
+          "last_contact_at": "2026-10-21T17:49:16.048944+00:00"
+        },
+        {
+          "id": "worker-fee2b5bd",
+          "name": "Test Node",
+          "role": "vps_worker",
+          "health_status": "online",
+          "last_contact_at": "2026-10-21T17:55:16.547749+00:00"
+        },
+        {
+          "id": "worker-38ad13b9",
+          "name": "Test Node",
+          "role": "vps_worker",
+          "health_status": "online",
+          "last_contact_at": "2026-10-21T17:55:30.097455+00:00"
+        },
+        {
+          "id": "worker-3c4fa7e4",
+          "name": "Test Node",
+          "role": "vps_worker",
+          "health_status": "online",
+          "last_contact_at": "2026-10-21T17:55:56.065845+00:00"
+        },
+        {
+          "id": "worker-f610a93d",
+          "name": "Test Node",
+          "role": "vps_worker",
+          "health_status": "online",
+          "last_contact_at": "2026-10-21T17:56:19.073238+00:00"
+        },
+        {
+          "id": "phase3-demo-vps-1792617484",
+          "name": "Remote VPS Demonstration Worker",
+          "role": "vps_worker",
+          "health_status": "online",
+          "last_contact_at": "2026-10-21T21:18:04.624655+00:00"
+        },
+        {
+          "id": "phase3-demo-vps-1792617513",
+          "name": "Remote VPS Demonstration Worker",
+          "role": "vps_worker",
+          "health_status": "online",
+          "last_contact_at": "2026-10-21T21:18:34.212993+00:00"
+        },
+        {
+          "id": "phase3-demo-vps-1792617545",
+          "name": "Remote VPS Demonstration Worker",
+          "role": "vps_worker",
+          "health_status": "online",
+          "last_contact_at": "2026-10-21T21:19:05.563360+00:00"
+        }
+      ],
+      "active_tokens_count": 26,
+      "tokens": [
+        {
+          "id": "tok_855aa0b64e24",
+          "node_id": "qwen-vps",
+          "revoked": false,
+          "last_used_at": "2026-10-21T21:19:14.892284+00:00"
+        },
+        {
+          "id": "tok_e94656683def",
+          "node_id": "qwen-laptop",
+          "revoked": false,
+          "last_used_at": "2026-10-21T21:19:15.726493+00:00"
+        },
+        {
+          "id": "tok_2185bca3fef9",
+          "node_id": "desktop-worker-01",
+          "revoked": false,
+          "last_used_at": "2026-10-21T21:19:18.531702+00:00"
+        },
+        {
+          "id": "tok_8b078195746b",
+          "node_id": "worker-A",
+          "revoked": false,
+          "last_used_at": null
+        },
+        {
+          "id": "tok_0e210547dc6e",
+          "node_id": "worker-B",
+          "revoked": false,
+          "last_used_at": null
+        },
+        {
+          "id": "tok_503f704e2549",
+          "node_id": "worker-A",
+          "revoked": false,
+          "last_used_at": null
+        },
+        {
+          "id": "tok_6ffc1f5a8858",
+          "node_id": "worker-B",
+          "revoked": false,
+          "last_used_at": null
+        },
+        {
+          "id": "tok_ac29630e9c51",
+          "node_id": "worker-A",
+          "revoked": false,
+          "last_used_at": null
+        },
+        {
+          "id": "tok_6ca89455771c",
+          "node_id": "worker-B",
+          "revoked": false,
+          "last_used_at": null
+        },
+        {
+          "id": "tok_4a5967fbaa18",
+          "node_id": "worker-A",
+          "revoked": false,
+          "last_used_at": null
+        },
+        {
+          "id": "tok_e6b1a016cd96",
+          "node_id": "worker-B",
+          "revoked": false,
+          "last_used_at": null
+        },
+        {
+          "id": "tok_fbc8757b5e1c",
+          "node_id": "worker-A",
+          "revoked": false,
+          "last_used_at": null
+        },
+        {
+          "id": "tok_6937ae91e739",
+          "node_id": "worker-B",
+          "revoked": false,
+          "last_used_at": null
+        },
+        {
+          "id": "tok_b7a6a8c86867",
+          "node_id": "worker-A",
+          "revoked": false,
+          "last_used_at": "2026-10-19T05:08:36.617440+00:00"
+        },
+        {
+          "id": "tok_648b67c53c68",
+          "node_id": "worker-B",
+          "revoked": false,
+          "last_used_at": "2026-10-19T05:08:36.370201+00:00"
+        },
+        {
+          "id": "de233afcc28e42249e695dd0eccddbb5",
+          "node_id": "t-vps",
+          "revoked": false,
+          "last_used_at": null
+        },
+        {
+          "id": "4407d2da915e4085b217764e86ef5eed",
+          "node_id": "t-laptop",
+          "revoked": false,
+          "last_used_at": null
+        },
+        {
+          "id": "tok_e22da00ddf73",
+          "node_id": "pi-brain",
+          "revoked": false,
+          "last_used_at": "2026-10-21T21:19:16.800804+00:00"
+        },
+        {
+          "id": "tok_bb859d6ecbc7",
+          "node_id": "worker-10c8a595",
+          "revoked": false,
+          "last_used_at": "2026-10-21T17:49:16.656748+00:00"
+        },
+        {
+          "id": "tok_39be2935ec10",
+          "node_id": "worker-fee2b5bd",
+          "revoked": false,
+          "last_used_at": "2026-10-21T17:55:17.212488+00:00"
+        },
+        {
+          "id": "tok_4747d1c81799",
+          "node_id": "worker-38ad13b9",
+          "revoked": false,
+          "last_used_at": "2026-10-21T17:55:31.596753+00:00"
+        },
+        {
+          "id": "tok_9e60859d7d3f",
+          "node_id": "worker-3c4fa7e4",
+          "revoked": false,
+          "last_used_at": "2026-10-21T17:55:56.731593+00:00"
+        },
+        {
+          "id": "tok_6a08a890ca5e",
+          "node_id": "worker-f610a93d",
+          "revoked": false,
+          "last_used_at": "2026-10-21T17:56:19.735038+00:00"
+        },
+        {
+          "id": "tok_2b15e5d9adbb",
+          "node_id": "phase3-demo-vps-1792617484",
+          "revoked": false,
+          "last_used_at": "2026-10-21T21:18:05.943668+00:00"
+        },
+        {
+          "id": "tok_14297ef6a979",
+          "node_id": "phase3-demo-vps-1792617513",
+          "revoked": false,
+          "last_used_at": "2026-10-21T21:18:35.871349+00:00"
+        },
+        {
+          "id": "tok_2b049d3d1ac2",
+          "node_id": "phase3-demo-vps-1792617545",
+          "revoked": false,
+          "last_used_at": "2026-10-21T21:19:06.879681+00:00"
+        }
+      ],
+      "configured_host": "127.0.0.1",
+      "configured_port": 8000,
+      "environment": "production"
+    },
+    "tailscale": {
+      "status_rc": 0,
+      "peers": [
+        {
+          "ip": "100.122.228.19",
+          "hostname": "desktop-44h6qvp",
+          "account": "[REDACTED]",
+          "os": "windows",
+          "status": "-"
+        },
+        {
+          "ip": "100.97.174.81",
+          "hostname": "hvm-chicago",
+          "account": "[REDACTED]",
+          "os": "linux",
+          "status": "-"
+        },
+        {
+          "ip": "100.96.87.87",
+          "hostname": "matthews-s25-ultra",
+          "account": "[REDACTED]",
+          "os": "android",
+          "status": "-"
+        },
+        {
+          "ip": "100.109.111.79",
+          "hostname": "msi",
+          "account": "[REDACTED]",
+          "os": "windows",
+          "status": "-"
+        },
+        {
+          "ip": "100.104.134.43",
+          "hostname": "office-pi",
+          "account": "[REDACTED]",
+          "os": "linux",
+          "status": "-"
+        },
+        {
+          "ip": "100.111.178.12",
+          "hostname": "pi-brain",
+          "account": "[REDACTED]",
+          "os": "linux",
+          "status": "active; direct [2001:5a8:4495:a100:dea6:32ff:fe5b:36f4]:41641, tx 5873320 rx 12785264"
+        },
+        {
+          "ip": "100.101.187.115",
+          "hostname": "qwen-laptop",
+          "account": "[REDACTED]",
+          "os": "linux",
+          "status": "active; direct 192.168.4.48:41641, tx 54902688 rx 117909160"
+        },
+        {
+          "ip": "100.71.194.68",
+          "hostname": "qwen-vps",
+          "account": "[REDACTED]",
+          "os": "linux",
+          "status": "active; direct [2a01:7e03::2000:7ff:fe8d:bbd]:34877, tx 58535116 rx 108531428"
+        }
+      ],
+      "serve_status": "https://desktop-44h6qvp.tailb5d90b.ts.net (tailnet only)\n|-- / proxy http://127.0.0.1:8000"
+    },
+    "nodes": {
+      "qwen-vps": {
+        "tailscale_ip": "100.71.194.68",
+        "reachable": true,
+        "service_status": "active",
+        "output_summary": "active\nPython 3.12.3"
+      },
+      "qwen-laptop": {
+        "tailscale_ip": "100.101.187.115",
+        "reachable": true,
+        "services": "active\nactive",
+        "ollama_models": [
+          "llama3.2:1b",
+          "qwen2.5:1.5b"
+        ]
+      }
+    },
+    "research_providers": {
+      "db_providers": [
+        {
+          "provider_name": "duckduckgo",
+          "is_available": 1,
+          "consecutive_failures": 0
+        }
+      ]
+    },
+    "proxy_and_restrictions": {
+      "trusted_proxies": [
+        "testclient",
+        "127.0.0.1",
+        "localhost",
+        "::1"
+      ],
+      "blocked_metadata_ips": [
+        "169.254.169.123",
+        "169.254.170.2",
+        "169.254.169.254",
+        "169.254.169.250",
+        "fd00:ec2::254",
+        "100.100.100.200"
+      ]
+    }
+  },
+  "scenarios": {
+    "BB-12": {
+      "scenario_id": "BB-12",
+      "name": "DNS-rebinding protection and connection pinning",
+      "status": "PASS",
+      "elapsed_ms": 0.57,
+      "evidence": {
+        "mixed_localhost_rejected": true,
+        "mixed_localhost_reason": "Prohibited destination for 'rebind-mixed.test.local': IPv4 address 127.0.0.1 belongs to blocked private/reserved network 127.0.0.0/8.",
+        "mixed_localhost_resolved": [
+          "93.184.216.34",
+          "127.0.0.1"
+        ],
+        "mixed_lan_rejected": true,
+        "mixed_lan_reason": "Prohibited destination for 'rebind-lan.test.local': IPv4 address 10.0.0.5 belongs to blocked private/reserved network 10.0.0.0/8.",
+        "pure_public_allowed": true,
+        "pure_public_pinned_ip": "93.184.216.34",
+        "direct_loopback_blocked": true,
+        "loopback_blocked_error": "Security policy rejected URL: Destination port 8000 is prohibited for public web research."
+      },
+      "error_message": ""
+    },
+    "BB-13": {
+      "scenario_id": "BB-13",
+      "name": "SSRF and private-network isolation",
+      "status": "PASS",
+      "elapsed_ms": 8.08,
+      "evidence": {
+        "prohibited_destinations_tested": [
+          {
+            "url": "http://127.0.0.1:8000/",
+            "label": "IPv4 Loopback 127.0.0.1",
+            "policy_blocked": true,
+            "policy_reason": "Destination port 8000 is prohibited for public web research.",
+            "fetcher_blocked": true,
+            "fetcher_status": 403
+          },
+          {
+            "url": "http://127.0.0.2:80/",
+            "label": "IPv4 Loopback 127.0.0.2",
+            "policy_blocked": true,
+            "policy_reason": "IPv4 address 127.0.0.2 belongs to blocked private/reserved network 127.0.0.0/8.",
+            "fetcher_blocked": true,
+            "fetcher_status": 403
+          },
+          {
+            "url": "http://localhost:8000/",
+            "label": "Hostname localhost",
+            "policy_blocked": true,
+            "policy_reason": "Access to cloud metadata host 'localhost' is strictly blocked.",
+            "fetcher_blocked": true,
+            "fetcher_status": 403
+          },
+          {
+            "url": "http://localhost.:8000/",
+            "label": "FQDN localhost with trailing dot",
+            "policy_blocked": true,
+            "policy_reason": "Access to cloud metadata host 'localhost.' is strictly blocked.",
+            "fetcher_blocked": true,
+            "fetcher_status": 403
+          },
+          {
+            "url": "http://0177.0.0.1/",
+            "label": "Octal encoded loopback",
+            "policy_blocked": true,
+            "policy_reason": "IPv4 address 127.0.0.1 belongs to blocked private/reserved network 127.0.0.0/8.",
+            "fetcher_blocked": true,
+            "fetcher_status": 403
+          },
+          {
+            "url": "http://2130706433/",
+            "label": "Integer encoded loopback",
+            "policy_blocked": true,
+            "policy_reason": "IPv4 address 127.0.0.1 belongs to blocked private/reserved network 127.0.0.0/8.",
+            "fetcher_blocked": true,
+            "fetcher_status": 403
+          },
+          {
+            "url": "http://127.1/",
+            "label": "Abbreviated loopback",
+            "policy_blocked": true,
+            "policy_reason": "IPv4 address 127.0.0.1 belongs to blocked private/reserved network 127.0.0.0/8.",
+            "fetcher_blocked": true,
+            "fetcher_status": 403
+          },
+          {
+            "url": "http://10.0.0.1/",
+            "label": "RFC1918 10/8",
+            "policy_blocked": true,
+            "policy_reason": "IPv4 address 10.0.0.1 belongs to blocked private/reserved network 10.0.0.0/8.",
+            "fetcher_blocked": true,
+            "fetcher_status": 403
+          },
+          {
+            "url": "http://172.16.0.1/",
+            "label": "RFC1918 172.16/12",
+            "policy_blocked": true,
+            "policy_reason": "IPv4 address 172.16.0.1 belongs to blocked private/reserved network 172.16.0.0/12.",
+            "fetcher_blocked": true,
+            "fetcher_status": 403
+          },
+          {
+            "url": "http://192.168.4.1/",
+            "label": "RFC1918 192.168/16 Gateway",
+            "policy_blocked": true,
+            "policy_reason": "IPv4 address 192.168.4.1 belongs to blocked private/reserved network 192.168.0.0/16.",
+            "fetcher_blocked": true,
+            "fetcher_status": 403
+          },
+          {
+            "url": "http://192.168.4.69:8000/",
+            "label": "RFC1918 Local LAN Controller",
+            "policy_blocked": true,
+            "policy_reason": "Destination port 8000 is prohibited for public web research.",
+            "fetcher_blocked": true,
+            "fetcher_status": 403
+          },
+          {
+            "url": "http://169.254.169.254/",
+            "label": "AWS/GCP Link-Local Metadata IP",
+            "policy_blocked": true,
+            "policy_reason": "Access to cloud metadata host '169.254.169.254' is strictly blocked.",
+            "fetcher_blocked": true,
+            "fetcher_status": 403
+          },
+          {
+            "url": "http://metadata.google.internal/",
+            "label": "GCP Metadata DNS Hostname",
+            "policy_blocked": true,
+            "policy_reason": "Access to cloud metadata host 'metadata.google.internal' is strictly blocked.",
+            "fetcher_blocked": true,
+            "fetcher_status": 403
+          },
+          {
+            "url": "http://instance-data/",
+            "label": "AWS Instance Data Hostname",
+            "policy_blocked": true,
+            "policy_reason": "Access to cloud metadata host 'instance-data' is strictly blocked.",
+            "fetcher_blocked": true,
+            "fetcher_status": 403
+          },
+          {
+            "url": "http://100.64.0.1/",
+            "label": "Tailscale/CGNAT Base 100.64.0.1",
+            "policy_blocked": true,
+            "policy_reason": "IPv4 address 100.64.0.1 belongs to blocked private/reserved network 100.64.0.0/10.",
+            "fetcher_blocked": true,
+            "fetcher_status": 403
+          },
+          {
+            "url": "http://100.71.194.68:8000/",
+            "label": "Tailscale Node qwen-vps",
+            "policy_blocked": true,
+            "policy_reason": "Destination port 8000 is prohibited for public web research.",
+            "fetcher_blocked": true,
+            "fetcher_status": 403
+          },
+          {
+            "url": "http://100.122.228.19:8000/",
+            "label": "Tailscale Node controller",
+            "policy_blocked": true,
+            "policy_reason": "Destination port 8000 is prohibited for public web research.",
+            "fetcher_blocked": true,
+            "fetcher_status": 403
+          },
+          {
+            "url": "http://[::1]:8000/",
+            "label": "IPv6 Loopback ::1",
+            "policy_blocked": true,
+            "policy_reason": "Destination port 8000 is prohibited for public web research.",
+            "fetcher_blocked": true,
+            "fetcher_status": 403
+          },
+          {
+            "url": "http://[fe80::1]/",
+            "label": "IPv6 Link-Local fe80::1",
+            "policy_blocked": true,
+            "policy_reason": "IPv6 address fe80::1 belongs to blocked private/reserved network fe80::/10.",
+            "fetcher_blocked": true,
+            "fetcher_status": 403
+          },
+          {
+            "url": "http://[fc00::1]/",
+            "label": "IPv6 ULA fc00::1",
+            "policy_blocked": true,
+            "policy_reason": "IPv6 address fc00::1 belongs to blocked private/reserved network fc00::/7.",
+            "fetcher_blocked": true,
+            "fetcher_status": 403
+          },
+          {
+            "url": "http://[fd00::1]/",
+            "label": "IPv6 ULA fd00::1",
+            "policy_blocked": true,
+            "policy_reason": "IPv6 address fd00::1 belongs to blocked private/reserved network fc00::/7.",
+            "fetcher_blocked": true,
+            "fetcher_status": 403
+          },
+          {
+            "url": "http://[::ffff:127.0.0.1]/",
+            "label": "IPv4-mapped IPv6 loopback",
+            "policy_blocked": true,
+            "policy_reason": "IPv4 address 127.0.0.1 belongs to blocked private/reserved network 127.0.0.0/8.",
+            "fetcher_blocked": true,
+            "fetcher_status": 403
+          },
+          {
+            "url": "http://[::ffff:169.254.169.254]/",
+            "label": "IPv4-mapped IPv6 metadata",
+            "policy_blocked": true,
+            "policy_reason": "Cloud metadata IP address 169.254.169.254 is strictly blocked.",
+            "fetcher_blocked": true,
+            "fetcher_status": 403
+          },
+          {
+            "url": "http://[::127.0.0.1]/",
+            "label": "IPv4-compatible IPv6 loopback",
+            "policy_blocked": true,
+            "policy_reason": "IPv4 address 127.0.0.1 belongs to blocked private/reserved network 127.0.0.0/8.",
+            "fetcher_blocked": true,
+            "fetcher_status": 403
+          }
+        ],
+        "proxy_port": 60275,
+        "proxy_connect_127_blocked": true,
+        "proxy_connect_metadata_blocked": true,
+        "proxy_audit_records_count": 2,
+        "proxy_audit_entries": [
+          {
+            "target": "127.0.0.1",
+            "port": 8000,
+            "allowed": false,
+            "reason": "IPv4 address 127.0.0.1 belongs to blocked private/reserved network 127.0.0.0/8."
+          },
+          {
+            "target": "169.254.169.254",
+            "port": 80,
+            "allowed": false,
+            "reason": "Access to cloud metadata / localhost host '169.254.169.254' is strictly blocked."
+          }
+        ]
+      },
+      "error_message": ""
+    },
+    "BB-28": {
+      "scenario_id": "BB-28",
+      "name": "Worker token revocation and privilege fencing",
+      "status": "PASS",
+      "elapsed_ms": 155.84,
+      "evidence": {
+        "enrollment_token_created": "enr_a777f1fb4e1a",
+        "test_node_id": "phase3-test-worker-1792617559",
+        "node_registered": "registered",
+        "worker_token_id": "tok_bdec95f96fe4",
+        "initial_auth_verified": true,
+        "initial_heartbeat_status": "ok",
+        "token_revocation_executed": true,
+        "post_revocation_auth_result": null,
+        "cached_credentials_rejected": true,
+        "db_revoked_flag": 1,
+        "cleanup_completed": true
+      },
+      "error_message": ""
+    },
+    "BB-29": {
+      "scenario_id": "BB-29",
+      "name": "Tailscale ingress, proxy trust, and worker identity separation",
+      "status": "PASS",
+      "elapsed_ms": 99.61,
+      "evidence": {
+        "tailscale_https_ingress_status": 200,
+        "tailscale_https_headers": {
+          "Content-Length": "1908",
+          "Content-Type": "text/html; charset=utf-8",
+          "Date": "Wed, 21 Oct 2026 21:19:19 GMT",
+          "Server": "uvicorn",
+          "Connection": "close"
+        },
+        "tailscale_https_tls_version": "TLSv1.3",
+        "trusted_proxy_forwarded_ip": "100.71.194.68",
+        "trusted_proxy_forwarded_https": true,
+        "untrusted_client_peer_preserved": true,
+        "untrusted_client_proto_untrusted": true,
+        "cross_worker_rejection_reason": "Worker 'worker-A' is not authorized for task 'bb29-task-fencing' (assigned to 'worker-B').",
+        "cross_worker_rejection_code": 403,
+        "cross_worker_fencing_verified": true
+      },
+      "error_message": ""
+    }
+  },
+  "live_demonstration": {
+    "scenario_id": "DEMO-LIVE-REGISTRATION",
+    "name": "Live remote worker registration over Tailscale mesh with genuine model probe",
+    "status": "PASS",
+    "elapsed_ms": 1914.45,
+    "evidence": {
+      "demo_node_id": "phase3-demo-vps-1792617560",
+      "enrollment_token_id": "enr_a027161b9314",
+      "remote_registration_ssh_rc": 0,
+      "remote_registration_stdout": "{\"status\":\"registered\",\"node_id\":\"phase3-demo-vps-1792617560\",\"registered_at\":\"2026-10-21T21:19:20.695083+00:00\",\"token_id\":\"tok_a34f23a7c44a\",\"token_status\":\"provisioned\",\"worker_token\":\"qcw_oZbrsiCVv8ByPkL6htJTKjWI0BEZx96D80uxzHH2Ukw\"}",
+      "remote_registration_stderr": "",
+      "remote_registration_response": {
+        "status": "registered",
+        "node_id": "phase3-demo-vps-1792617560",
+        "registered_at": "2026-10-21T21:19:20.695083+00:00",
+        "token_id": "tok_a34f23a7c44a",
+        "token_status": "provisioned",
+        "worker_token": "qcw_oZbrsiCVv8ByPkL6htJTKjWI0BEZx96D80uxzHH2Ukw"
+      },
+      "db_node_status": {
+        "id": "phase3-demo-vps-1792617560",
+        "name": "Remote VPS Demonstration Worker",
+        "role": "vps_worker",
+        "health_status": "online",
+        "tailscale_ip": "100.71.194.68"
+      },
+      "model_probe_total_duration_ms": 260.79,
+      "model_probe_eval_duration_ms": 157.39,
+      "model_probe_target": "http://100.101.187.115:11434",
+      "model_probe_model": "qwen2.5:1.5b",
+      "model_probe_success": true,
+      "model_probe_response": "CERTIFIED",
+      "model_probe_elapsed_ms": 284.79,
+      "telemetry_sample_id": 119350,
+      "telemetry_recorded": true,
+      "demo_task_created": "task-demo-1792617561",
+      "remote_lease_ssh_rc": 0,
+      "remote_lease_stdout": "{\"status\":\"leased\",\"task\":{\"lease_id\":\"lease_a09ac38b3702\",\"task_id\":\"task-demo-1792617561\",\"worker_id\":\"phase3-demo-vps-1792617560\",\"idempotency_key\":\"idem_980f30c91bb041db\",\"title\":\"Live Remote Demonstration Task\",\"description\":\"Safe non-destructive probe task\",\"task_type\":\"benchmark_task\",\"purpose\":null,\"expected_output\":null,\"input_data\":{},\"execution_manifest\":null,\"leased_at\":\"2026-10-21T21:19:21.541851+00:00\",\"lease_expires_at\":\"2026-10-21T21:24:21.541851+00:00\",\"timeout_seconds\":300}}",
+      "remote_lease_stderr": "",
+      "remote_lease_data": {
+        "status": "leased",
+        "task": {
+          "lease_id": "lease_a09ac38b3702",
+          "task_id": "task-demo-1792617561",
+          "worker_id": "phase3-demo-vps-1792617560",
+          "idempotency_key": "idem_980f30c91bb041db",
+          "title": "Live Remote Demonstration Task",
+          "description": "Safe non-destructive probe task",
+          "task_type": "benchmark_task",
+          "purpose": null,
+          "expected_output": null,
+          "input_data": {},
+          "execution_manifest": null,
+          "leased_at": "2026-10-21T21:19:21.541851+00:00",
+          "lease_expires_at": "2026-10-21T21:24:21.541851+00:00",
+          "timeout_seconds": 300
+        }
+      },
+      "remote_submit_ssh_rc": 0,
+      "remote_submit_stdout": "{\"status\":\"recorded\",\"execution_id\":\"exec_145c809f51e9\",\"task_id\":\"task-demo-1792617561\",\"task_status\":\"completed\",\"completed_at\":\"2026-10-21T21:19:22.051298+00:00\",\"stored_artifacts\":[]}",
+      "remote_submit_stderr": "",
+      "remote_submit_data": {
+        "status": "recorded",
+        "execution_id": "exec_145c809f51e9",
+        "task_id": "task-demo-1792617561",
+        "task_status": "completed",
+        "completed_at": "2026-10-21T21:19:22.051298+00:00",
+        "stored_artifacts": []
+      },
+      "remote_task_lifecycle_verified": true,
+      "cleanup_completed": true,
+      "append_only_audit_preserved": true,
+      "cleanup_error": ""
+    },
+    "error_message": ""
+  },
+  "cleanup": {},
+  "summary": {
+    "total": 5,
+    "passed": 5,
+    "failed": 0,
+    "blocked": 0
+  },
+  "execution_completed_utc": "2026-10-21T21:19:22.109771+00:00",
+  "total_wall_clock_ms": 3123.7
+}

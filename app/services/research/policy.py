@@ -45,10 +45,12 @@ BLOCKED_IPV4_NETWORKS: List[ipaddress.IPv4Network] = [
 BLOCKED_IPV6_NETWORKS: List[ipaddress.IPv6Network] = [
     ipaddress.ip_network("::/128"),             # Unspecified
     ipaddress.ip_network("::1/128"),            # Loopback
+    ipaddress.ip_network("::/96"),              # IPv4-compatible IPv6 (deprecated RFC 4291)
     ipaddress.ip_network("::ffff:0:0/96"),      # IPv4-mapped IPv6 (must be evaluated as IPv4)
     ipaddress.ip_network("100::/64"),           # Discard-Only Address Block
     ipaddress.ip_network("2001:db8::/32"),      # Documentation
     ipaddress.ip_network("fc00::/7"),           # Unique Local Addresses (ULA)
+    ipaddress.ip_network("fec0::/10"),          # Deprecated Site-Local
     ipaddress.ip_network("fe80::/10"),          # Link-Local Unicast
     ipaddress.ip_network("fd7a:115c:a1e0::/48"),# Tailscale IPv6 network
     ipaddress.ip_network("ff00::/8"),           # Multicast
@@ -58,15 +60,21 @@ BLOCKED_IPV6_NETWORKS: List[ipaddress.IPv6Network] = [
 BLOCKED_METADATA_IPS: Set[str] = {
     "169.254.169.254", # AWS, GCP, Azure, OpenStack, Alibaba metadata
     "169.254.169.123", # AWS NTP
+    "169.254.169.250", # Tencent metadata
+    "169.254.170.2",   # AWS ECS container metadata
+    "100.100.100.200", # Alibaba Cloud ECS metadata
     "fd00:ec2::254",   # AWS IPv6 metadata
 }
 
 BLOCKED_METADATA_HOSTS: Set[str] = {
     "metadata.google.internal",
     "metadata.internal",
+    "metadata",
     "instance-data",
+    "metadata.tencentyun.com",
     "169.254.169.254",
     "localhost",
+    "localhost.localdomain",
 }
 
 # Only standard public web ports are permitted for research retrieval
@@ -74,9 +82,13 @@ ALLOWED_WEB_PORTS: Set[int] = {80, 443}
 
 
 def normalize_ip(ip_obj: ipaddress.IPv4Address | ipaddress.IPv6Address) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
-    """Unwrap IPv4-mapped IPv6 (e.g., ::ffff:169.254.169.254) to true IPv4."""
-    if isinstance(ip_obj, ipaddress.IPv6Address) and ip_obj.ipv4_mapped:
-        return ip_obj.ipv4_mapped
+    """Unwrap IPv4-mapped IPv6 (e.g., ::ffff:169.254.169.254) and IPv4-compatible IPv6 to true IPv4."""
+    if isinstance(ip_obj, ipaddress.IPv6Address):
+        if ip_obj.ipv4_mapped:
+            return ip_obj.ipv4_mapped
+        # Handle IPv4-compatible IPv6 addresses (::/96 except :: and ::1)
+        if ip_obj in ipaddress.ip_network("::/96") and ip_obj not in (ipaddress.IPv6Address("::"), ipaddress.IPv6Address("::1")):
+            return ipaddress.IPv4Address(int(ip_obj) & 0xFFFFFFFF)
     return ip_obj
 
 
@@ -126,13 +138,14 @@ class ResearchSecurityPolicy:
         if not hostname:
             return False, "Missing hostname in URL.", None
 
-        # Check explicit metadata hosts
-        if hostname in BLOCKED_METADATA_HOSTS:
+        # Check explicit metadata and localhost hosts (including FQDN with trailing dot)
+        clean_host = hostname.rstrip(".")
+        if clean_host in BLOCKED_METADATA_HOSTS or hostname in BLOCKED_METADATA_HOSTS:
             return False, f"Access to cloud metadata host '{hostname}' is strictly blocked.", None
 
         # Check denied domains
         for denied in self.denied_domains:
-            if hostname == denied or hostname.endswith(f".{denied}"):
+            if clean_host == denied or clean_host.endswith(f".{denied}"):
                 return False, f"Domain '{hostname}' is denied by research policy.", None
 
         # Port validation
@@ -184,15 +197,42 @@ class ResearchSecurityPolicy:
         Perform DNS lookup and verify all resolved IP addresses.
         Prevents DNS rebinding and internal network penetration.
         """
+        clean_hostname = hostname.strip("[]").rstrip(".").lower()
+        if clean_hostname in BLOCKED_METADATA_HOSTS:
+            return False, f"Access to cloud metadata / localhost host '{hostname}' is strictly blocked.", []
+
         # If hostname is already a raw IP
         try:
             raw_ip = ipaddress.ip_address(hostname.strip("[]"))
             is_valid, reason = self.validate_resolved_ip(str(raw_ip))
             if not is_valid:
-                return False, reason, []
+                return False, reason, [str(raw_ip)]
             return True, "Direct IP validated.", [str(raw_ip)]
         except ValueError:
-            pass  # Hostname requires DNS resolution
+            pass  # Hostname requires DNS resolution or alternate representation check
+
+        # Check if hostname can be parsed via inet_aton (handles octal, hex, abbreviated IPv4 e.g. 0177.0.0.1, 127.1)
+        try:
+            inet_addr = socket.inet_aton(hostname)
+            canonical_ip = socket.inet_ntoa(inet_addr)
+            is_valid, reason = self.validate_resolved_ip(canonical_ip)
+            if not is_valid:
+                return False, reason, [canonical_ip]
+            return True, "Direct IP validated.", [canonical_ip]
+        except (OSError, ValueError):
+            pass
+
+        # Check integer or hex IP (e.g. 2130706433 or 0x7f000001)
+        try:
+            int_val = int(hostname, 0)
+            if 0 <= int_val <= 0xFFFFFFFF:
+                ip_from_int = str(ipaddress.IPv4Address(int_val))
+                is_valid, reason = self.validate_resolved_ip(ip_from_int)
+                if not is_valid:
+                    return False, reason, [ip_from_int]
+                return True, "Direct integer IP validated.", [ip_from_int]
+        except (ValueError, OverflowError):
+            pass
 
         try:
             addr_info = socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)

@@ -83,15 +83,29 @@ def decide(run_id: str, approval_id: str, approve: bool, actor: str, rationale: 
 
 # --- plan approval + materialisation -------------------------------------------------------------------------------
 
-def approve_plan(run_id: str, actor: str, rationale: str = "", revision_id: Optional[str] = None) -> Dict[str, Any]:
+def approve_plan(run_id: str, actor: str, rationale: str = "", revision_id: Optional[str] = None,
+                 expected_digest: Optional[str] = None, require_digest: bool = False) -> Dict[str, Any]:
     run = get_run(run_id)
     if run["state"] != "AWAITING_PLAN_APPROVAL":
         raise OrchestrationError(f"There is no plan awaiting approval (state {run['state']}).")
-    rev = planner.get_revision(revision_id or run["current_revision_id"])
+    target_rev_id = revision_id or run["current_revision_id"]
+    rev = planner.get_revision(target_rev_id)
     if rev["run_id"] != run_id:
         raise NotFound("Revision does not belong to this run.")
+    if revision_id and run["current_revision_id"] != revision_id:
+        raise OrchestrationError(f"Revision {revision_id} is not the active proposed revision (current is {run['current_revision_id']}).")
     if rev["status"] != "proposed":
         raise OrchestrationError(f"Revision is {rev['status']}, not proposed.")
+
+    # Immutable content digest verification
+    import hashlib
+    import json
+    curr_digest = hashlib.sha256(json.dumps(rev["plan"], sort_keys=True).encode("utf-8")).hexdigest()
+    if require_digest and not expected_digest:
+        raise OrchestrationError("Approval rejected: expected_digest is required to verify human approval against displayed plan content (OMITTED_PLAN_DIGEST).")
+    if expected_digest and curr_digest != expected_digest:
+        raise OrchestrationError(f"Plan digest mismatch: expected {expected_digest}, but revision has {curr_digest}.")
+
     # Re-validate against the *current* fleet; never trust a stored validation blindly.
     from app.services.orchestration import model_router
     nodes = model_router.node_inventory()
@@ -111,11 +125,16 @@ def approve_plan(run_id: str, actor: str, rationale: str = "", revision_id: Opti
         aid = new_id("apr")
         c.execute("""INSERT INTO orchestration_approvals (id, run_id, kind, subject_id, requested_action, risk, status,
                      requested_at, decided_by, decided_at, rationale) VALUES (?,?,'plan',?,?,'medium','approved',?,?,?,?)""",
-                  (aid, run_id, rev["id"], f"Execute plan revision {rev['revision_number']}", now_iso(), actor, now_iso(), rationale[:500]))
+                  (aid, run_id, rev["id"], f"Execute plan revision {rev['revision_number']} [digest: {curr_digest[:16]}]", now_iso(), actor, now_iso(), rationale[:500]))
         log_event(c, run, "plan_approved", actor, f"revision {rev['revision_number']}: {rationale[:200]}",
-                  detail={"revision_id": rev["id"]})
+                  detail={"revision_id": rev["id"], "plan_digest": curr_digest})
     return states.transition(run_id, "READY", "plan_approved", actor, f"revision {rev['revision_number']} approved",
                              expected_state="AWAITING_PLAN_APPROVAL")
+
+
+def approve_plan_revision(revision_id: str, actor: str, **kwargs) -> Dict[str, Any]:
+    rev = planner.get_revision(revision_id)
+    return approve_plan(rev["run_id"], actor, revision_id=revision_id, **kwargs)
 
 
 def reject_plan(run_id: str, actor: str, reason: str = "") -> Dict[str, Any]:

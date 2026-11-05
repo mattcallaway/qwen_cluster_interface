@@ -15,6 +15,8 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import get_current_user
+from app.config import settings
+from app.services import operational_health
 from app.services.observatory import alerting, analytics, models, storage
 
 logger = logging.getLogger("qwen_collective.observatory_routes")
@@ -22,6 +24,34 @@ logger = logging.getLogger("qwen_collective.observatory_routes")
 templates = Jinja2Templates(directory="app/templates")
 
 router = APIRouter(tags=["observatory"])
+
+
+# ---------------------------------------------------------------------------
+# Health & Operational Reliability Endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/health")
+@router.get("/api/v1/health")
+def get_liveness_health():
+    """Lightweight operational liveness probe."""
+    return {
+        "status": "healthy",
+        "app": settings.app_name,
+        "version": settings.app_version,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.get("/api/v1/observatory/snapshots/latest")
+def get_latest_health_snapshot():
+    """Cluster Real-Time Health Snapshot matching API Specification Section 6.1."""
+    return operational_health.get_cluster_health_snapshot()
+
+
+@router.get("/api/v1/system/diagnostics")
+def get_system_diagnostics():
+    """Comprehensive operational diagnostics, worker health, queue progress, and stall detection."""
+    return operational_health.get_operational_diagnostics()
 
 
 # ---------------------------------------------------------------------------
@@ -168,6 +198,19 @@ def acknowledge_alert_api(
 def get_system_insights_api(request: Request):
     """Retrieve deterministic evidence-backed system health insights and optimizations."""
     return {"insights": analytics.generate_system_insights()}
+
+
+@router.get("/api/v1/observatory/research")
+def get_research_observatory_api(request: Request):
+    """Retrieve continuous research, stage checkpoint metrics, and persistent knowledge telemetry."""
+    return analytics.get_research_and_knowledge_metrics()
+
+
+@router.get("/api/v1/observatory/artifacts")
+def get_artifacts_observatory_api(request: Request):
+    """Retrieve unified deliverables and artifacts management telemetry."""
+    return analytics.get_deliverables_and_artifacts_metrics()
+
 
 
 @router.get("/api/v1/observatory/export")
