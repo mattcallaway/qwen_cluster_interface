@@ -1825,7 +1825,16 @@ def status(project_id: str) -> Dict[str, Any]:
                         ([f"Planning error: {run['planning_error']}"] if run["planning_error"] and run["state"] == "DRAFT" else []),
             "budget": telemetry.get_budget(run["id"]), "last_activity": last["ts"] if last else run["updated_at"],
             "revisions": planner.list_revisions(run["id"]),
+            "working_memory_cycle_phase": _get_working_memory_cycle_phase(project_id),
             "models": model_router.model_health(), "scheduler_lock_held_by_this_process": acquire_lock_peek()}
+
+
+def _get_working_memory_cycle_phase(project_id: str) -> Optional[str]:
+    try:
+        from app.services.orchestration import working_memory as _wm
+        return _wm.derive_authoritative_project_state(project_id).get("cycle_phase")
+    except Exception:
+        return None
 
 
 def acquire_lock_peek() -> bool:

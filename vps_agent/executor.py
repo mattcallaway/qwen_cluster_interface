@@ -46,7 +46,7 @@ def _inference_error(start_time: float, category: str, message: str, extra: Opti
     }
 
 
-def _run_local_inference(task_id: str, input_data: Dict[str, Any], start_time: float, timeout_seconds: int) -> Dict[str, Any]:
+def _run_local_inference(task_id: str, input_data: Dict[str, Any], start_time: float, timeout_seconds: int, cancel_event: Optional[Any] = None) -> Dict[str, Any]:
     """Run one bounded generation against the node-local Ollama service.
 
     Security: the endpoint must be loopback (Ollama is never exposed off-host), the model must
@@ -89,12 +89,62 @@ def _run_local_inference(task_id: str, input_data: Dict[str, Any], start_time: f
         "model": model, "prompt": prompt, "stream": False,
         "options": {"num_predict": num_predict, "temperature": temperature},
     }).encode()
+    if cancel_event is not None and cancel_event.is_set():
+        return _inference_error(start_time, "lease_cancelled", "Inference aborted before generation due to worker lease loss or cancellation.")
+
     req = urllib.request.Request(base.rstrip("/") + "/api/generate", body, {"Content-Type": "application/json"})
-    try:
-        with opener.open(req, timeout=max(30, min(timeout_seconds, 300))) as r:
-            out = json.loads(r.read())
-    except Exception as e:
-        return _inference_error(start_time, "inference_failed", f"Ollama generation failed: {e}")
+    gen_timeout = max(30, min(timeout_seconds, 300))
+    if cancel_event is None:
+        try:
+            with opener.open(req, timeout=gen_timeout) as r:
+                out = json.loads(r.read())
+        except Exception as e:
+            return _inference_error(start_time, "inference_failed", f"Ollama generation failed: {e}")
+    else:
+        import threading as _threading
+        holder: Dict[str, Any] = {}
+        done_ev = _threading.Event()
+
+        def _do_request() -> None:
+            try:
+                resp_obj = opener.open(req, timeout=gen_timeout)
+                holder["resp"] = resp_obj
+                with resp_obj as r:
+                    raw_bytes = r.read()
+                holder["out"] = json.loads(raw_bytes)
+            except Exception as exc:
+                holder["err"] = exc
+            finally:
+                done_ev.set()
+
+        req_thread = _threading.Thread(target=_do_request, daemon=True)
+        req_thread.start()
+        deadline = time.monotonic() + gen_timeout
+        while not done_ev.wait(timeout=0.02):
+            if cancel_event.is_set():
+                resp_ref = holder.get("resp")
+                if resp_ref is not None:
+                    try:
+                        resp_ref.close()
+                    except Exception:
+                        pass
+                return _inference_error(
+                    start_time,
+                    "lease_cancelled",
+                    "In-flight local inference aborted immediately upon worker lease loss or cancellation.",
+                )
+            if time.monotonic() >= deadline:
+                return _inference_error(start_time, "inference_failed", "Ollama generation timed out.")
+
+        if cancel_event.is_set():
+            return _inference_error(
+                start_time,
+                "lease_cancelled",
+                "In-flight local inference aborted immediately upon worker lease loss or cancellation.",
+            )
+        if "err" in holder:
+            return _inference_error(start_time, "inference_failed", f"Ollama generation failed: {holder['err']}")
+        out = holder.get("out") or {}
 
     text = (out.get("response") or "")[:MAX_OUTPUT_CHARS]
     eval_count = out.get("eval_count", 0)
@@ -663,7 +713,7 @@ def execute_task(
     # Inference: local Ollama (loopback only). Model must already be installed.
     # ---------------------------------------------------------------------------
     if task_type in INFERENCE_OPERATIONS:
-        return _run_local_inference(task_id, input_data, start_time, timeout_seconds)
+        return _run_local_inference(task_id, input_data, start_time, timeout_seconds, cancel_event=cancel_event)
 
     # ---------------------------------------------------------------------------
     # Unsupported Operations (Must Fail Explicitly, Never Report False Success)

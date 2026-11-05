@@ -362,7 +362,7 @@ class VPSWorkerAgent:
         cancel_execution=threading.Event()
         hb_thread = threading.Thread(
             target=_run_lease_heartbeats,
-            args=(self, lease_id, stop_heartbeat,cancel_execution if task.get('task_type') in CLASS_B_OPERATIONS else None),
+            args=(self, lease_id, stop_heartbeat, cancel_execution),
             daemon=True,
         )
         hb_thread.start()
@@ -379,9 +379,10 @@ class VPSWorkerAgent:
                         script_permit=permit,cancel_event=cancel_execution)
             elif task.get('task_type')=='research_fetch':
                 exec_outcome = execute_task(task, timeout_seconds=self.config.default_task_timeout,
-                    allow_web_fetch=self.config.allow_web_fetch)
+                    allow_web_fetch=self.config.allow_web_fetch, cancel_event=cancel_execution)
             else:
-                exec_outcome = execute_task(task, timeout_seconds=self.config.default_task_timeout)
+                exec_outcome = execute_task(task, timeout_seconds=self.config.default_task_timeout,
+                    cancel_event=cancel_execution)
         finally:
             stop_heartbeat.set()
             hb_thread.join(timeout=2.0)

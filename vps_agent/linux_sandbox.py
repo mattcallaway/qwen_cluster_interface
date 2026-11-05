@@ -74,7 +74,8 @@ class LinuxSpec:
             'BindReadOnlyPaths':self.source_root+':/src',
             'TemporaryFileSystem':'/work:rw,nosuid,nodev,size=32M,mode=1777 /tmp:rw,nosuid,nodev,size=8M,mode=1777 /var/tmp:rw,nosuid,nodev,size=8M,mode=1777',
             'WorkingDirectory':'/work','Environment':'PATH=/usr/bin:/bin PYTHONDONTWRITEBYTECODE=1',
-            'StandardInput':'null'}
+            'StandardInput':'null',
+            'ExecStopPost':'-/usr/bin/rm -rf /work /tmp /var/tmp'}
         if self.request_sha256 is not None:
             policy['BindReadOnlyPaths']+=' /var/lib/qwen-sandbox/requests/'+self.request_sha256+'.json:/run/qc-input.json'
         command=['/usr/bin/systemd-run','--system','--quiet','--pipe','--wait','--unit='+self.unit]

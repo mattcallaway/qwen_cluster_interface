@@ -21,7 +21,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from app.database import db_transaction, get_db_connection
-from app.services.orchestration.common import jdump, jload, new_id, now_iso
+from app.services.orchestration.common import jdump, jload, new_id, now_iso, sync_run_state_with_working_memory
 
 logger = logging.getLogger("qc.orchestrator.intake")
 
@@ -855,6 +855,7 @@ def apply_user_steering_update(
                     "UPDATE orchestration_tasks SET state = 'cancelled', updated_at = ? WHERE run_id = ? AND state IN ('pending', 'dispatched', 'blocked')",
                     (now, run_id),
                 )
+            sync_run_state_with_working_memory(project_id, "CANCELLED", actor=actor, reason=reason or "User cancelled assignment.", conn=conn)
             conn.execute(
                 """INSERT INTO project_requirement_revisions (
                     id, project_id, run_id, revision_number, change_type, summary,
@@ -1036,6 +1037,24 @@ def apply_user_steering_update(
                 actor,
                 now,
             ),
+        )
+
+    if affected_task_keys:
+        try:
+            from app.services.orchestration import working_memory as _wm
+            _wm.invalidate_dependency_closure(
+                project_id,
+                changed_task_keys=list(affected_task_keys),
+                reason=reason or f"Invalidated by user steering revision {next_rev}",
+            )
+        except Exception:
+            pass
+    if affected_task_keys or replaced_req_codes or updated_constraints or added_deliverables or resolved_gaps:
+        sync_run_state_with_working_memory(
+            project_id,
+            "RUNNING",
+            actor=actor,
+            reason=reason or f"Requirement revision {next_rev} applied via user steering",
         )
 
     updated_ledger = load_durable_requirement_ledger(project_id)

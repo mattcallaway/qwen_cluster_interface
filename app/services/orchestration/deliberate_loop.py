@@ -41,7 +41,7 @@ from app.services.orchestration import (
     telemetry,
     tool_catalogue,
 )
-from app.services.orchestration.common import get_run, get_run_for_project, jdump, jload, new_id, now_iso
+from app.services.orchestration.common import get_run, get_run_for_project, jdump, jload, new_id, now_iso, sync_run_state_with_working_memory
 
 logger = logging.getLogger("qc.orchestrator.deliberate_loop")
 
@@ -2207,6 +2207,7 @@ def advance_deliberate_project(
             contradictions=conflict_info["conflicts"],
             next_action={"action": "clarify_material_gaps", "gaps": conflict_info["material_gaps"]},
         )
+        sync_run_state_with_working_memory(project_id, "AWAITING_CLARIFICATION", actor="orchestrator", reason="Clarification required")
         clarify_stats = copy.deepcopy(empty_stats)
         clarify_stats["action_origin_counts"]["controller_policy"] = 1
         return {
@@ -2240,6 +2241,7 @@ def advance_deliberate_project(
             contradictions=[],
             next_action={"action": "clarify_material_gaps", "gaps": [gap_msg]},
         )
+        sync_run_state_with_working_memory(project_id, "AWAITING_CLARIFICATION", actor="orchestrator", reason="Clarification required")
         clarify_stats = copy.deepcopy(empty_stats)
         clarify_stats["action_origin_counts"]["controller_policy"] = 1
         return {
@@ -2265,6 +2267,7 @@ def advance_deliberate_project(
             contradictions=[],
             next_action={"action": "clarify_material_gaps", "gaps": [gap_msg]},
         )
+        sync_run_state_with_working_memory(project_id, "AWAITING_CLARIFICATION", actor="orchestrator", reason="Clarification required")
         clarify_stats = copy.deepcopy(empty_stats)
         clarify_stats["action_origin_counts"]["controller_policy"] = 1
         return {
@@ -3643,6 +3646,22 @@ def advance_deliberate_project(
         tool_selection_stats["model_tool_selection_accuracy"] = "not_evaluated"
 
     tool_selection_stats["tool_selection_accuracy"] = tool_selection_stats["model_tool_selection_accuracy"]
+
+    phase_to_run_state = {
+        "completed": "COMPLETED",
+        "blocked": "BLOCKED",
+        "clarify": "AWAITING_CLARIFICATION",
+        "execute": "RUNNING",
+        "verify": "RUNNING",
+    }
+    target_run_state = phase_to_run_state.get(final_phase)
+    if target_run_state:
+        sync_run_state_with_working_memory(
+            project_id,
+            target_run_state,
+            actor="orchestrator",
+            reason=f"Deliberate coordinator cycle reached phase '{final_phase}'",
+        )
 
     return {
         "project_id": project_id,

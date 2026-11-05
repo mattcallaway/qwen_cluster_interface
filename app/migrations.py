@@ -2533,6 +2533,29 @@ MIGRATIONS: List[Migration] = [
     (21, "live operational working memory, task contracts, epistemic items, checkpoints, and publication journal", _M21),
     (22, "authoritative cleanup lifecycle, verification receipts, and atomic publication fencing", _M22),
     (23, "generalized coordinator persisted action contract fields and checkpoint references", _M23),
+    (24, "append-only software review items and triggers", [
+        """
+        CREATE TABLE IF NOT EXISTS software_review_items (
+            project_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            item_id TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY(project_id, run_id, kind, item_id)
+        );
+        """,
+        """
+        CREATE TRIGGER IF NOT EXISTS software_review_no_update
+        BEFORE UPDATE ON software_review_items
+        BEGIN SELECT RAISE(ABORT, 'software reviews are append-only'); END;
+        """,
+        """
+        CREATE TRIGGER IF NOT EXISTS software_review_no_delete
+        BEFORE DELETE ON software_review_items
+        BEGIN SELECT RAISE(ABORT, 'software reviews are append-only'); END;
+        """,
+    ]),
 ]
 
 

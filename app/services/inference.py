@@ -108,6 +108,9 @@ def _get_default_paged_kv_metrics(enabled: bool, status: str, error: Optional[st
         "free_physical_blocks": 0,
         "active_sequences": 0,
         "verified_reuse_authorized": False,
+        "integration_mode": "telemetry_only_http_sidecar",
+        "external_http_runtime_kv_reuse_supported": False,
+        "in_process_pytorch_kv_reuse_supported": True,
     }
 
 
@@ -122,6 +125,9 @@ def get_paged_kv_metrics() -> Dict[str, Any]:
         metrics["enabled"] = True
         metrics["status"] = "active"
         metrics["verified_reuse_authorized"] = False
+        metrics["integration_mode"] = "telemetry_only_http_sidecar"
+        metrics["external_http_runtime_kv_reuse_supported"] = False
+        metrics["in_process_pytorch_kv_reuse_supported"] = True
         return metrics
     except PagedKVCacheConfigurationError as e:
         return _get_default_paged_kv_metrics(True, "unavailable", str(e))

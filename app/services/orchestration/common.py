@@ -115,3 +115,60 @@ def list_events(project_id: str, after_id: int = 0, limit: int = 200) -> List[Di
         return out
     finally:
         c.close()
+
+
+def sync_run_state_with_working_memory(
+    project_id: str,
+    target_state: str,
+    *,
+    actor: str = 'orchestrator',
+    reason: str = '',
+    conn: Optional[sqlite3.Connection] = None,
+) -> Optional[Dict[str, Any]]:
+    """Synchronize orchestration_runs.state with authoritative working-memory cycle phase transitions."""
+    def _sync(c: sqlite3.Connection) -> Optional[Dict[str, Any]]:
+        row = c.execute('SELECT * FROM orchestration_runs WHERE project_id = ?', (project_id,)).fetchone()
+        if not row:
+            return None
+        run = dict(row)
+        old_state = run['state']
+        if old_state == target_state:
+            return run
+        now = now_iso()
+        sets = ['state = ?', 'version = version + 1', 'updated_at = ?']
+        params: List[Any] = [target_state, now]
+        if target_state == 'PAUSED':
+            sets.append('resume_state = ?')
+            params.append(old_state if old_state in ('RUNNING', 'READY', 'EVALUATING') else 'RUNNING')
+        elif target_state == 'COMPLETED':
+            sets.append('completed_at = ?')
+            params.append(now)
+        elif target_state == 'RUNNING':
+            if not run.get('started_at'):
+                sets.append('started_at = ?')
+                params.append(now)
+            if old_state == 'COMPLETED':
+                sets.append('completed_at = NULL')
+        elif target_state == 'BLOCKED' and reason:
+            sets.append('block_reason = ?')
+            params.append(reason[:500])
+        params.append(run['id'])
+        c.execute(f"UPDATE orchestration_runs SET {', '.join(sets)} WHERE id = ?", params)
+        log_event(
+            c, run, f'working_memory_sync_{target_state.lower()}', actor,
+            reason or f'Synchronized run state to {target_state}',
+            previous_state=old_state, new_state=target_state,
+        )
+        return get_run(run['id'], c)
+
+    if conn is not None:
+        return _sync(conn)
+    with db_transaction() as c:
+        res = _sync(c)
+    if res and target_state in ('COMPLETED', 'CANCELLED'):
+        try:
+            from app.services.orchestration import states
+            states.sync_project_status(res, actor, reason)
+        except Exception:
+            pass
+    return res

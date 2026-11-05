@@ -201,6 +201,7 @@ def get_active_pipeline_topologies() -> List[Dict[str, Any]]:
                 "synthetic_steps_per_sec": 95.09,
                 "tokens_per_sec": 95.09,
                 "measurement_scope": "synthetic_activation_transport_only",
+                "multi_host_weight_execution_implemented": False,
                 "protocol": "QCACT1 (HMAC-SHA256)",
                 "status": "synthetic_transport_benchmark",
             },

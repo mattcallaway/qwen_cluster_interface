@@ -31,7 +31,7 @@ from app.services.orchestration import (
     intake as intake_mod,
     telemetry,
 )
-from app.services.orchestration.common import get_run_for_project, jdump, jload, new_id, now_iso
+from app.services.orchestration.common import get_run_for_project, jdump, jload, new_id, now_iso, sync_run_state_with_working_memory
 
 logger = logging.getLogger("qwen_collective.working_memory")
 
@@ -3106,6 +3106,7 @@ def park_project(
         created_by=actor,
     )
     evicted = ws_cache.evict_project(project_id, include_pinned=True)
+    sync_run_state_with_working_memory(project_id, "PAUSED", actor=actor, reason=reason)
     return {
         "ok": True,
         "status": "parked",
@@ -3199,6 +3200,7 @@ def resume_project(
         },
         created_by=actor,
     )
+    sync_run_state_with_working_memory(project_id, "RUNNING", actor=actor, reason="Resumed from durable checkpoint")
     return {
         "ok": True,
         "status": "resumed",
@@ -3344,6 +3346,7 @@ def cancel_task_or_project(
         created_by=actor,
     )
     GLOBAL_WORKING_SET_CACHE.evict_project(project_id, include_pinned=True)
+    sync_run_state_with_working_memory(project_id, "CANCELLED", actor=actor, reason=reason)
     return {
         "ok": True,
         "project_id": project_id,

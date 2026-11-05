@@ -1394,6 +1394,27 @@ policy_path.write_bytes(json.dumps(policy).encode("utf-8"))
 os.chown(policy_path, 0, 0)
 os.chmod(policy_path, 0o644)
 
+# Register a detached, connection-independent systemd transient timer/cleanup unit so that
+# even if the SSH connection drops mid-run, test-host authorization and any /var/tmp/qc_verify_*
+# staging artifacts are cleaned up automatically by systemd on the remote host.
+try:
+    __import__("subprocess").run(
+        [
+            "/usr/bin/systemd-run",
+            "--system",
+            "--quiet",
+            f"--unit=qc-verifier-cleanup-{grant['nonce'][:16]}",
+            "--on-active=120s",
+            "/bin/rm",
+            "-rf",
+            "/etc/qwen-sandbox/test-host.json",
+            "/var/tmp/qc_verify_staging",
+        ],
+        check=False,
+    )
+except Exception:
+    pass
+
 try:
     receipt = run_protected(grant, key)
     res = {"ok": True, "receipt": receipt}
