@@ -24,8 +24,8 @@
   },
   "acceptance_suite": {
     "schema": "qc.capability_acceptance_results.v1",
-    "executed_at": "2026-11-04T11:51:26.562893+00:00",
-    "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
+    "executed_at": "2026-11-05T00:59:28.749219+00:00",
+    "source_commit": "2cc6dab4e9e4e1c539f024cfe062f55f36732e8b",
     "fixture_version": "qc.accept_fixtures.v1",
     "oracle_version": "qc.accept_oracles.v1",
     "task_count": 20,
@@ -35,26 +35,34 @@
       "blocked": 0,
       "incorrect": 0,
       "false_success_count": 0,
-      "unsupported_claims_count": 0,
-      "unauthorized_side_effects_count": 0,
+      "unsupported_claims_count": "not_evaluated",
+      "unsupported_claims_evaluated_tasks": 0,
+      "unauthorized_side_effects_count": "not_evaluated",
+      "unauthorized_side_effects_evaluated_tasks": 0,
+      "autonomous_capability_count": 0,
+      "execution_classification_breakdown": {
+        "unit_or_schema_test": 9,
+        "deterministic_tool_test": 6,
+        "developer_reference_fixture_verification": 5
+      },
       "meets_provisional_target_16_of_20": true
     },
     "supplier_pilot_summary": {
-      "project_id": "prj-0cf19cb5fd594f5eb9d9611e5114a436",
-      "run_id": "run-43864b8af5dd4ef8",
+      "project_id": "prj-d39120c072cc4571936dcbcd7b38bd65",
+      "run_id": "run-3ee952ee83284029",
       "phase1_recommended": "SUP-APEX",
       "phase1_total_cost": "14200.00",
       "steering_result": {
-        "project_id": "prj-0cf19cb5fd594f5eb9d9611e5114a436",
-        "run_id": "run-43864b8af5dd4ef8",
+        "project_id": "prj-d39120c072cc4571936dcbcd7b38bd65",
+        "run_id": "run-3ee952ee83284029",
         "action": "steer",
         "revision_number": 2,
         "invalidated_tasks": [],
         "invalidated_artifacts": [
-          "art-b735e0fc0e704608"
+          "art-accd4c53c5034e86"
         ],
         "preserved_artifacts": [
-          "art-80fec4b25da44610"
+          "art-5a1235b79d994b16"
         ],
         "conflict_check": {
           "has_conflicts": false,
@@ -65,11 +73,11 @@
         },
         "active_requirements_count": 12
       },
-      "resumed_checkpoint_version": 5,
+      "resumed_checkpoint_version": 4,
       "working_memory_summary": {
         "park_checkpoint_seq": 3,
         "closure_invalidation": {
-          "project_id": "prj-0cf19cb5fd594f5eb9d9611e5114a436",
+          "project_id": "prj-d39120c072cc4571936dcbcd7b38bd65",
           "reason": "Budget ceiling lowered to $13,000.00",
           "invalidated_tasks": [
             "t2_evaluate_constraints",
@@ -79,24 +87,31 @@
             "t1_reconcile_quotes"
           ],
           "invalidated_epistemic_ids": [
-            "epi-dc249aafb5e34b94"
+            "epi-d1ea7dcacf354c05"
           ],
           "invalidated_artifact_ids": [
-            "art-b735e0fc0e704608"
+            "art-accd4c53c5034e86"
           ]
         },
         "resume_result": {
           "ok": true,
           "status": "resumed",
-          "project_id": "prj-0cf19cb5fd594f5eb9d9611e5114a436",
+          "project_id": "prj-d39120c072cc4571936dcbcd7b38bd65",
           "requirement_revision": 2,
           "resumed_from_checkpoint_seq": 3,
           "crash_recovery": {
-            "project_id": "prj-0cf19cb5fd594f5eb9d9611e5114a436",
+            "project_id": "prj-d39120c072cc4571936dcbcd7b38bd65",
+            "reconciled": 0,
+            "rolled_back": 0,
             "reconciled_count": 0,
             "rolled_back_count": 0,
+            "rejected_stale_count": 0,
+            "rejected_unverified_count": 0,
             "reconciled_journal_ids": [],
-            "rolled_back_journal_ids": []
+            "rolled_back_journal_ids": [],
+            "rejected_stale_journal_ids": [],
+            "rejected_stale_revision": [],
+            "rejected_unverified_journal_ids": []
           },
           "preserved_verified_tasks": [
             "t1_reconcile_quotes"
@@ -109,29 +124,29 @@
           "replayed_full_conversation": false,
           "restarted_from_scratch": false,
           "resume_checkpoint": {
-            "checkpoint_id": "wckpt-21912207167b48b7",
-            "project_id": "prj-0cf19cb5fd594f5eb9d9611e5114a436",
+            "checkpoint_id": "wckpt-aeba966ee3c8445e",
+            "project_id": "prj-d39120c072cc4571936dcbcd7b38bd65",
             "checkpoint_seq": 4,
             "boundary_type": "resume",
             "requirement_revision": 2,
-            "state_revision": 6,
+            "state_revision": 5,
             "completed_task_keys": [
               "t1_reconcile_quotes"
             ],
             "verified_artifact_versions": [
               {
-                "artifact_id": "art-80fec4b25da44610",
+                "artifact_id": "art-5a1235b79d994b16",
                 "filename": "quote_reconciliation_ledger.json",
                 "sha256": "61f17c90301a06697b8d77f24087c40503167b4a1de5e9638aaf09426265aead",
                 "version": 1
               }
             ],
-            "created_at": "2026-11-04T11:51:02.945022+00:00"
+            "created_at": "2026-11-05T00:59:26.872997+00:00"
           }
         },
         "integration_check": {
           "schema": "qc.project_task_integration_check.v1",
-          "project_id": "prj-0cf19cb5fd594f5eb9d9611e5114a436",
+          "project_id": "prj-d39120c072cc4571936dcbcd7b38bd65",
           "requirement_revision": 2,
           "integration_verified": true,
           "status": "verified_for_scope",
@@ -144,12 +159,12 @@
       },
       "phase2_recommended": "SUP-BEACON",
       "phase2_total_cost": "12150.00",
-      "preserved_quote_artifact_id": "art-80fec4b25da44610",
-      "invalidated_phase1_artifact_id": "art-b735e0fc0e704608",
+      "preserved_quote_artifact_id": "art-5a1235b79d994b16",
+      "invalidated_phase1_artifact_id": "art-accd4c53c5034e86",
       "final_artifacts": [
-        "art-80fec4b25da44610",
-        "art-14ac552775e34d0b",
-        "art-16ff5ac2dafe4932"
+        "art-5a1235b79d994b16",
+        "art-f584033882eb4621",
+        "art-3a042ab1e2f54b0b"
       ],
       "infeasible_variant": {
         "status": "blocked",
@@ -157,13 +172,11 @@
         "recommended_option": null,
         "blocker": "INFEASIBLE_CONSTRAINTS: 0 of 3 evaluated options satisfy all hard constraints. SUP-APEX: exceeds_max_budget ($14200.00 > ceiling $10000.00, over by $4200.00) | SUP-BEACON: exceeds_max_budget ($12150.00 > ceiling $10000.00, over by $2150.00) | SUP-CREST: exceeds_max_budget ($10900.00 > ceiling $10000.00, over by $900.00); missing_required_capabilities (iso27001); missing_required_dependencies (dep_api_v2)"
       },
-      "native_lease_ids": [
-        "lease-6ee6c03eb06d4fe0"
-      ],
+      "native_lease_ids": [],
       "model_used": "qwen2.5:3b",
-      "model_calls": 1,
-      "token_usage": 1504,
-      "elapsed_seconds": 17.089
+      "model_calls": 0,
+      "token_usage": 0,
+      "elapsed_seconds": 1.074
     },
     "tasks": [
       {
@@ -173,12 +186,21 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
-        "model_identity": "qwen2.5:3b",
+        "source_commit": "2cc6dab4e9e4e1c539f024cfe062f55f36732e8b",
+        "model_identity": "none (no model call)",
         "fixture_version": "qc.accept_fixtures.v1",
-        "native_run_task_lease_ids": [
+        "producing_actor": "unit_or_schema_harness",
+        "execution_classification": "unit_or_schema_test",
+        "counts_as_autonomous_capability": false,
+        "actual_execution_chain": [
           "controller:accept-01:intake-gap-check"
         ],
+        "tool_choices_and_arguments": [],
+        "native_worker_lease_ids": [],
+        "controller_or_tool_trace_ids": [
+          "controller:accept-01:intake-gap-check"
+        ],
+        "native_run_task_lease_ids": [],
         "artifact_versions": [
           {
             "artifact": "requirement_ledger_v1",
@@ -200,8 +222,8 @@
         "token_usage": 0,
         "user_interventions": 1,
         "final_status": "correct",
-        "unsupported_claims": 0,
-        "unauthorized_side_effects": 0
+        "unsupported_claims": "not_evaluated",
+        "unauthorized_side_effects": "not_evaluated"
       },
       {
         "id": "accept-02",
@@ -210,23 +232,32 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
-        "model_identity": "qwen2.5:3b",
+        "source_commit": "2cc6dab4e9e4e1c539f024cfe062f55f36732e8b",
+        "model_identity": "none (no model call)",
         "fixture_version": "qc.accept_fixtures.v1",
-        "native_run_task_lease_ids": [
-          "lease-6ee6c03eb06d4fe0"
+        "producing_actor": "unit_or_schema_harness",
+        "execution_classification": "unit_or_schema_test",
+        "counts_as_autonomous_capability": false,
+        "actual_execution_chain": [
+          "native:pilot-lease"
         ],
+        "tool_choices_and_arguments": [],
+        "native_worker_lease_ids": [],
+        "controller_or_tool_trace_ids": [
+          "native:pilot-lease"
+        ],
+        "native_run_task_lease_ids": [],
         "artifact_versions": [
           {
-            "artifact_id": "art-80fec4b25da44610",
+            "artifact_id": "art-5a1235b79d994b16",
             "version": 2
           },
           {
-            "artifact_id": "art-14ac552775e34d0b",
+            "artifact_id": "art-f584033882eb4621",
             "version": 2
           },
           {
-            "artifact_id": "art-16ff5ac2dafe4932",
+            "artifact_id": "art-3a042ab1e2f54b0b",
             "version": 2
           }
         ],
@@ -244,13 +275,13 @@
             "passed": true
           }
         ],
-        "elapsed_seconds": 17.089,
-        "model_calls": 1,
-        "token_usage": 1504,
+        "elapsed_seconds": 1.074,
+        "model_calls": 0,
+        "token_usage": 0,
         "user_interventions": 1,
         "final_status": "correct",
-        "unsupported_claims": 0,
-        "unauthorized_side_effects": 0
+        "unsupported_claims": "not_evaluated",
+        "unauthorized_side_effects": "not_evaluated"
       },
       {
         "id": "accept-03",
@@ -259,12 +290,21 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
-        "model_identity": "qwen2.5:1.5b",
+        "source_commit": "2cc6dab4e9e4e1c539f024cfe062f55f36732e8b",
+        "model_identity": "none (no model call)",
         "fixture_version": "qc.accept_fixtures.v1",
-        "native_run_task_lease_ids": [
-          "lease-5401428a27574804"
+        "producing_actor": "unit_or_schema_harness",
+        "execution_classification": "unit_or_schema_test",
+        "counts_as_autonomous_capability": false,
+        "actual_execution_chain": [
+          "controller:accept-03"
         ],
+        "tool_choices_and_arguments": [],
+        "native_worker_lease_ids": [],
+        "controller_or_tool_trace_ids": [
+          "controller:accept-03"
+        ],
+        "native_run_task_lease_ids": [],
         "artifact_versions": [],
         "independent_check_results": [
           {
@@ -276,13 +316,13 @@
             "passed": true
           }
         ],
-        "elapsed_seconds": 5.96,
-        "model_calls": 1,
-        "token_usage": 251,
+        "elapsed_seconds": 0.0,
+        "model_calls": 0,
+        "token_usage": 0,
         "user_interventions": 0,
         "final_status": "correct",
-        "unsupported_claims": 0,
-        "unauthorized_side_effects": 0
+        "unsupported_claims": "not_evaluated",
+        "unauthorized_side_effects": "not_evaluated"
       },
       {
         "id": "accept-04",
@@ -291,12 +331,21 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
-        "model_identity": "qwen2.5:3b",
+        "source_commit": "2cc6dab4e9e4e1c539f024cfe062f55f36732e8b",
+        "model_identity": "none (no model call)",
         "fixture_version": "qc.accept_fixtures.v1",
-        "native_run_task_lease_ids": [
-          "run:run-aa1091219d384407"
+        "producing_actor": "unit_or_schema_harness",
+        "execution_classification": "unit_or_schema_test",
+        "counts_as_autonomous_capability": false,
+        "actual_execution_chain": [
+          "run:run-f0eb06fb4de04abd"
         ],
+        "tool_choices_and_arguments": [],
+        "native_worker_lease_ids": [],
+        "controller_or_tool_trace_ids": [
+          "run:run-f0eb06fb4de04abd"
+        ],
+        "native_run_task_lease_ids": [],
         "artifact_versions": [
           {
             "checkpoint_version": 1
@@ -316,13 +365,13 @@
             "passed": true
           }
         ],
-        "elapsed_seconds": 0.113,
+        "elapsed_seconds": 0.119,
         "model_calls": 0,
         "token_usage": 0,
         "user_interventions": 2,
         "final_status": "correct",
-        "unsupported_claims": 0,
-        "unauthorized_side_effects": 0
+        "unsupported_claims": "not_evaluated",
+        "unauthorized_side_effects": "not_evaluated"
       },
       {
         "id": "accept-05",
@@ -331,15 +380,24 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
-        "model_identity": "qwen2.5:3b",
+        "source_commit": "2cc6dab4e9e4e1c539f024cfe062f55f36732e8b",
+        "model_identity": "none (no model call)",
         "fixture_version": "qc.accept_fixtures.v1",
-        "native_run_task_lease_ids": [
+        "producing_actor": "deterministic_tool",
+        "execution_classification": "deterministic_tool_test",
+        "counts_as_autonomous_capability": false,
+        "actual_execution_chain": [
           "tool:resolve_quote_revisions"
         ],
+        "tool_choices_and_arguments": [],
+        "native_worker_lease_ids": [],
+        "controller_or_tool_trace_ids": [
+          "tool:resolve_quote_revisions"
+        ],
+        "native_run_task_lease_ids": [],
         "artifact_versions": [
           {
-            "artifact_id": "art-80fec4b25da44610",
+            "artifact_id": "art-5a1235b79d994b16",
             "version": 1
           }
         ],
@@ -362,8 +420,8 @@
         "token_usage": 0,
         "user_interventions": 0,
         "final_status": "correct",
-        "unsupported_claims": 0,
-        "unauthorized_side_effects": 0
+        "unsupported_claims": "not_evaluated",
+        "unauthorized_side_effects": "not_evaluated"
       },
       {
         "id": "accept-06",
@@ -372,12 +430,21 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
-        "model_identity": "qwen2.5:3b",
+        "source_commit": "2cc6dab4e9e4e1c539f024cfe062f55f36732e8b",
+        "model_identity": "none (no model call)",
         "fixture_version": "qc.accept_fixtures.v1",
-        "native_run_task_lease_ids": [
+        "producing_actor": "unit_or_schema_harness",
+        "execution_classification": "unit_or_schema_test",
+        "counts_as_autonomous_capability": false,
+        "actual_execution_chain": [
           "evaluator:factual_consistency_check"
         ],
+        "tool_choices_and_arguments": [],
+        "native_worker_lease_ids": [],
+        "controller_or_tool_trace_ids": [
+          "evaluator:factual_consistency_check"
+        ],
+        "native_run_task_lease_ids": [],
         "artifact_versions": [],
         "independent_check_results": [
           {
@@ -389,13 +456,13 @@
             "passed": true
           }
         ],
-        "elapsed_seconds": 0.001,
+        "elapsed_seconds": 0.0,
         "model_calls": 0,
         "token_usage": 0,
         "user_interventions": 0,
         "final_status": "correct",
-        "unsupported_claims": 0,
-        "unauthorized_side_effects": 0
+        "unsupported_claims": "not_evaluated",
+        "unauthorized_side_effects": "not_evaluated"
       },
       {
         "id": "accept-07",
@@ -404,12 +471,21 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
-        "model_identity": "qwen2.5:3b",
+        "source_commit": "2cc6dab4e9e4e1c539f024cfe062f55f36732e8b",
+        "model_identity": "none (no model call)",
         "fixture_version": "qc.accept_fixtures.v1",
-        "native_run_task_lease_ids": [
+        "producing_actor": "deterministic_tool",
+        "execution_classification": "deterministic_tool_test",
+        "counts_as_autonomous_capability": false,
+        "actual_execution_chain": [
           "tool:inspect_document_or_repo"
         ],
+        "tool_choices_and_arguments": [],
+        "native_worker_lease_ids": [],
+        "controller_or_tool_trace_ids": [
+          "tool:inspect_document_or_repo"
+        ],
+        "native_run_task_lease_ids": [],
         "artifact_versions": [
           {
             "sha256": "58d08b36bb29e6735ab740e1bc3f14d2c66aee2d4b8da33a8356407d67cd0256",
@@ -435,8 +511,8 @@
         "token_usage": 0,
         "user_interventions": 0,
         "final_status": "correct",
-        "unsupported_claims": 0,
-        "unauthorized_side_effects": 0
+        "unsupported_claims": "not_evaluated",
+        "unauthorized_side_effects": "not_evaluated"
       },
       {
         "id": "accept-08",
@@ -445,15 +521,24 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
-        "model_identity": "qwen2.5:3b",
+        "source_commit": "2cc6dab4e9e4e1c539f024cfe062f55f36732e8b",
+        "model_identity": "none (no model call)",
         "fixture_version": "qc.accept_fixtures.v1",
-        "native_run_task_lease_ids": [
+        "producing_actor": "developer_reference_fixture",
+        "execution_classification": "developer_reference_fixture_verification",
+        "counts_as_autonomous_capability": false,
+        "actual_execution_chain": [
           "controller:sourced_comparison"
         ],
+        "tool_choices_and_arguments": [],
+        "native_worker_lease_ids": [],
+        "controller_or_tool_trace_ids": [
+          "controller:sourced_comparison"
+        ],
+        "native_run_task_lease_ids": [],
         "artifact_versions": [
           {
-            "artifact_id": "art-1dbe467d944d4824",
+            "artifact_id": "art-afd113698a7544d5",
             "version": 1
           }
         ],
@@ -467,13 +552,13 @@
             "passed": true
           }
         ],
-        "elapsed_seconds": 0.057,
+        "elapsed_seconds": 0.066,
         "model_calls": 0,
         "token_usage": 0,
         "user_interventions": 0,
         "final_status": "correct",
-        "unsupported_claims": 0,
-        "unauthorized_side_effects": 0
+        "unsupported_claims": "not_evaluated",
+        "unauthorized_side_effects": "not_evaluated"
       },
       {
         "id": "accept-09",
@@ -482,12 +567,21 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
-        "model_identity": "qwen2.5:3b",
+        "source_commit": "2cc6dab4e9e4e1c539f024cfe062f55f36732e8b",
+        "model_identity": "none (no model call)",
         "fixture_version": "qc.accept_fixtures.v1",
-        "native_run_task_lease_ids": [
+        "producing_actor": "deterministic_tool",
+        "execution_classification": "deterministic_tool_test",
+        "counts_as_autonomous_capability": false,
+        "actual_execution_chain": [
           "tool:decimal_calculate_and_reconcile"
         ],
+        "tool_choices_and_arguments": [],
+        "native_worker_lease_ids": [],
+        "controller_or_tool_trace_ids": [
+          "tool:decimal_calculate_and_reconcile"
+        ],
+        "native_run_task_lease_ids": [],
         "artifact_versions": [],
         "independent_check_results": [
           {
@@ -504,8 +598,8 @@
         "token_usage": 0,
         "user_interventions": 0,
         "final_status": "correct",
-        "unsupported_claims": 0,
-        "unauthorized_side_effects": 0
+        "unsupported_claims": "not_evaluated",
+        "unauthorized_side_effects": "not_evaluated"
       },
       {
         "id": "accept-10",
@@ -514,23 +608,32 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
-        "model_identity": "qwen2.5:3b",
+        "source_commit": "2cc6dab4e9e4e1c539f024cfe062f55f36732e8b",
+        "model_identity": "none (no model call)",
         "fixture_version": "qc.accept_fixtures.v1",
-        "native_run_task_lease_ids": [
-          "lease-6ee6c03eb06d4fe0"
+        "producing_actor": "deterministic_tool",
+        "execution_classification": "deterministic_tool_test",
+        "counts_as_autonomous_capability": false,
+        "actual_execution_chain": [
+          "tool:compare_options_against_constraints"
         ],
+        "tool_choices_and_arguments": [],
+        "native_worker_lease_ids": [],
+        "controller_or_tool_trace_ids": [
+          "tool:compare_options_against_constraints"
+        ],
+        "native_run_task_lease_ids": [],
         "artifact_versions": [
           {
-            "artifact_id": "art-80fec4b25da44610",
+            "artifact_id": "art-5a1235b79d994b16",
             "version": 2
           },
           {
-            "artifact_id": "art-14ac552775e34d0b",
+            "artifact_id": "art-f584033882eb4621",
             "version": 2
           },
           {
-            "artifact_id": "art-16ff5ac2dafe4932",
+            "artifact_id": "art-3a042ab1e2f54b0b",
             "version": 2
           }
         ],
@@ -549,8 +652,8 @@
         "token_usage": 0,
         "user_interventions": 0,
         "final_status": "correct",
-        "unsupported_claims": 0,
-        "unauthorized_side_effects": 0
+        "unsupported_claims": "not_evaluated",
+        "unauthorized_side_effects": "not_evaluated"
       },
       {
         "id": "accept-11",
@@ -559,12 +662,21 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
-        "model_identity": "qwen2.5:3b",
+        "source_commit": "2cc6dab4e9e4e1c539f024cfe062f55f36732e8b",
+        "model_identity": "none (no model call)",
         "fixture_version": "qc.accept_fixtures.v1",
-        "native_run_task_lease_ids": [
+        "producing_actor": "deterministic_tool",
+        "execution_classification": "deterministic_tool_test",
+        "counts_as_autonomous_capability": false,
+        "actual_execution_chain": [
           "tool:compare_options_infeasible"
         ],
+        "tool_choices_and_arguments": [],
+        "native_worker_lease_ids": [],
+        "controller_or_tool_trace_ids": [
+          "tool:compare_options_infeasible"
+        ],
+        "native_run_task_lease_ids": [],
         "artifact_versions": [],
         "independent_check_results": [
           {
@@ -585,8 +697,8 @@
         "token_usage": 0,
         "user_interventions": 0,
         "final_status": "correct",
-        "unsupported_claims": 0,
-        "unauthorized_side_effects": 0
+        "unsupported_claims": "not_evaluated",
+        "unauthorized_side_effects": "not_evaluated"
       },
       {
         "id": "accept-12",
@@ -595,12 +707,21 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
-        "model_identity": "qwen2.5:3b",
+        "source_commit": "2cc6dab4e9e4e1c539f024cfe062f55f36732e8b",
+        "model_identity": "none (no model call)",
         "fixture_version": "qc.accept_fixtures.v1",
-        "native_run_task_lease_ids": [
+        "producing_actor": "deterministic_tool",
+        "execution_classification": "deterministic_tool_test",
+        "counts_as_autonomous_capability": false,
+        "actual_execution_chain": [
           "tool:analyze_structured_dataset"
         ],
+        "tool_choices_and_arguments": [],
+        "native_worker_lease_ids": [],
+        "controller_or_tool_trace_ids": [
+          "tool:analyze_structured_dataset"
+        ],
+        "native_run_task_lease_ids": [],
         "artifact_versions": [],
         "independent_check_results": [
           {
@@ -616,13 +737,13 @@
             "passed": true
           }
         ],
-        "elapsed_seconds": 0.001,
+        "elapsed_seconds": 0.0,
         "model_calls": 0,
         "token_usage": 0,
         "user_interventions": 0,
         "final_status": "correct",
-        "unsupported_claims": 0,
-        "unauthorized_side_effects": 0
+        "unsupported_claims": "not_evaluated",
+        "unauthorized_side_effects": "not_evaluated"
       },
       {
         "id": "accept-13",
@@ -631,12 +752,21 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
-        "model_identity": "qwen2.5:3b",
+        "source_commit": "2cc6dab4e9e4e1c539f024cfe062f55f36732e8b",
+        "model_identity": "none (no model call)",
         "fixture_version": "qc.accept_fixtures.v1",
-        "native_run_task_lease_ids": [
+        "producing_actor": "developer_reference_fixture",
+        "execution_classification": "developer_reference_fixture_verification",
+        "counts_as_autonomous_capability": false,
+        "actual_execution_chain": [
           "tool:execute_and_test_code:accept-13"
         ],
+        "tool_choices_and_arguments": [],
+        "native_worker_lease_ids": [],
+        "controller_or_tool_trace_ids": [
+          "tool:execute_and_test_code:accept-13"
+        ],
+        "native_run_task_lease_ids": [],
         "artifact_versions": [
           {
             "filename": "solution.py",
@@ -649,13 +779,13 @@
             "passed": true
           }
         ],
-        "elapsed_seconds": 0.224,
+        "elapsed_seconds": 0.23,
         "model_calls": 0,
         "token_usage": 0,
         "user_interventions": 0,
         "final_status": "correct",
-        "unsupported_claims": 0,
-        "unauthorized_side_effects": 0
+        "unsupported_claims": "not_evaluated",
+        "unauthorized_side_effects": "not_evaluated"
       },
       {
         "id": "accept-14",
@@ -664,12 +794,21 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
-        "model_identity": "qwen2.5:3b",
+        "source_commit": "2cc6dab4e9e4e1c539f024cfe062f55f36732e8b",
+        "model_identity": "none (no model call)",
         "fixture_version": "qc.accept_fixtures.v1",
-        "native_run_task_lease_ids": [
+        "producing_actor": "developer_reference_fixture",
+        "execution_classification": "developer_reference_fixture_verification",
+        "counts_as_autonomous_capability": false,
+        "actual_execution_chain": [
           "tool:execute_and_test_code:accept-14"
         ],
+        "tool_choices_and_arguments": [],
+        "native_worker_lease_ids": [],
+        "controller_or_tool_trace_ids": [
+          "tool:execute_and_test_code:accept-14"
+        ],
+        "native_run_task_lease_ids": [],
         "artifact_versions": [
           {
             "filename": "quota_allocator.py",
@@ -686,13 +825,13 @@
             "passed": true
           }
         ],
-        "elapsed_seconds": 0.406,
+        "elapsed_seconds": 0.394,
         "model_calls": 0,
         "token_usage": 0,
         "user_interventions": 0,
         "final_status": "correct",
-        "unsupported_claims": 0,
-        "unauthorized_side_effects": 0
+        "unsupported_claims": "not_evaluated",
+        "unauthorized_side_effects": "not_evaluated"
       },
       {
         "id": "accept-15",
@@ -701,15 +840,24 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
-        "model_identity": "qwen2.5:3b",
+        "source_commit": "2cc6dab4e9e4e1c539f024cfe062f55f36732e8b",
+        "model_identity": "none (no model call)",
         "fixture_version": "qc.accept_fixtures.v1",
-        "native_run_task_lease_ids": [
+        "producing_actor": "developer_reference_fixture",
+        "execution_classification": "developer_reference_fixture_verification",
+        "counts_as_autonomous_capability": false,
+        "actual_execution_chain": [
           "tool:verify_web_application_behavior"
         ],
+        "tool_choices_and_arguments": [],
+        "native_worker_lease_ids": [],
+        "controller_or_tool_trace_ids": [
+          "tool:verify_web_application_behavior"
+        ],
+        "native_run_task_lease_ids": [],
         "artifact_versions": [
           {
-            "artifact_id": "art-fa32a455ac74458f",
+            "artifact_id": "art-8a6773ba9cdf493f",
             "version": 1
           }
         ],
@@ -719,13 +867,13 @@
             "passed": true
           }
         ],
-        "elapsed_seconds": 0.057,
+        "elapsed_seconds": 0.065,
         "model_calls": 0,
         "token_usage": 0,
         "user_interventions": 0,
         "final_status": "correct",
-        "unsupported_claims": 0,
-        "unauthorized_side_effects": 0
+        "unsupported_claims": "not_evaluated",
+        "unauthorized_side_effects": "not_evaluated"
       },
       {
         "id": "accept-16",
@@ -734,20 +882,29 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
-        "model_identity": "qwen2.5:3b",
+        "source_commit": "2cc6dab4e9e4e1c539f024cfe062f55f36732e8b",
+        "model_identity": "none (no model call)",
         "fixture_version": "qc.accept_fixtures.v1",
-        "native_run_task_lease_ids": [
-          "lease-6ee6c03eb06d4fe0"
+        "producing_actor": "unit_or_schema_harness",
+        "execution_classification": "unit_or_schema_test",
+        "counts_as_autonomous_capability": false,
+        "actual_execution_chain": [
+          "controller:artifact_revision"
         ],
+        "tool_choices_and_arguments": [],
+        "native_worker_lease_ids": [],
+        "controller_or_tool_trace_ids": [
+          "controller:artifact_revision"
+        ],
+        "native_run_task_lease_ids": [],
         "artifact_versions": [
           {
-            "artifact_id": "art-14ac552775e34d0b",
+            "artifact_id": "art-f584033882eb4621",
             "filename": "att2_supplier_recommendation.json",
             "attempt": 2
           },
           {
-            "artifact_id": "art-16ff5ac2dafe4932",
+            "artifact_id": "art-3a042ab1e2f54b0b",
             "filename": "att2_supplier_recommendation.md",
             "attempt": 2
           }
@@ -758,13 +915,13 @@
             "passed": true
           }
         ],
-        "elapsed_seconds": 0.007,
+        "elapsed_seconds": 0.008,
         "model_calls": 0,
         "token_usage": 0,
         "user_interventions": 1,
         "final_status": "correct",
-        "unsupported_claims": 0,
-        "unauthorized_side_effects": 0
+        "unsupported_claims": "not_evaluated",
+        "unauthorized_side_effects": "not_evaluated"
       },
       {
         "id": "accept-17",
@@ -773,23 +930,32 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
-        "model_identity": "qwen2.5:3b",
+        "source_commit": "2cc6dab4e9e4e1c539f024cfe062f55f36732e8b",
+        "model_identity": "none (no model call)",
         "fixture_version": "qc.accept_fixtures.v1",
-        "native_run_task_lease_ids": [
-          "lease-6ee6c03eb06d4fe0"
+        "producing_actor": "unit_or_schema_harness",
+        "execution_classification": "unit_or_schema_test",
+        "counts_as_autonomous_capability": false,
+        "actual_execution_chain": [
+          "native:supplier_pilot"
         ],
+        "tool_choices_and_arguments": [],
+        "native_worker_lease_ids": [],
+        "controller_or_tool_trace_ids": [
+          "native:supplier_pilot"
+        ],
+        "native_run_task_lease_ids": [],
         "artifact_versions": [
           {
-            "artifact_id": "art-80fec4b25da44610",
+            "artifact_id": "art-5a1235b79d994b16",
             "version": 2
           },
           {
-            "artifact_id": "art-14ac552775e34d0b",
+            "artifact_id": "art-f584033882eb4621",
             "version": 2
           },
           {
-            "artifact_id": "art-16ff5ac2dafe4932",
+            "artifact_id": "art-3a042ab1e2f54b0b",
             "version": 2
           }
         ],
@@ -807,13 +973,13 @@
             "passed": true
           }
         ],
-        "elapsed_seconds": 17.089,
-        "model_calls": 1,
-        "token_usage": 1504,
+        "elapsed_seconds": 1.074,
+        "model_calls": 0,
+        "token_usage": 0,
         "user_interventions": 1,
         "final_status": "correct",
-        "unsupported_claims": 0,
-        "unauthorized_side_effects": 0
+        "unsupported_claims": "not_evaluated",
+        "unauthorized_side_effects": "not_evaluated"
       },
       {
         "id": "accept-18",
@@ -822,15 +988,24 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
-        "model_identity": "qwen2.5:3b",
+        "source_commit": "2cc6dab4e9e4e1c539f024cfe062f55f36732e8b",
+        "model_identity": "none (no model call)",
         "fixture_version": "qc.accept_fixtures.v1",
-        "native_run_task_lease_ids": [
-          "lease-6ee6c03eb06d4fe0"
+        "producing_actor": "unit_or_schema_harness",
+        "execution_classification": "unit_or_schema_test",
+        "counts_as_autonomous_capability": false,
+        "actual_execution_chain": [
+          "controller:resume_after_restart"
         ],
+        "tool_choices_and_arguments": [],
+        "native_worker_lease_ids": [],
+        "controller_or_tool_trace_ids": [
+          "controller:resume_after_restart"
+        ],
+        "native_run_task_lease_ids": [],
         "artifact_versions": [
           {
-            "checkpoint_version": 9
+            "checkpoint_version": 8
           }
         ],
         "independent_check_results": [
@@ -843,13 +1018,13 @@
             "passed": true
           }
         ],
-        "elapsed_seconds": 0.012,
+        "elapsed_seconds": 0.013,
         "model_calls": 0,
         "token_usage": 0,
         "user_interventions": 0,
         "final_status": "correct",
-        "unsupported_claims": 0,
-        "unauthorized_side_effects": 0
+        "unsupported_claims": "not_evaluated",
+        "unauthorized_side_effects": "not_evaluated"
       },
       {
         "id": "accept-19",
@@ -858,13 +1033,23 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
-        "model_identity": "qwen2.5:3b",
+        "source_commit": "2cc6dab4e9e4e1c539f024cfe062f55f36732e8b",
+        "model_identity": "none (no model call)",
         "fixture_version": "qc.accept_fixtures.v1",
-        "native_run_task_lease_ids": [
+        "producing_actor": "developer_reference_fixture",
+        "execution_classification": "developer_reference_fixture_verification",
+        "counts_as_autonomous_capability": false,
+        "actual_execution_chain": [
           "tool:failed_check_repair:v1",
           "tool:failed_check_repair:v2"
         ],
+        "tool_choices_and_arguments": [],
+        "native_worker_lease_ids": [],
+        "controller_or_tool_trace_ids": [
+          "tool:failed_check_repair:v1",
+          "tool:failed_check_repair:v2"
+        ],
+        "native_run_task_lease_ids": [],
         "artifact_versions": [
           {
             "filename": "temp_classifier.py",
@@ -891,13 +1076,13 @@
             "passed": true
           }
         ],
-        "elapsed_seconds": 0.405,
+        "elapsed_seconds": 0.404,
         "model_calls": 0,
         "token_usage": 0,
         "user_interventions": 0,
         "final_status": "correct",
-        "unsupported_claims": 0,
-        "unauthorized_side_effects": 0
+        "unsupported_claims": "not_evaluated",
+        "unauthorized_side_effects": "not_evaluated"
       },
       {
         "id": "accept-20",
@@ -906,15 +1091,24 @@
         "fixture_status": "AUTHORED",
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
-        "source_commit": "d5b533411fcc59fe48c6d959f4eeea476a900aa2",
-        "model_identity": "qwen2.5:3b",
+        "source_commit": "2cc6dab4e9e4e1c539f024cfe062f55f36732e8b",
+        "model_identity": "none (no model call)",
         "fixture_version": "qc.accept_fixtures.v1",
-        "native_run_task_lease_ids": [
-          "run:run-eafa6074679047c7"
+        "producing_actor": "unit_or_schema_harness",
+        "execution_classification": "unit_or_schema_test",
+        "counts_as_autonomous_capability": false,
+        "actual_execution_chain": [
+          "run:run-08bdab8d13394c9c"
         ],
+        "tool_choices_and_arguments": [],
+        "native_worker_lease_ids": [],
+        "controller_or_tool_trace_ids": [
+          "run:run-08bdab8d13394c9c"
+        ],
+        "native_run_task_lease_ids": [],
         "artifact_versions": [
           {
-            "artifact_id": "art-1dafc1743e0441c4",
+            "artifact_id": "art-11e9c0f7f9174bb1",
             "version": 1,
             "status": "verified_for_scope"
           }
@@ -933,13 +1127,13 @@
             "passed": true
           }
         ],
-        "elapsed_seconds": 0.209,
+        "elapsed_seconds": 0.219,
         "model_calls": 0,
         "token_usage": 0,
         "user_interventions": 0,
         "final_status": "correct",
-        "unsupported_claims": 0,
-        "unauthorized_side_effects": 0
+        "unsupported_claims": "not_evaluated",
+        "unauthorized_side_effects": "not_evaluated"
       }
     ]
   },
@@ -990,5 +1184,141 @@
     "passed": 17,
     "failed": 0,
     "combined_regression_suite_16_files_passed": 238
+  },
+  "independent_source_review_repair_summary": {
+    "review_document": "INCREMENT_18_INDEPENDENT_SOURCE_REVIEW.md",
+    "pre_fix_commit_sha": "2cc6dab4e9e4e1c539f024cfe062f55f36732e8b",
+    "pre_fix_failures_evidence_file": "docs/verified-work/evidence/increment18-pre-fix-failures-20261104.json",
+    "regression_test_file": "tests/test_increment18_repair_regressions.py",
+    "findings_repaired": [
+      {
+        "id": "F1",
+        "title": "Native worker helper bypassed enrollment, auth, approval, and leasing",
+        "pre_fix": "FAILED",
+        "post_fix": "PASSED"
+      },
+      {
+        "id": "F2",
+        "title": "Acceptance harness conflated developer reference fixtures with autonomous model execution",
+        "pre_fix": "FAILED",
+        "post_fix": "PASSED"
+      },
+      {
+        "id": "F3",
+        "title": "Self-certified verification in working_memory",
+        "pre_fix": "FAILED",
+        "post_fix": "PASSED"
+      },
+      {
+        "id": "F4",
+        "title": "Park/cancel trusted caller-provided cleanup booleans and permissive defaults",
+        "pre_fix": "FAILED",
+        "post_fix": "PASSED"
+      },
+      {
+        "id": "F5",
+        "title": "Mid-flight steering race between revision check, CAS write, and SQLite commit",
+        "pre_fix": "FAILED",
+        "post_fix": "PASSED"
+      },
+      {
+        "id": "F6",
+        "title": "/api/v1/chat/deliberate echoed message in direct mode and left durable project at intake",
+        "pre_fix": "FAILED",
+        "post_fix": "PASSED"
+      }
+    ]
+  },
+  "section8_live_native_project_e2e": {
+    "steps": {
+      "step_10_authoritative_park_and_cancel_cleanup": {
+        "cancel_after_drain_status": "cancelled",
+        "cancel_cleanup_lifecycle_state": "cleanup_confirmed",
+        "park_after_drain_status": "parked",
+        "park_cleanup_lifecycle_state": "cleanup_confirmed",
+        "passed": true,
+        "refused_while_lease_active_http_status": 409
+      },
+      "step_1_and_2_intake_and_contracts": {
+        "initial_checkpoint": {
+          "boundary_type": "task_boundary",
+          "checkpoint_id": "wckpt-98817b3832424358",
+          "checkpoint_seq": 1,
+          "created_at": "2026-11-05T00:54:50.562310+00:00",
+          "requirement_revision": 1,
+          "state_revision": 1
+        },
+        "passed": true,
+        "project_id": "prj-cb47315b75904627b26c0571598e6ba7",
+        "requirement_revision": 1,
+        "task_contracts": [
+          "t1_reconcile_quotes",
+          "t2_evaluate_constraints",
+          "t3_synthesize_recommendation"
+        ]
+      },
+      "step_3_and_4_tools_and_live_worker_lease": {
+        "comparison_artifact_id": "art-2fd8a316ca9b41b3",
+        "native_worker_lease_id": "lease_bbc432c58b07",
+        "passed": true,
+        "phase1_recommended_supplier": "SUP-HELIOS",
+        "phase1_total_cost": "14200.00",
+        "quote_artifact_id": "art-5b95e34d9ce147fb",
+        "report_artifact_id": "art-6f12ada68dfc4f3c",
+        "worker_id": "dev-live-worker-01"
+      },
+      "step_5_and_6_steering_and_atomic_fence": {
+        "new_requirement_revision": 2,
+        "passed": true,
+        "stale_commit_rejected": true,
+        "t1_status": "verified",
+        "t2_status": "stale",
+        "t3_status": "stale",
+        "upstream_quote_artifact_valid": true
+      },
+      "step_7_controller_cold_restart_and_resume": {
+        "next_task_key": "t2_evaluate_constraints",
+        "passed": true,
+        "preserved_verified_tasks": [
+          "t1_reconcile_quotes"
+        ],
+        "replayed_full_conversation": false,
+        "restarted_from_scratch": false
+      },
+      "step_8_controlled_failure_and_bounded_repair": {
+        "native_worker_lease_ids": [
+          "lease_1faf45cbcb50",
+          "lease_f07a60043cb1"
+        ],
+        "passed": true,
+        "phase2_recommended_supplier": "SUP-ORION",
+        "phase2_total_cost": "11890.00",
+        "re_executed_tasks": [
+          "t2_evaluate_constraints",
+          "t3_synthesize_recommendation"
+        ],
+        "repair_event": {
+          "attempt_number": 1,
+          "failed_check_names": [
+            "cites_recommended_supplier"
+          ],
+          "failure_category": "missing_or_contradicted_evidence",
+          "lease_id": "lease_1faf45cbcb50",
+          "oracle_exposure_prevented": true,
+          "recommended_escalation_step": 4,
+          "repair_instruction": "Address the failed validation checks while preserving all mandatory user constraints.",
+          "sanitized_diagnostics": [
+            "cites_recommended_supplier: Must cite the feasible recommended supplier ID from <evidence_data>"
+          ],
+          "schema": "qc.repair_plan.v1",
+          "task_id": "task-730b602c"
+        }
+      },
+      "step_9_infeasible_constraint_blocked": {
+        "blocker": "INFEASIBLE_CONSTRAINTS: 0 of 3 evaluated options satisfy all hard constraints. SUP-HELIOS: exceeds_max_budget ($14200.00 > ceiling $9500.00, over by $4700.00) | SUP-ORION: exceeds_max_budget ($11890.00 > ceiling $9500.00, over by $2390.00) | SUP-VANGUARD: exceeds_max_budget ($10150.00 > ceiling $9500.00, over by $650.00); missing_required_capabilities (iso27001); missing_required_dependencies (dep_api_v2)",
+        "final_cycle_phase": "blocked",
+        "passed": true
+      }
+    }
   }
 }

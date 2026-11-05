@@ -61,6 +61,205 @@ VALID_VERIFICATION_STATUSES: Tuple[str, ...] = (
 
 MAX_INTERMEDIATE_BUFFER_BYTES = 262144  # 256 KiB bounded intermediate result buffer
 
+CLEANUP_LIFECYCLE_STATES: Tuple[str, ...] = (
+    "none",
+    "requested",
+    "dispatch_stopped",
+    "draining",
+    "cleanup_confirmed",
+    "cleanup_unknown",
+    "cleanup_failed",
+)
+
+_PROCESS_REGISTRY_LOCK = threading.RLock()
+_ACTIVE_PROCESS_REGISTRY: Dict[Tuple[str, str], Dict[str, Any]] = {}
+
+
+def _controller_verification_key() -> bytes:
+    from app.config import settings
+    base_secret = str(getattr(settings, "secret_key", "qc-default-controller-secret"))
+    return hashlib.sha256(f"qc-trusted-verifier-v1:{base_secret}".encode("utf-8")).digest()
+
+
+def issue_trusted_verification_receipt(
+    *,
+    project_id: str,
+    task_key: str,
+    requirement_revision: int,
+    contract_revision: int,
+    verification_method: str,
+    declared_scope: str,
+    checks_executed: List[Dict[str, Any]],
+    artifact_id: Optional[str] = None,
+    artifact_version: Optional[int] = None,
+    artifact_sha256: Optional[str] = None,
+    verified_status: str = "verified_for_scope",
+) -> Dict[str, Any]:
+    """Issue a controller-signed TrustedVerificationReceipt bound to exact revisions and artifact digest."""
+    import hmac as _hmac
+
+    if not verification_method or not str(verification_method).strip():
+        raise ValueError("verification_method is required for a trusted verification receipt")
+    if not declared_scope or not str(declared_scope).strip():
+        raise ValueError("declared_scope is required for a trusted verification receipt")
+    if not isinstance(checks_executed, list) or len(checks_executed) == 0:
+        raise ValueError("checks_executed must be a non-empty list of executed check results")
+
+    all_passed = all(isinstance(c, dict) and c.get("passed") is True for c in checks_executed)
+    has_conflict = any(isinstance(c, dict) and bool(c.get("conflict")) for c in checks_executed)
+    overall_passed = bool(all_passed and not has_conflict)
+
+    payload = {
+        "schema": "qc.trusted_verification_receipt.v1",
+        "project_id": str(project_id),
+        "task_key": str(task_key),
+        "requirement_revision": int(requirement_revision),
+        "contract_revision": int(contract_revision),
+        "artifact_id": str(artifact_id) if artifact_id else None,
+        "artifact_version": int(artifact_version) if artifact_version is not None else (1 if artifact_id else None),
+        "artifact_sha256": str(artifact_sha256) if artifact_sha256 else None,
+        "verification_method": str(verification_method).strip(),
+        "declared_scope": str(declared_scope).strip(),
+        "checks_executed": checks_executed,
+        "overall_passed": overall_passed,
+        "verified_status": verified_status if overall_passed else "failed",
+        "issued_at": now_iso(),
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    sig = _hmac.new(_controller_verification_key(), canonical, hashlib.sha256).hexdigest()
+    return {**payload, "signature": sig}
+
+
+def verify_trusted_receipt(
+    receipt: Optional[Dict[str, Any]],
+    *,
+    project_id: str,
+    task_key: str,
+    current_requirement_revision: int,
+    current_contract_revision: int,
+    actual_artifact_id: Optional[str] = None,
+    actual_artifact_version: Optional[int] = None,
+    actual_artifact_sha256: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Validate that a verification receipt is controller-signed, non-stale, and matches exact artifact hashes."""
+    import hmac as _hmac
+
+    if not isinstance(receipt, dict):
+        return {"valid": False, "reason": "missing_receipt"}
+    sig = str(receipt.get("signature") or "")
+    if not sig:
+        return {"valid": False, "reason": "unsigned_receipt"}
+
+    unsigned = {k: v for k, v in receipt.items() if k != "signature"}
+    canonical = json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    expected_sig = _hmac.new(_controller_verification_key(), canonical, hashlib.sha256).hexdigest()
+    if not _hmac.compare_digest(sig, expected_sig):
+        return {"valid": False, "reason": "forged_or_tampered_signature"}
+
+    if str(receipt.get("project_id")) != str(project_id):
+        return {"valid": False, "reason": "project_id_mismatch"}
+    if str(receipt.get("task_key")) != str(task_key):
+        return {"valid": False, "reason": "task_key_mismatch"}
+    if int(receipt.get("requirement_revision", -1)) != int(current_requirement_revision):
+        return {
+            "valid": False,
+            "reason": f"stale_requirement_revision:{receipt.get('requirement_revision')}!={current_requirement_revision}",
+        }
+    if int(receipt.get("contract_revision", -1)) != int(current_contract_revision):
+        return {
+            "valid": False,
+            "reason": f"stale_contract_revision:{receipt.get('contract_revision')}!={current_contract_revision}",
+        }
+    if not str(receipt.get("verification_method") or "").strip():
+        return {"valid": False, "reason": "missing_verification_method"}
+    if not str(receipt.get("declared_scope") or "").strip():
+        return {"valid": False, "reason": "missing_declared_scope"}
+
+    checks = receipt.get("checks_executed")
+    if not isinstance(checks, list) or len(checks) == 0:
+        return {"valid": False, "reason": "empty_checks_executed"}
+    if not all(isinstance(c, dict) and c.get("passed") is True and not c.get("conflict") for c in checks):
+        return {"valid": False, "reason": "failed_or_conflicting_checks"}
+    if receipt.get("overall_passed") is not True:
+        return {"valid": False, "reason": "overall_passed_false"}
+
+    if actual_artifact_id or actual_artifact_sha256:
+        if str(receipt.get("artifact_id") or "") != str(actual_artifact_id or ""):
+            return {"valid": False, "reason": "artifact_id_mismatch"}
+        if int(receipt.get("artifact_version") or 0) != int(actual_artifact_version or 1):
+            return {"valid": False, "reason": "artifact_version_mismatch"}
+        if str(receipt.get("artifact_sha256") or "") != str(actual_artifact_sha256 or ""):
+            return {"valid": False, "reason": "artifact_sha256_mismatch"}
+
+    return {
+        "valid": True,
+        "reason": "verified",
+        "verified_status": str(receipt.get("verified_status") or "verified_for_scope"),
+        "verification_method": str(receipt.get("verification_method")),
+        "declared_scope": str(receipt.get("declared_scope")),
+    }
+
+
+def register_active_process(
+    project_id: str,
+    process_id: str,
+    *,
+    task_key: Optional[str] = None,
+    os_pid: Optional[int] = None,
+    description: str = "",
+) -> Dict[str, Any]:
+    """Register an active local subprocess or tool job in the controller process registry."""
+    entry = {
+        "project_id": project_id,
+        "process_id": process_id,
+        "task_key": task_key,
+        "os_pid": os_pid,
+        "description": description,
+        "terminated_confirmed": False,
+        "started_at": now_iso(),
+        "terminated_at": None,
+    }
+    with _PROCESS_REGISTRY_LOCK:
+        _ACTIVE_PROCESS_REGISTRY[(project_id, process_id)] = entry
+    return dict(entry)
+
+
+def confirm_process_terminated(project_id: str, process_id: str) -> bool:
+    """Record authoritative confirmation that a local process has terminated."""
+    with _PROCESS_REGISTRY_LOCK:
+        entry = _ACTIVE_PROCESS_REGISTRY.get((project_id, process_id))
+        if not entry:
+            return False
+        entry["terminated_confirmed"] = True
+        entry["terminated_at"] = now_iso()
+        return True
+
+
+def clear_process_registry(project_id: Optional[str] = None) -> None:
+    with _PROCESS_REGISTRY_LOCK:
+        if project_id is None:
+            _ACTIVE_PROCESS_REGISTRY.clear()
+        else:
+            for k in list(_ACTIVE_PROCESS_REGISTRY.keys()):
+                if k[0] == project_id:
+                    del _ACTIVE_PROCESS_REGISTRY[k]
+
+
+def is_project_dispatch_stopped(project_id: str) -> bool:
+    """Return True if project is currently stopping dispatch for parking or cancellation."""
+    conn = get_db_connection()
+    try:
+        row = conn.execute(
+            "SELECT dispatch_stopped, cleanup_lifecycle_state FROM project_memory_state WHERE project_id = ?",
+            (project_id,),
+        ).fetchone()
+        if not row:
+            return False
+        d = dict(row)
+        return bool(int(d.get("dispatch_stopped") or 0) == 1)
+    finally:
+        conn.close()
+
 
 class WorkingMemoryError(Exception):
     """Base error for live operational working-memory violations."""
@@ -346,6 +545,7 @@ def record_epistemic_item(
     qualifiers: Optional[Dict[str, Any]] = None,
     idempotency_key: Optional[str] = None,
     source_origin: str = "controller",
+    verification_receipt: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Record an epistemic item in SQLite and index it in FTS5.
 
@@ -353,7 +553,8 @@ def record_epistemic_item(
     - Strict separation of the 8 epistemic categories.
     - Missing or blank `verification_status` always remains `'unknown'` (never promoted to `'supported'`).
     - Untrusted source observations are scanned and stripped of directive injections; they cannot record `user_instruction_or_decision`.
-    - Idempotent deduplication when `idempotency_key` is provided.
+    - Model/worker/callback outputs cannot self-certify as `'supported'` or `'verified_for_scope'` without a controller-signed receipt.
+    - Idempotent deduplication when `idempotency_key` is provided (rejecting stale/superseded items).
     """
     if epistemic_category not in EPISTEMIC_CATEGORIES:
         raise ValueError(f"Invalid epistemic_category '{epistemic_category}'. Allowed: {EPISTEMIC_CATEGORIES}")
@@ -374,9 +575,24 @@ def record_epistemic_item(
     else:
         norm_status = raw_status
 
-    # Model proposals cannot self-certify as 'supported' or 'verified_for_scope' without independent verification
+    # Model proposals and untrusted/worker/callback sources cannot self-certify as 'supported' or 'verified_for_scope'
     if epistemic_category == "model_proposal" and norm_status in ("supported", "verified_for_scope"):
         norm_status = "proposed"
+    elif source_origin in ("model", "worker", "callback", "untrusted_document") and norm_status in ("supported", "verified_for_scope"):
+        has_valid_receipt = False
+        if verification_receipt and task_key:
+            led = intake_mod.load_durable_requirement_ledger(project_id)
+            tc = get_task_contract(project_id, task_key)
+            chk = verify_trusted_receipt(
+                verification_receipt,
+                project_id=project_id,
+                task_key=task_key,
+                current_requirement_revision=int(led.revision_number),
+                current_contract_revision=int(tc["contract_revision"]) if tc else 1,
+            )
+            has_valid_receipt = bool(chk.get("valid"))
+        if not has_valid_receipt:
+            norm_status = "unknown"
 
     quals = dict(qualifiers or {})
     low_stmt = clean_statement.lower()
@@ -393,6 +609,10 @@ def record_epistemic_item(
                 (project_id, idempotency_key),
             ).fetchone()
             if existing:
+                if existing["verification_status"] in ("stale", "superseded"):
+                    raise StaleWorkerResultError(
+                        f"Idempotent epistemic record '{idempotency_key}' was invalidated ({existing['verification_status']}: {existing['stale_reason']}) and cannot be reused."
+                    )
                 return _row_to_epistemic_dict(existing, deduplicated=True)
 
         item_id = new_id("epi")
@@ -1144,50 +1364,222 @@ def create_working_checkpoint(
         }
 
 
+def _snapshot_fence_inputs(
+    conn: Any,
+    project_id: str,
+    task_key: str,
+) -> Dict[str, Any]:
+    """Read live revision fence state from SQLite."""
+    rev_row = conn.execute(
+        "SELECT COALESCE(MAX(revision_number), 1) AS rev FROM project_requirement_revisions WHERE project_id = ?",
+        (project_id,),
+    ).fetchone()
+    req_rev = int(rev_row["rev"]) if rev_row else 1
+
+    mem_row = conn.execute(
+        "SELECT checkpoint_version, dispatch_stopped, cleanup_lifecycle_state, completed_work_json FROM project_memory_state WHERE project_id = ?",
+        (project_id,),
+    ).fetchone()
+    state_rev = int(mem_row["checkpoint_version"]) if mem_row else 1
+    dispatch_stopped = int(dict(mem_row).get("dispatch_stopped") or 0) if mem_row else 0
+    completed_work = jload(dict(mem_row).get("completed_work_json"), []) if mem_row else []
+
+    tc_row = conn.execute(
+        "SELECT * FROM project_task_contracts WHERE project_id = ? AND task_key = ?",
+        (project_id, task_key),
+    ).fetchone()
+    if not tc_row:
+        raise WorkingMemoryError(f"Task contract '{task_key}' not found in project '{project_id}'.")
+    tc = _row_to_contract_dict(tc_row)
+
+    bound_req_map: Dict[str, Dict[str, Any]] = {}
+    for req_code in tc["bound_requirement_ids"]:
+        r_row = conn.execute(
+            """SELECT req_code, version_number, status, statement
+               FROM project_requirement_items
+               WHERE project_id = ? AND req_code = ?
+               ORDER BY version_number DESC LIMIT 1""",
+            (project_id, req_code),
+        ).fetchone()
+        if r_row:
+            bound_req_map[req_code] = {
+                "version_number": int(r_row["version_number"]),
+                "status": str(r_row["status"]),
+                "statement": str(r_row["statement"]),
+            }
+
+    input_art_map: List[Dict[str, Any]] = []
+    for inp in tc["input_artifact_versions"]:
+        if not isinstance(inp, dict) or not inp.get("artifact_id"):
+            continue
+        aid = str(inp["artifact_id"])
+        a_row = conn.execute(
+            "SELECT id, sha256, validation_state FROM artifact_metadata WHERE id = ?",
+            (aid,),
+        ).fetchone()
+        if not a_row:
+            a_row = conn.execute(
+                "SELECT id, checksum_sha256 AS sha256, validation_status AS validation_state FROM artifacts WHERE id = ?",
+                (aid,),
+            ).fetchone()
+        input_art_map.append({
+            "artifact_id": aid,
+            "expected_version": int(inp.get("version") or inp.get("version_number") or 1),
+            "expected_sha256": str(inp.get("sha256") or (a_row["sha256"] if a_row else "")),
+            "live_sha256": str(a_row["sha256"]) if a_row else None,
+            "validation_state": str(a_row["validation_state"]) if a_row else "missing",
+        })
+
+    return {
+        "requirement_revision": req_rev,
+        "state_revision": state_rev,
+        "dispatch_stopped": dispatch_stopped,
+        "completed_work": completed_work,
+        "contract": tc,
+        "contract_revision": int(tc["contract_revision"]),
+        "bound_requirements": bound_req_map,
+        "input_artifacts": input_art_map,
+    }
+
+
+def _evaluate_fence_against_snapshot(
+    conn: Any,
+    project_id: str,
+    task_key: str,
+    before: Dict[str, Any],
+    *,
+    lease_id: Optional[str] = None,
+) -> Optional[str]:
+    """Compare live SQLite state inside a transaction against the pre-work snapshot.
+
+    Returns None if the fence holds, or a diagnostic failure reason string if stale/invalid.
+    """
+    after = _snapshot_fence_inputs(conn, project_id, task_key)
+
+    if after["dispatch_stopped"] != 0:
+        return f"Project '{project_id}' dispatch is stopped for park/cancel lifecycle."
+
+    if after["requirement_revision"] != before["requirement_revision"]:
+        return (
+            f"Stale worker result rejected for task '{task_key}': bound to requirement revision "
+            f"{before['requirement_revision']}, but project is now at revision {after['requirement_revision']}."
+        )
+
+    if after["contract_revision"] != before["contract_revision"]:
+        return (
+            f"Stale worker result rejected for task '{task_key}': bound to contract revision "
+            f"{before['contract_revision']}, but contract is now at revision {after['contract_revision']}."
+        )
+
+    if after["contract"]["status"] in ("stale", "cancelled", "cancel_pending_cleanup_unknown"):
+        return (
+            f"Stale worker result rejected for task '{task_key}': contract status became "
+            f"'{after['contract']['status']}' ({after['contract'].get('stale_reason') or 'invalidated'})."
+        )
+
+    for req_code, snap_req in before["bound_requirements"].items():
+        live_req = after["bound_requirements"].get(req_code)
+        if not live_req or live_req["version_number"] != snap_req["version_number"] or live_req["status"] != snap_req["status"]:
+            return (
+                f"Stale worker result rejected for task '{task_key}': bound requirement '{req_code}' "
+                f"changed from v{snap_req['version_number']} ({snap_req['status']}) to "
+                f"{live_req if live_req else 'missing'}."
+            )
+
+    for snap_art in before["input_artifacts"]:
+        aid = snap_art["artifact_id"]
+        a_row = conn.execute(
+            "SELECT id, sha256, validation_state FROM artifact_metadata WHERE id = ?",
+            (aid,),
+        ).fetchone()
+        if not a_row:
+            a_row = conn.execute(
+                "SELECT id, checksum_sha256 AS sha256, validation_status AS validation_state FROM artifacts WHERE id = ?",
+                (aid,),
+            ).fetchone()
+        if not a_row:
+            return f"Stale worker result rejected for task '{task_key}': input artifact '{aid}' is missing."
+        if str(a_row["sha256"]) != str(snap_art["expected_sha256"]):
+            return f"Stale worker result rejected for task '{task_key}': input artifact '{aid}' SHA-256 changed."
+        if str(a_row["validation_state"]) == "invalid":
+            return f"Stale worker result rejected for task '{task_key}': input artifact '{aid}' was marked invalid."
+
+    if lease_id:
+        lease_row = conn.execute(
+            "SELECT id, status, lease_expires_at FROM worker_task_leases WHERE id = ?",
+            (lease_id,),
+        ).fetchone()
+        if not lease_row:
+            return f"Lease authority check failed for task '{task_key}': lease '{lease_id}' does not exist."
+        if str(lease_row["status"]) in ("expired", "cancelled", "revoked"):
+            return f"Lease authority check failed for task '{task_key}': lease '{lease_id}' has status '{lease_row['status']}'."
+
+    return None
+
+
 def execute_checkpointed_work_boundary(
     project_id: str,
     task_key: str,
     work_fn: Callable[[Dict[str, Any]], Dict[str, Any]],
     *,
+    verifier_fn: Optional[Callable[[Dict[str, Any], Dict[str, Any], Dict[str, Any]], Dict[str, Any]]] = None,
+    verification_receipt: Optional[Dict[str, Any]] = None,
+    pre_commit_barrier: Optional[Callable[[], None]] = None,
     idempotency_key: Optional[str] = None,
     simulate_crash_stage: Optional[str] = None,
     cache: Optional[WorkingSetCache] = None,
 ) -> Dict[str, Any]:
-    """Execute one meaningful work boundary following the 7-step transactional protocol:
-      1. Read current state and revision (without holding a DB transaction open).
+    """Execute one meaningful work boundary following the atomic 7-step transactional protocol:
+      1. Read current state, contract revision, requirement revision, and input artifact hashes.
       2. Assemble bounded scoped work packet.
       3. Execute one useful native model/tool action into a bounded intermediate buffer.
-      4. Verify revision fencing (`StaleWorkerResultError` if requirement revision changed mid-flight).
-      5. Coordinate artifact publication via `project_artifact_publication_journal`.
-      6. Record observations, checks, and next action.
-      7. Commit a durable checkpoint.
+      4. Stage any artifact bytes as `'pending'` (unaccepted) and run trusted controller verification.
+      5. Invoke optional controlled `pre_commit_barrier` (for deterministic race testing).
+      6. Open a single `BEGIN IMMEDIATE` transaction that atomically validates the revision fence
+         (requirement revision, bound requirement versions, contract revision, input artifact hashes,
+         dispatch_stopped flag, and lease authority) before publishing authoritative references,
+         epistemic items, task status, memory state, and checkpoint.
+      7. If the fence fails, mark staged artifacts `'invalid'`, record raw observation only as an
+         unaccepted `'model_proposal'` (`'superseded'`), keep the task `'stale'`, and raise `StaleWorkerResultError`.
     """
     ws_cache = cache or GLOBAL_WORKING_SET_CACHE
 
-    # 1. Read current state and revision (short read, connection closed before work_fn)
-    ledger_before = intake_mod.load_durable_requirement_ledger(project_id)
-    mem_before = context_manager.get_project_memory_state(project_id)
-    expected_req_rev = int(ledger_before.revision_number)
-    expected_state_rev = int(mem_before.get("checkpoint_version", 1))
-
-    # Check idempotency if this work boundary already committed
-    if idempotency_key:
-        conn = get_db_connection()
-        try:
+    # 1. Snapshot fence inputs and check idempotency (short read, connection closed before work_fn)
+    conn = get_db_connection()
+    try:
+        before_snap = _snapshot_fence_inputs(conn, project_id, task_key)
+        if before_snap["dispatch_stopped"] != 0:
+            raise ParkOrCancelCleanupError(
+                f"Cannot dispatch work boundary for task '{task_key}': project '{project_id}' dispatch is stopped."
+            )
+        if idempotency_key:
             existing_epi = conn.execute(
                 "SELECT * FROM project_epistemic_items WHERE project_id = ? AND idempotency_key = ?",
                 (project_id, idempotency_key),
             ).fetchone()
             if existing_epi:
+                if (
+                    existing_epi["verification_status"] in ("stale", "superseded")
+                    or before_snap["contract"]["status"] == "stale"
+                    or int(before_snap["contract"]["bound_requirement_revision"]) != int(before_snap["requirement_revision"])
+                ):
+                    raise StaleWorkerResultError(
+                        f"Idempotent result '{idempotency_key}' for task '{task_key}' is stale against current revision {before_snap['requirement_revision']}."
+                    )
                 return {
                     "ok": True,
                     "deduplicated": True,
                     "project_id": project_id,
                     "task_key": task_key,
+                    "task_status": before_snap["contract"]["status"],
                     "epistemic_item": _row_to_epistemic_dict(existing_epi, deduplicated=True),
                 }
-        finally:
-            conn.close()
+    finally:
+        conn.close()
+
+    expected_req_rev = before_snap["requirement_revision"]
+    expected_contract_rev = before_snap["contract_revision"]
+    expected_state_rev = before_snap["state_revision"]
 
     # 2. Assemble bounded work packet
     work_packet = assemble_scoped_work_packet(project_id, task_key, cache=ws_cache)
@@ -1211,27 +1603,25 @@ def execute_checkpointed_work_boundary(
             if trunc_check["truncated"]:
                 raise WorkingMemoryError(f"Truncated output rejected at work boundary: {trunc_check['reasons']}")
 
-        # 4. Re-check live requirement revision before committing (Optimistic Concurrency Control)
-        ledger_after = intake_mod.load_durable_requirement_ledger(project_id)
-        if int(ledger_after.revision_number) != expected_req_rev:
-            raise StaleWorkerResultError(
-                f"Stale worker result rejected for task '{task_key}': bound to requirement revision "
-                f"{expected_req_rev}, but project is now at revision {ledger_after.revision_number}."
-            )
-
-        # 5. Two-phase artifact publication journal (if work produced an artifact)
         run = get_run_for_project(project_id)
+        lease_id: Optional[str] = raw_result.get("lease_id")
+
+        # 4. Stage artifact bytes in CAS with validation_state='pending' (never 'valid' before fence + verification!)
         published_artifact_id: Optional[str] = None
+        staged_sha256: Optional[str] = None
+        staged_filename: Optional[str] = None
         art_spec = raw_result.get("publish_artifact")
         journal_id: Optional[str] = None
+
         if isinstance(art_spec, dict) and art_spec.get("filename") and art_spec.get("content_bytes") is not None:
             content_bytes: bytes = (
                 art_spec["content_bytes"]
                 if isinstance(art_spec["content_bytes"], bytes)
                 else str(art_spec["content_bytes"]).encode("utf-8")
             )
-            sha256_hex = hashlib.sha256(content_bytes).hexdigest()
-            j_idem = idempotency_key or f"pub:{project_id}:{task_key}:{sha256_hex[:16]}"
+            staged_sha256 = hashlib.sha256(content_bytes).hexdigest()
+            staged_filename = str(art_spec["filename"])
+            j_idem = idempotency_key or f"pub:{project_id}:{task_key}:{staged_sha256[:16]}"
             journal_id = new_id("pjour")
             now = now_iso()
             with db_transaction() as c:
@@ -1239,17 +1629,25 @@ def execute_checkpointed_work_boundary(
                     """INSERT OR REPLACE INTO project_artifact_publication_journal (
                         id, project_id, run_id, task_key, idempotency_key,
                         intended_filename, expected_sha256, journal_state,
-                        state_revision_before, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'intent_logged', ?, ?, ?)""",
+                        state_revision_before, requirement_revision_before,
+                        contract_revision_before, bound_requirements_snapshot_json,
+                        input_artifacts_snapshot_json, verification_receipt_json,
+                        lease_id, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'intent_logged', ?, ?, ?, ?, ?, '{}', ?, ?, ?)""",
                     (
                         journal_id,
                         project_id,
                         run["id"] if run else None,
                         task_key,
                         j_idem,
-                        art_spec["filename"],
-                        sha256_hex,
+                        staged_filename,
+                        staged_sha256,
                         expected_state_rev,
+                        expected_req_rev,
+                        expected_contract_rev,
+                        jdump(before_snap["bound_requirements"]),
+                        jdump(before_snap["input_artifacts"]),
+                        lease_id,
                         now,
                         now,
                     ),
@@ -1262,113 +1660,407 @@ def execute_checkpointed_work_boundary(
                 published_artifact_id = artifact_manager.write_controller_artifact(
                     run,
                     None,
-                    art_spec["filename"],
+                    staged_filename,
                     content_bytes,
                     provenance="controller_generated",
+                )
+                artifact_manager.set_validation(
+                    published_artifact_id,
+                    "pending",
+                    f"Staged pending verification and atomic revision fence for task {task_key}",
                 )
             else:
                 from app.services.artifacts import artifact_service
                 reg = artifact_service.register_artifact(
-                    name=art_spec["filename"],
+                    name=staged_filename,
                     data=content_bytes,
                     project_id=project_id,
-                    description=f"Published by task {task_key}",
+                    description=f"Staged by task {task_key}",
                     created_by="working_memory",
-                    expected_sha256=sha256_hex,
-                    status="available",
-                    validation_status="valid" if raw_result.get("verified", True) else "pending",
+                    expected_sha256=staged_sha256,
+                    status="validating",
+                    validation_status="pending",
                 )
                 published_artifact_id = reg["id"]
 
-            if published_artifact_id and raw_result.get("verified", True):
-                artifact_manager.set_validation(published_artifact_id, "valid", f"Verified at task boundary {task_key}")
+        # Resolve target artifact metadata for verification binding (either newly staged or referenced)
+        target_art_id = published_artifact_id
+        target_art_ver: Optional[int] = 1 if published_artifact_id else None
+        target_art_sha256 = staged_sha256
+        if not target_art_id and raw_result.get("artifact_refs"):
+            first_ref = str(raw_result["artifact_refs"][0])
+            conn_a = get_db_connection()
+            try:
+                arow = conn_a.execute("SELECT id, sha256 FROM artifact_metadata WHERE id = ?", (first_ref,)).fetchone()
+                if not arow:
+                    arow = conn_a.execute("SELECT id, checksum_sha256 AS sha256 FROM artifacts WHERE id = ?", (first_ref,)).fetchone()
+                if arow:
+                    target_art_id = str(arow["id"])
+                    target_art_ver = 1
+                    target_art_sha256 = str(arow["sha256"])
+            finally:
+                conn_a.close()
 
+        # 4b. Run trusted controller verification (raw callback verified=True NEVER confers authority!)
+        active_receipt: Optional[Dict[str, Any]] = verification_receipt
+        verifier_explicitly_failed = False
+        if verifier_fn is not None:
+            staged_info = {
+                "artifact_id": target_art_id,
+                "artifact_version": target_art_ver,
+                "artifact_sha256": target_art_sha256,
+                "filename": staged_filename,
+            }
+            try:
+                v_out = verifier_fn(work_packet, raw_result, staged_info)
+            except TypeError:
+                v_out = verifier_fn(raw_result, staged_info)
+            if isinstance(v_out, dict) and v_out.get("passed") is True and v_out.get("checks"):
+                active_receipt = issue_trusted_verification_receipt(
+                    project_id=project_id,
+                    task_key=task_key,
+                    requirement_revision=expected_req_rev,
+                    contract_revision=expected_contract_rev,
+                    verification_method=str(v_out.get("verification_method") or "controller_contract_verifier"),
+                    declared_scope=str(v_out.get("declared_scope") or f"task:{task_key}"),
+                    checks_executed=list(v_out["checks"]),
+                    artifact_id=target_art_id,
+                    artifact_version=target_art_ver,
+                    artifact_sha256=target_art_sha256,
+                    verified_status=str(v_out.get("verified_status") or "verified_for_scope"),
+                )
+            else:
+                verifier_explicitly_failed = True
+                active_receipt = None
+
+        if journal_id and published_artifact_id:
             with db_transaction() as c:
                 c.execute(
-                    "UPDATE project_artifact_publication_journal SET artifact_id = ?, artifact_version = 1, journal_state = 'artifact_written', updated_at = ? WHERE id = ?",
-                    (published_artifact_id, now_iso(), journal_id),
+                    """UPDATE project_artifact_publication_journal
+                       SET artifact_id = ?,
+                           artifact_version = 1,
+                           verification_receipt_json = ?,
+                           journal_state = 'artifact_written',
+                           updated_at = ?
+                     WHERE id = ?""",
+                    (published_artifact_id, jdump(active_receipt or {}), now_iso(), journal_id),
                 )
 
             if simulate_crash_stage == "after_artifact_before_checkpoint":
                 raise RuntimeError("SIMULATED_CRASH: after_artifact_before_checkpoint")
 
-        # 6. Record epistemic item & update task contract status
+        # 5. Optional controlled concurrency barrier immediately before the atomic commit transaction
+        if pre_commit_barrier is not None:
+            pre_commit_barrier()
+
+        # 6. Single Atomic BEGIN IMMEDIATE Commit Transaction with Compare-And-Swap Revision Fence
         epi_cat = str(raw_result.get("epistemic_category") or "derived_result")
-        verif_status = str(raw_result.get("verification_status") or ("verified_for_scope" if raw_result.get("verified") else "unknown"))
+        if epi_cat not in EPISTEMIC_CATEGORIES:
+            epi_cat = "derived_result"
         stmt = str(raw_result.get("statement") or f"Completed task {task_key}")
-        contract = get_task_contract(project_id, task_key)
-        req_ids = contract["bound_requirement_ids"] if contract else []
+        clean_stmt = stmt.strip()
+        inj_scan = intake_mod.inspect_untrusted_source_for_directive_injection(clean_stmt)
+        has_inj = bool(inj_scan.get("contains_injection_attempt") or inj_scan.get("injection_detected"))
+        quals = dict(raw_result.get("qualifiers") or {})
+        low_stmt = clean_stmt.lower()
+        if "not " in low_stmt or "never " in low_stmt or "cannot " in low_stmt or "unverified" in low_stmt:
+            quals.setdefault("contains_negation", True)
+        if has_inj:
+            quals["stripped_directive_injection"] = True
+
+        req_ids = list(before_snap["contract"]["bound_requirement_ids"])
         art_refs = [published_artifact_id] if published_artifact_id else list(raw_result.get("artifact_refs") or [])
-
-        epi_item = record_epistemic_item(
-            project_id,
-            epistemic_category=epi_cat,
-            statement=stmt,
-            verification_status=verif_status,
-            run_id=run["id"] if run else None,
-            task_key=task_key,
-            requirement_ids=req_ids,
-            source_refs=raw_result.get("source_refs"),
-            artifact_refs=art_refs,
-            qualifiers=raw_result.get("qualifiers"),
-            idempotency_key=idempotency_key,
-        )
-
-        new_task_status = "verified" if verif_status in ("supported", "verified_for_scope") else (
-            "blocked" if verif_status == "blocked" else ("partial" if verif_status == "partial" else "completed")
-        )
         out_summary = dict(raw_result.get("output_summary") or {})
-        now = now_iso()
+
         with db_transaction() as c:
+            fence_err = _evaluate_fence_against_snapshot(
+                c, project_id, task_key, before_snap, lease_id=lease_id
+            )
+            now = now_iso()
+            if fence_err is not None:
+                # Fence failed: reject stale output, mark staged artifact invalid, preserve only as superseded proposal
+                if published_artifact_id:
+                    c.execute(
+                        "UPDATE artifact_metadata SET validation_state = 'invalid', validation_detail = ? WHERE id = ?",
+                        (f"Rejected by atomic revision fence: {fence_err}", published_artifact_id),
+                    )
+                    c.execute(
+                        "UPDATE artifacts SET validation_status = 'invalid', status = 'failed', validation_detail = ? WHERE id = ?",
+                        (f"Rejected by atomic revision fence: {fence_err}", published_artifact_id),
+                    )
+                if journal_id:
+                    c.execute(
+                        "UPDATE project_artifact_publication_journal SET journal_state = 'rejected_stale_revision', updated_at = ? WHERE id = ?",
+                        (now, journal_id),
+                    )
+                # Preserve raw observation only as unaccepted/superseded model_proposal provenance
+                sup_id = new_id("epi")
+                c.execute(
+                    """INSERT INTO project_epistemic_items (
+                        id, project_id, run_id, task_key, epistemic_category, statement,
+                        verification_status, requirement_ids_json, source_refs_json,
+                        artifact_refs_json, depends_on_item_ids_json, qualifiers_json,
+                        revision_number, stale_reason, idempotency_key, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, 'model_proposal', ?, 'superseded', ?, ?, ?, '[]', ?, ?, ?, NULL, ?, ?)""",
+                    (
+                        sup_id,
+                        project_id,
+                        run["id"] if run else None,
+                        task_key,
+                        clean_stmt,
+                        jdump(req_ids),
+                        jdump(raw_result.get("source_refs") or []),
+                        jdump(art_refs),
+                        jdump({**quals, "rejected_by_revision_fence": True}),
+                        expected_req_rev,
+                        fence_err,
+                        now,
+                        now,
+                    ),
+                )
+                c.execute(
+                    """UPDATE project_task_contracts
+                       SET status = 'stale',
+                           stale_reason = ?,
+                           next_action = 'revalidate_task',
+                           updated_at = ?
+                     WHERE project_id = ? AND task_key = ?""",
+                    (fence_err, now, project_id, task_key),
+                )
+                raise StaleWorkerResultError(fence_err)
+
+            # Fence holds! Now validate trusted verification receipt against live revisions & artifact hash
+            receipt_validation = verify_trusted_receipt(
+                active_receipt,
+                project_id=project_id,
+                task_key=task_key,
+                current_requirement_revision=expected_req_rev,
+                current_contract_revision=expected_contract_rev,
+                actual_artifact_id=target_art_id,
+                actual_artifact_version=target_art_ver,
+                actual_artifact_sha256=target_art_sha256,
+            )
+
+            raw_req_status = str(raw_result.get("verification_status") or "").strip().lower()
+            if receipt_validation["valid"] and epi_cat != "model_proposal":
+                final_verif_status = receipt_validation["verified_status"]
+                if final_verif_status not in ("verified_for_scope", "supported"):
+                    final_verif_status = "verified_for_scope"
+                new_task_status = "verified"
+                quals["verification_method"] = receipt_validation["verification_method"]
+                quals["declared_scope"] = receipt_validation["declared_scope"]
+            elif verifier_explicitly_failed or raw_req_status == "failed":
+                final_verif_status = "failed"
+                new_task_status = "failed"
+            elif raw_req_status == "blocked":
+                final_verif_status = "blocked"
+                new_task_status = "blocked"
+            elif raw_req_status == "partial":
+                final_verif_status = "partial"
+                new_task_status = "partial"
+            else:
+                # Without a trusted controller verification receipt, NEVER allow verified_for_scope/supported/verified!
+                final_verif_status = "proposed" if epi_cat == "model_proposal" else (
+                    "observed" if raw_req_status == "observed" else "unknown"
+                )
+                new_task_status = "completed"
+                if raw_result.get("verified") is True or raw_req_status in ("verified_for_scope", "supported"):
+                    quals["unverified_self_certification_stripped"] = True
+                    quals["receipt_rejection_reason"] = receipt_validation["reason"]
+
+            if target_art_id:
+                if new_task_status == "verified":
+                    c.execute(
+                        "UPDATE artifact_metadata SET validation_state = 'valid', validation_detail = ? WHERE id = ?",
+                        (f"Verified via trusted receipt ({receipt_validation['verification_method']}) at task {task_key}", target_art_id),
+                    )
+                    c.execute(
+                        "UPDATE artifacts SET validation_status = 'valid', status = 'available', validation_detail = ? WHERE id = ?",
+                        (f"Verified via trusted receipt ({receipt_validation['verification_method']}) at task {task_key}", target_art_id),
+                    )
+                elif new_task_status == "failed":
+                    c.execute(
+                        "UPDATE artifact_metadata SET validation_state = 'invalid', validation_detail = ? WHERE id = ?",
+                        (f"Verification failed at task {task_key}", target_art_id),
+                    )
+                    c.execute(
+                        "UPDATE artifacts SET validation_status = 'invalid', status = 'failed', validation_detail = ? WHERE id = ?",
+                        (f"Verification failed at task {task_key}", target_art_id),
+                    )
+                else:
+                    c.execute(
+                        "UPDATE artifact_metadata SET validation_state = 'pending', validation_detail = ? WHERE id = ?",
+                        (f"Unverified output (no trusted controller receipt) at task {task_key}", target_art_id),
+                    )
+                    c.execute(
+                        "UPDATE artifacts SET validation_status = 'pending', status = 'needs_review', validation_detail = ? WHERE id = ?",
+                        (f"Unverified output (no trusted controller receipt) at task {task_key}", target_art_id),
+                    )
+
+            # Insert epistemic item atomically inside the same transaction
+            item_id = new_id("epi")
             c.execute(
+                """INSERT INTO project_epistemic_items (
+                    id, project_id, run_id, task_key, epistemic_category, statement,
+                    verification_status, requirement_ids_json, source_refs_json,
+                    artifact_refs_json, depends_on_item_ids_json, qualifiers_json,
+                    revision_number, stale_reason, idempotency_key, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, '', ?, ?, ?)""",
+                (
+                    item_id,
+                    project_id,
+                    run["id"] if run else None,
+                    task_key,
+                    epi_cat,
+                    clean_stmt,
+                    final_verif_status,
+                    jdump(req_ids),
+                    jdump(raw_result.get("source_refs") or []),
+                    jdump(art_refs),
+                    jdump(quals),
+                    expected_req_rev,
+                    idempotency_key,
+                    now,
+                    now,
+                ),
+            )
+            c.execute(
+                """INSERT INTO project_epistemic_fts (
+                    item_id, project_id, epistemic_category, statement, qualifiers_text
+                ) VALUES (?, ?, ?, ?, ?)""",
+                (item_id, project_id, epi_cat, clean_stmt, jdump(quals)),
+            )
+            epi_row = c.execute("SELECT * FROM project_epistemic_items WHERE id = ?", (item_id,)).fetchone()
+            epi_item = _row_to_epistemic_dict(epi_row, deduplicated=False)
+
+            # Atomic compare-and-swap update on project_task_contracts
+            next_act_str = str(raw_result.get("next_action") or "proceed_to_next_task")
+            upd_cur = c.execute(
                 """UPDATE project_task_contracts
                    SET status = ?,
                        bound_requirement_revision = ?,
                        attempts_used = attempts_used + 1,
                        output_summary_json = ?,
                        output_artifact_ids_json = ?,
+                       verification_receipt_json = ?,
                        next_action = ?,
                        stale_reason = '',
+                       contract_revision = contract_revision + 1,
                        updated_at = ?
-                 WHERE project_id = ? AND task_key = ?""",
+                 WHERE project_id = ? AND task_key = ? AND contract_revision = ?""",
                 (
                     new_task_status,
                     expected_req_rev,
                     jdump(out_summary),
                     jdump(art_refs),
-                    str(raw_result.get("next_action") or "proceed_to_next_task"),
+                    jdump(active_receipt if receipt_validation["valid"] else {}),
+                    next_act_str,
                     now,
                     project_id,
                     task_key,
+                    expected_contract_rev,
                 ),
             )
+            if upd_cur.rowcount != 1:
+                raise StaleWorkerResultError(
+                    f"Atomic compare-and-swap failed on task contract '{task_key}' (expected contract_revision={expected_contract_rev})."
+                )
+
+            new_state_rev = expected_state_rev + 1
             if journal_id:
                 c.execute(
                     "UPDATE project_artifact_publication_journal SET journal_state = 'state_committed', state_revision_after = ?, updated_at = ? WHERE id = ?",
-                    (expected_state_rev + 1, now, journal_id),
+                    (new_state_rev, now, journal_id),
                 )
 
-        # Update project memory state and commit working checkpoint
-        context_manager.save_project_memory_state(
-            project_id,
-            run_id=run["id"] if run else None,
-            current_cycle_phase="verify" if new_task_status == "verified" else "execute",
-            completed_work=(mem_before.get("completed_work") or []) + [{"task_key": task_key, "status": new_task_status, "artifact_ids": art_refs}],
-            next_action={"action": str(raw_result.get("next_action") or "proceed_to_next_task"), "after_task": task_key},
-        )
-        ckpt = create_working_checkpoint(
-            project_id,
-            boundary_type="task_boundary",
-            active_task_key=task_key,
-            next_action={"action": str(raw_result.get("next_action") or "proceed_to_next_task")},
-            delta_summary={"completed_task": task_key, "published_artifact_id": published_artifact_id},
-        )
+            # Update project_memory_state atomically in the same transaction
+            new_completed_work = list(before_snap["completed_work"]) + [
+                {"task_key": task_key, "status": new_task_status, "artifact_ids": art_refs}
+            ]
+            c.execute(
+                """UPDATE project_memory_state
+                   SET current_cycle_phase = ?,
+                       completed_work_json = ?,
+                       next_action_json = ?,
+                       checkpoint_version = ?,
+                       updated_at = ?
+                 WHERE project_id = ?""",
+                (
+                    "verify" if new_task_status == "verified" else "execute",
+                    jdump(new_completed_work),
+                    jdump({"action": next_act_str, "after_task": task_key}),
+                    new_state_rev,
+                    now,
+                    project_id,
+                ),
+            )
+
+            # Insert working checkpoint atomically in the same transaction
+            seq_row = c.execute(
+                "SELECT COALESCE(MAX(checkpoint_seq), 0) AS max_seq FROM project_working_checkpoints WHERE project_id = ?",
+                (project_id,),
+            ).fetchone()
+            next_seq = int(seq_row["max_seq"]) + 1
+            ckpt_id = new_id("wckpt")
+            all_tcs = c.execute(
+                "SELECT task_key, status FROM project_task_contracts WHERE project_id = ?",
+                (project_id,),
+            ).fetchall()
+            completed_keys = [r["task_key"] for r in all_tcs if r["status"] == "verified"]
+            blockers_keys = [r["task_key"] for r in all_tcs if r["status"] == "blocked"]
+            v_arts_rows = c.execute(
+                "SELECT id, filename, sha256 FROM artifact_metadata WHERE project_id = ? AND validation_state = 'valid'",
+                (project_id,),
+            ).fetchall()
+            verified_art_vers = [
+                {"artifact_id": r["id"], "filename": r["filename"], "sha256": r["sha256"], "version": 1}
+                for r in v_arts_rows
+            ]
+            c.execute(
+                """INSERT INTO project_working_checkpoints (
+                    id, project_id, run_id, checkpoint_seq, boundary_type,
+                    requirement_revision, state_revision, active_task_key,
+                    completed_task_keys_json, verified_artifact_versions_json,
+                    decisions_snapshot_json, open_questions_json, blockers_json,
+                    next_action_json, remaining_budget_json, delta_summary_json,
+                    created_by, created_at
+                ) VALUES (?, ?, ?, ?, 'task_boundary', ?, ?, ?, ?, ?, '[]', '[]', ?, ?, '{}', ?, 'orchestrator', ?)""",
+                (
+                    ckpt_id,
+                    project_id,
+                    run["id"] if run else None,
+                    next_seq,
+                    expected_req_rev,
+                    new_state_rev,
+                    task_key,
+                    jdump(completed_keys),
+                    jdump(verified_art_vers),
+                    jdump(blockers_keys),
+                    jdump({"action": next_act_str}),
+                    jdump({"completed_task": task_key, "published_artifact_id": published_artifact_id, "task_status": new_task_status}),
+                    now,
+                ),
+            )
+            ckpt = {
+                "checkpoint_id": ckpt_id,
+                "project_id": project_id,
+                "checkpoint_seq": next_seq,
+                "boundary_type": "task_boundary",
+                "requirement_revision": expected_req_rev,
+                "state_revision": new_state_rev,
+                "completed_task_keys": completed_keys,
+                "verified_artifact_versions": verified_art_vers,
+                "created_at": now,
+            }
+
+        ws_cache.evict_project(project_id, include_pinned=False)
         return {
             "ok": True,
             "deduplicated": False,
             "project_id": project_id,
             "task_key": task_key,
             "task_status": new_task_status,
+            "verification_receipt_valid": receipt_validation["valid"],
             "published_artifact_id": published_artifact_id,
             "epistemic_item": epi_item,
             "checkpoint": ckpt,
@@ -1380,12 +2072,22 @@ def execute_checkpointed_work_boundary(
 def reconcile_crash_publication_journal(project_id: str) -> Dict[str, Any]:
     """Reconcile any uncommitted artifact publication journal entries after an interruption or crash.
 
+    Enforces the exact same revision fencing and trusted verification receipt rules as normal execution:
     - Entries in `'intent_logged'` (crashed before artifact write completed) are rolled back (`'rolled_back'`).
-    - Entries in `'artifact_written'` (artifact exists in CAS, but crash occurred before task/checkpoint commit)
-      are verified against expected SHA-256, linked to the task contract, and marked `'reconciled_after_crash'`.
+    - Entries in `'artifact_written'` are checked against live `requirement_revision`, `contract_revision`,
+      `bound_requirements_snapshot_json`, `input_artifacts_snapshot_json`, and `verification_receipt_json`.
+      - If the revision fence fails, the staged artifact is marked `'invalid'`, the journal entry is marked
+        `'rejected_stale_revision'`, and the task contract is marked `'stale'`.
+      - If the revision fence holds AND a valid controller-signed verification receipt matches the stored
+        artifact SHA-256, the artifact is marked `'valid'`, the task contract is marked `'verified'`, and
+        the journal entry is marked `'reconciled_after_crash'`.
+      - If the revision fence holds but there is no valid verification receipt, the journal entry is marked
+        `'rejected_unverified'` and the task/artifact remain unverified (`'completed'` / `'pending'`).
     """
     reconciled: List[str] = []
     rolled_back: List[str] = []
+    rejected_stale: List[str] = []
+    rejected_unverified: List[str] = []
     now = now_iso()
 
     with db_transaction() as c:
@@ -1396,50 +2098,138 @@ def reconcile_crash_publication_journal(project_id: str) -> Dict[str, Any]:
         for r in rows:
             d = dict(r)
             jid = d["id"]
-            if d["journal_state"] == "intent_logged" or not d.get("artifact_id"):
+            tkey = d["task_key"]
+            aid = d.get("artifact_id")
+            if d["journal_state"] == "intent_logged" or not aid:
                 c.execute(
                     "UPDATE project_artifact_publication_journal SET journal_state = 'rolled_back', updated_at = ? WHERE id = ?",
                     (now, jid),
                 )
                 rolled_back.append(jid)
-            elif d["journal_state"] == "artifact_written" and d.get("artifact_id"):
-                art_row = c.execute("SELECT id, sha256 FROM artifact_metadata WHERE id = ?", (d["artifact_id"],)).fetchone()
-                if not art_row:
-                    art_row = c.execute("SELECT id, checksum_sha256 AS sha256 FROM artifacts WHERE id = ?", (d["artifact_id"],)).fetchone()
-                if art_row and art_row["sha256"] == d["expected_sha256"]:
-                    c.execute(
-                        """UPDATE project_task_contracts
-                           SET status = 'verified',
-                               output_artifact_ids_json = ?,
-                               updated_at = ?
-                         WHERE project_id = ? AND task_key = ?""",
-                        (jdump([d["artifact_id"]]), now, project_id, d["task_key"]),
-                    )
-                    c.execute(
-                        "UPDATE project_artifact_publication_journal SET journal_state = 'reconciled_after_crash', updated_at = ? WHERE id = ?",
-                        (now, jid),
-                    )
-                    reconciled.append(jid)
-                else:
-                    c.execute(
-                        "UPDATE project_artifact_publication_journal SET journal_state = 'rolled_back', updated_at = ? WHERE id = ?",
-                        (now, jid),
-                    )
-                    rolled_back.append(jid)
+                continue
+
+            art_row = c.execute("SELECT id, sha256 FROM artifact_metadata WHERE id = ?", (aid,)).fetchone()
+            if not art_row:
+                art_row = c.execute("SELECT id, checksum_sha256 AS sha256 FROM artifacts WHERE id = ?", (aid,)).fetchone()
+            if not art_row or str(art_row["sha256"]) != str(d["expected_sha256"]):
+                c.execute(
+                    "UPDATE project_artifact_publication_journal SET journal_state = 'rolled_back', updated_at = ? WHERE id = ?",
+                    (now, jid),
+                )
+                rolled_back.append(jid)
+                continue
+
+            # Reconstruct snapshot to check revision fence
+            live_snap = _snapshot_fence_inputs(c, project_id, tkey)
+            req_rev_before = int(d.get("requirement_revision_before") or 1)
+            con_rev_before = int(d.get("contract_revision_before") or 1)
+            bound_snap = jload(d.get("bound_requirements_snapshot_json"), {})
+            input_snap = jload(d.get("input_artifacts_snapshot_json"), [])
+            synthetic_before = {
+                "requirement_revision": req_rev_before,
+                "contract_revision": con_rev_before,
+                "bound_requirements": bound_snap if isinstance(bound_snap, dict) else {},
+                "input_artifacts": input_snap if isinstance(input_snap, list) else [],
+            }
+            fence_err = _evaluate_fence_against_snapshot(
+                c, project_id, tkey, synthetic_before, lease_id=d.get("lease_id")
+            )
+            if fence_err is not None:
+                c.execute(
+                    "UPDATE artifact_metadata SET validation_state = 'invalid', validation_detail = ? WHERE id = ?",
+                    (f"Crash recovery rejected stale revision: {fence_err}", aid),
+                )
+                c.execute(
+                    "UPDATE artifacts SET validation_status = 'invalid', status = 'failed', validation_detail = ? WHERE id = ?",
+                    (f"Crash recovery rejected stale revision: {fence_err}", aid),
+                )
+                c.execute(
+                    "UPDATE project_task_contracts SET status = 'stale', stale_reason = ?, next_action = 'revalidate_task', updated_at = ? WHERE project_id = ? AND task_key = ?",
+                    (fence_err, now, project_id, tkey),
+                )
+                c.execute(
+                    "UPDATE project_artifact_publication_journal SET journal_state = 'rejected_stale_revision', updated_at = ? WHERE id = ?",
+                    (now, jid),
+                )
+                rejected_stale.append(jid)
+                rolled_back.append(jid)
+                continue
+
+            # Revision fence holds: now check trusted verification receipt
+            receipt = jload(d.get("verification_receipt_json"), {})
+            receipt_chk = verify_trusted_receipt(
+                receipt,
+                project_id=project_id,
+                task_key=tkey,
+                current_requirement_revision=live_snap["requirement_revision"],
+                current_contract_revision=live_snap["contract_revision"],
+                actual_artifact_id=aid,
+                actual_artifact_version=int(d.get("artifact_version") or 1),
+                actual_artifact_sha256=str(art_row["sha256"]),
+            )
+            if receipt_chk["valid"]:
+                c.execute(
+                    "UPDATE artifact_metadata SET validation_state = 'valid', validation_detail = ? WHERE id = ?",
+                    (f"Reconciled after crash with valid receipt ({receipt_chk['verification_method']})", aid),
+                )
+                c.execute(
+                    "UPDATE artifacts SET validation_status = 'valid', status = 'available', validation_detail = ? WHERE id = ?",
+                    (f"Reconciled after crash with valid receipt ({receipt_chk['verification_method']})", aid),
+                )
+                c.execute(
+                    """UPDATE project_task_contracts
+                       SET status = 'verified',
+                           output_artifact_ids_json = ?,
+                           verification_receipt_json = ?,
+                           updated_at = ?
+                     WHERE project_id = ? AND task_key = ?""",
+                    (jdump([aid]), jdump(receipt), now, project_id, tkey),
+                )
+                c.execute(
+                    "UPDATE project_artifact_publication_journal SET journal_state = 'reconciled_after_crash', updated_at = ? WHERE id = ?",
+                    (now, jid),
+                )
+                reconciled.append(jid)
+            else:
+                c.execute(
+                    "UPDATE artifact_metadata SET validation_state = 'pending', validation_detail = ? WHERE id = ?",
+                    (f"Crash recovery: unverified ({receipt_chk['reason']})", aid),
+                )
+                c.execute(
+                    "UPDATE project_task_contracts SET status = 'completed', output_artifact_ids_json = ?, updated_at = ? WHERE project_id = ? AND task_key = ?",
+                    (jdump([aid]), now, project_id, tkey),
+                )
+                c.execute(
+                    "UPDATE project_artifact_publication_journal SET journal_state = 'rejected_unverified', updated_at = ? WHERE id = ?",
+                    (now, jid),
+                )
+                rejected_unverified.append(jid)
 
     if reconciled:
         create_working_checkpoint(
             project_id,
             boundary_type="manual",
-            delta_summary={"crash_reconciled_journal_ids": reconciled, "rolled_back_journal_ids": rolled_back},
+            delta_summary={
+                "crash_reconciled_journal_ids": reconciled,
+                "rolled_back_journal_ids": rolled_back,
+                "rejected_stale_journal_ids": rejected_stale,
+                "rejected_unverified_journal_ids": rejected_unverified,
+            },
             created_by="crash_recovery",
         )
     return {
         "project_id": project_id,
+        "reconciled": len(reconciled),
+        "rolled_back": len(rolled_back),
         "reconciled_count": len(reconciled),
         "rolled_back_count": len(rolled_back),
+        "rejected_stale_count": len(rejected_stale),
+        "rejected_unverified_count": len(rejected_unverified),
         "reconciled_journal_ids": reconciled,
         "rolled_back_journal_ids": rolled_back,
+        "rejected_stale_journal_ids": rejected_stale,
+        "rejected_stale_revision": rejected_stale,
+        "rejected_unverified_journal_ids": rejected_unverified,
     }
 
 
@@ -1864,42 +2654,344 @@ def rebuild_epistemic_fts_index(project_id: Optional[str] = None) -> Dict[str, A
 # Section 9: Park, Resume, Cancellation & Parallel Work Merge Rules
 # ---------------------------------------------------------------------------
 
+def inspect_authoritative_execution_cleanup(
+    project_id: str,
+    *,
+    task_key: Optional[str] = None,
+    cache: Optional[WorkingSetCache] = None,
+) -> Dict[str, Any]:
+    """Derive authoritative cleanup confirmation from controller task state, outstanding leases,
+    worker acknowledgments, active futures, intermediate buffers, and local process registry.
+
+    Never trusts caller-supplied booleans. Treats an expired lease as `cleanup_unknown` until
+    the worker acknowledges termination (via terminal execution submission or post-expiry
+    heartbeat with `running_jobs_count == 0`).
+    """
+    ws_cache = cache or GLOBAL_WORKING_SET_CACHE
+    blockers: List[Dict[str, Any]] = []
+    has_unknown = False
+    has_failed = False
+
+    # 1. Check active local process registry
+    with _PROCESS_REGISTRY_LOCK:
+        for (pid, proc_id), entry in _ACTIVE_PROCESS_REGISTRY.items():
+            if pid != project_id:
+                continue
+            if task_key and entry.get("task_key") and entry.get("task_key") != task_key:
+                continue
+            if not entry.get("terminated_confirmed"):
+                has_unknown = True
+                blockers.append({
+                    "type": "unconfirmed_local_process",
+                    "process_id": proc_id,
+                    "task_key": entry.get("task_key"),
+                    "os_pid": entry.get("os_pid"),
+                    "detail": f"Local process '{proc_id}' has not confirmed termination.",
+                })
+
+    # 2. Check resident intermediate buffers
+    with ws_cache._lock:
+        prefix = f"buf:{project_id}:{task_key}:" if task_key else f"buf:{project_id}:"
+        for buf_key, b_size in ws_cache._intermediate_buffers.items():
+            if buf_key.startswith(prefix):
+                blockers.append({
+                    "type": "active_intermediate_buffer",
+                    "buffer_id": buf_key,
+                    "byte_size": b_size,
+                    "detail": f"In-flight work boundary buffer '{buf_key}' is still active.",
+                })
+
+    # 3. Check in-flight controller futures in engine
+    try:
+        from app.services.orchestration import engine as _eng
+        with _eng._FUTURES_LOCK:
+            for ot_id, fut in list(_eng._ACTIVE_FUTURES.items()):
+                meta = _eng._ACTIVE_METADATA.get(ot_id) or {}
+                if not fut.done():
+                    conn_f = get_db_connection()
+                    try:
+                        r_row = conn_f.execute(
+                            "SELECT project_id FROM orchestration_runs WHERE id = ?",
+                            (meta.get("run_id"),),
+                        ).fetchone()
+                        if r_row and str(r_row["project_id"]) == str(project_id):
+                            blockers.append({
+                                "type": "active_controller_future",
+                                "orch_task_id": ot_id,
+                                "detail": f"Controller thread future for orchestration task '{ot_id}' is still running.",
+                            })
+                    finally:
+                        conn_f.close()
+    except Exception:
+        pass
+
+    # 4. Inspect SQLite project_task_contracts, controller tasks, and worker_task_leases
+    conn = get_db_connection()
+    try:
+        if task_key:
+            tc_rows = conn.execute(
+                "SELECT task_key, status, worker_task_id FROM project_task_contracts WHERE project_id = ? AND task_key = ?",
+                (project_id, task_key),
+            ).fetchall()
+        else:
+            tc_rows = conn.execute(
+                "SELECT task_key, status, worker_task_id FROM project_task_contracts WHERE project_id = ?",
+                (project_id,),
+            ).fetchall()
+
+        for r in tc_rows:
+            if r["status"] == "running":
+                blockers.append({
+                    "type": "running_task_contract",
+                    "task_key": r["task_key"],
+                    "status": r["status"],
+                    "detail": f"Task contract '{r['task_key']}' is currently in 'running' state.",
+                })
+
+        # Controller tasks for this project
+        t_rows = conn.execute(
+            "SELECT id, title, status, assigned_worker FROM tasks WHERE project_id = ?",
+            (project_id,),
+        ).fetchall()
+        project_task_ids = [str(r["id"]) for r in t_rows]
+        for r in t_rows:
+            if r["status"] in ("in_progress", "running"):
+                blockers.append({
+                    "type": "active_controller_task",
+                    "task_id": r["id"],
+                    "status": r["status"],
+                    "assigned_worker": r["assigned_worker"],
+                    "detail": f"Controller task '{r['id']}' has active status '{r['status']}'.",
+                })
+
+        # Worker task leases for this project's tasks
+        if project_task_ids:
+            placeholders = ",".join("?" for _ in project_task_ids)
+            lease_rows = conn.execute(
+                f"""SELECT l.*, n.last_contact_at AS worker_last_seen_at,
+                           (SELECT COUNT(*) FROM worker_task_leases l2
+                            WHERE l2.worker_id = l.worker_id AND l2.status IN ('leased', 'active')) AS worker_running_jobs
+                    FROM worker_task_leases l
+                    LEFT JOIN infrastructure_nodes n ON n.id = l.worker_id
+                    WHERE l.task_id IN ({placeholders})""",
+                project_task_ids,
+            ).fetchall()
+            for lr in lease_rows:
+                ld = dict(lr)
+                l_status = str(ld.get("status") or "")
+                l_id = str(ld["id"])
+                t_id = str(ld["task_id"])
+                w_id = str(ld["worker_id"])
+                if l_status in ("leased", "active"):
+                    blockers.append({
+                        "type": "active_worker_lease",
+                        "lease_id": l_id,
+                        "task_id": t_id,
+                        "worker_id": w_id,
+                        "status": l_status,
+                        "lease_expires_at": ld.get("lease_expires_at"),
+                        "detail": f"Worker lease '{l_id}' on worker '{w_id}' is still '{l_status}'.",
+                    })
+                elif l_status == "expired":
+                    # Expired lease is UNKNOWN until worker acknowledges termination or sends post-expiry idle heartbeat
+                    exp_at = str(ld.get("lease_expires_at") or "")
+                    exec_ack = conn.execute(
+                        """SELECT id, status, completed_at FROM worker_executions
+                           WHERE task_id = ? AND worker_id = ?
+                             AND status IN ('cancelled', 'error', 'success')
+                             AND completed_at >= ?
+                           LIMIT 1""",
+                        (t_id, w_id, exp_at),
+                    ).fetchone()
+                    w_seen = str(ld.get("worker_last_seen_at") or "")
+                    w_jobs = ld.get("worker_running_jobs")
+                    post_expiry_idle_hb = bool(w_seen and exp_at and w_seen > exp_at and w_jobs is not None and int(w_jobs) == 0)
+                    if not exec_ack and not post_expiry_idle_hb:
+                        has_unknown = True
+                        blockers.append({
+                            "type": "expired_lease_worker_state_unknown",
+                            "lease_id": l_id,
+                            "task_id": t_id,
+                            "worker_id": w_id,
+                            "status": "expired",
+                            "lease_expires_at": exp_at,
+                            "detail": (
+                                f"Lease '{l_id}' for task '{t_id}' on worker '{w_id}' expired at {exp_at} "
+                                "without worker termination acknowledgment or post-expiry idle heartbeat."
+                            ),
+                        })
+    finally:
+        conn.close()
+
+    cleanup_confirmed = len(blockers) == 0
+    if cleanup_confirmed:
+        lifecycle_state = "cleanup_confirmed"
+    elif has_failed:
+        lifecycle_state = "cleanup_failed"
+    elif has_unknown:
+        lifecycle_state = "cleanup_unknown"
+    else:
+        lifecycle_state = "draining"
+
+    return {
+        "project_id": project_id,
+        "task_key": task_key,
+        "cleanup_confirmed": cleanup_confirmed,
+        "lifecycle_state": lifecycle_state,
+        "blockers": blockers,
+    }
+
+
+def _stop_project_dispatch_and_cancel_queued(
+    project_id: str,
+    *,
+    task_key: Optional[str] = None,
+) -> List[str]:
+    """Transition lifecycle `requested -> dispatch_stopped` and cancel unleased queued tasks."""
+    now = now_iso()
+    conn_chk = get_db_connection()
+    try:
+        has_mem = conn_chk.execute(
+            "SELECT 1 FROM project_memory_state WHERE project_id = ?", (project_id,)
+        ).fetchone()
+    finally:
+        conn_chk.close()
+    if not has_mem:
+        context_manager.save_project_memory_state(project_id)
+    cancelled_queued_task_ids: List[str] = []
+    with db_transaction() as c:
+        if task_key is None:
+            c.execute(
+                """UPDATE project_memory_state
+                   SET dispatch_stopped = 1,
+                       cleanup_lifecycle_state = 'dispatch_stopped',
+                       updated_at = ?
+                 WHERE project_id = ?""",
+                (now, project_id),
+            )
+            q_rows = c.execute(
+                """SELECT id FROM tasks
+                   WHERE project_id = ?
+                     AND status IN ('queued', 'pending', 'approved', 'awaiting_approval')
+                     AND id NOT IN (
+                         SELECT task_id FROM worker_task_leases WHERE status IN ('leased', 'active')
+                     )""",
+                (project_id,),
+            ).fetchall()
+            for qr in q_rows:
+                c.execute(
+                    "UPDATE tasks SET status = 'cancelled', updated_at = ? WHERE id = ?",
+                    (now, qr["id"]),
+                )
+                cancelled_queued_task_ids.append(str(qr["id"]))
+        else:
+            c.execute(
+                """UPDATE project_task_contracts
+                   SET cleanup_lifecycle_state = 'dispatch_stopped',
+                       updated_at = ?
+                 WHERE project_id = ? AND task_key = ?""",
+                (now, project_id, task_key),
+            )
+    return cancelled_queued_task_ids
+
+
 def park_project(
     project_id: str,
     *,
     actor: str = "operator",
     reason: str = "User requested project park",
-    active_process_cleanup_confirmed: bool = True,
+    active_process_cleanup_confirmed: Optional[bool] = None,
     cache: Optional[WorkingSetCache] = None,
 ) -> Dict[str, Any]:
     """Park a project at a durable checkpoint and release resident working-set cache.
 
-    Fails closed with `ParkOrCancelCleanupError` if `active_process_cleanup_confirmed` is False.
+    Enforces explicit lifecycle: `requested -> dispatch_stopped -> draining -> cleanup_confirmed`
+    (with honest `cleanup_unknown` / `cleanup_failed` states when active work cannot be confirmed terminated).
+    Caller-supplied `active_process_cleanup_confirmed=True` is NEVER trusted as authority over active
+    tasks, outstanding leases, or unacknowledged expired leases.
     """
-    if not active_process_cleanup_confirmed:
+    ws_cache = cache or GLOBAL_WORKING_SET_CACHE
+    now = now_iso()
+
+    # Step 1: requested -> dispatch_stopped (prevent any new task dispatch while parking)
+    cancelled_queued = _stop_project_dispatch_and_cancel_queued(project_id)
+
+    # Step 2: Authoritative cleanup inspection (never trusting caller True flag)
+    cleanup_report = inspect_authoritative_execution_cleanup(project_id, cache=ws_cache)
+    if active_process_cleanup_confirmed is False:
+        cleanup_report["cleanup_confirmed"] = False
+        cleanup_report["lifecycle_state"] = "cleanup_unknown"
+        cleanup_report["blockers"].append({
+            "type": "caller_reported_unconfirmed_process",
+            "detail": "Caller explicitly reported unconfirmed active process cleanup.",
+        })
+
+    if not cleanup_report["cleanup_confirmed"]:
+        honest_state = cleanup_report["lifecycle_state"]
+        with db_transaction() as c:
+            c.execute(
+                """UPDATE project_memory_state
+                   SET cleanup_lifecycle_state = ?,
+                       updated_at = ?
+                 WHERE project_id = ?""",
+                (honest_state, now, project_id),
+            )
+            c.execute(
+                """UPDATE project_task_contracts
+                   SET cleanup_lifecycle_state = ?,
+                       updated_at = ?
+                 WHERE project_id = ? AND status = 'running'""",
+                (honest_state, now, project_id),
+            )
+        blocker_summary = "; ".join(b["detail"] for b in cleanup_report["blockers"])
         raise ParkOrCancelCleanupError(
-            f"Cannot mark project '{project_id}' parked while active process cleanup is unconfirmed."
+            f"Cannot mark project '{project_id}' parked while active process cleanup is unconfirmed "
+            f"(lifecycle_state='{honest_state}', blockers=[{blocker_summary}])."
         )
 
-    ws_cache = cache or GLOBAL_WORKING_SET_CACHE
+    # Step 3: draining -> cleanup_confirmed
     run = get_run_for_project(project_id)
     context_manager.save_project_memory_state(
         project_id,
         run_id=run["id"] if run else None,
         current_cycle_phase="blocked",
-        next_action={"action": "resume_from_checkpoint", "status": "parked", "parked_by": actor, "reason": reason},
+        next_action={
+            "action": "resume_from_checkpoint",
+            "status": "parked",
+            "cleanup_lifecycle_state": "cleanup_confirmed",
+            "parked_by": actor,
+            "reason": reason,
+        },
     )
+    with db_transaction() as c:
+        c.execute(
+            """UPDATE project_memory_state
+               SET dispatch_stopped = 1,
+                   cleanup_lifecycle_state = 'cleanup_confirmed',
+                   updated_at = ?
+             WHERE project_id = ?""",
+            (now, project_id),
+        )
     ckpt = create_working_checkpoint(
         project_id,
         boundary_type="park",
         next_action={"action": "resume_from_checkpoint", "reason": reason},
-        delta_summary={"park_reason": reason, "actor": actor},
+        delta_summary={
+            "park_reason": reason,
+            "actor": actor,
+            "lifecycle_history": ["requested", "dispatch_stopped", "draining", "cleanup_confirmed"],
+            "cancelled_queued_tasks": cancelled_queued,
+        },
         created_by=actor,
     )
     evicted = ws_cache.evict_project(project_id, include_pinned=True)
     return {
         "ok": True,
         "status": "parked",
+        "cleanup_lifecycle_state": "cleanup_confirmed",
+        "lifecycle_history": ["requested", "dispatch_stopped", "draining", "cleanup_confirmed"],
+        "cleanup_confirmed": True,
+        "cleanup_report": cleanup_report,
         "project_id": project_id,
         "checkpoint": ckpt,
         "evicted_resident_cache_records": evicted,
@@ -1917,9 +3009,18 @@ def resume_project(
     - Reconciles any crash-interrupted artifact publications.
     - Detects whether requirement revisions or input artifacts changed since the park checkpoint.
     - Invalidates only the affected dependency closure while preserving completed verified work.
-    - Does not replay the entire conversation or restart completed tasks.
+    - Re-enables dispatch (`dispatch_stopped = 0`) and does not replay the entire conversation.
     """
     ws_cache = cache or GLOBAL_WORKING_SET_CACHE
+    with db_transaction() as c:
+        c.execute(
+            """UPDATE project_memory_state
+               SET dispatch_stopped = 0,
+                   cleanup_lifecycle_state = 'none',
+                   updated_at = ?
+             WHERE project_id = ?""",
+            (now_iso(), project_id),
+        )
     crash_rec = reconcile_crash_publication_journal(project_id)
     ledger = intake_mod.load_durable_requirement_ledger(project_id)
     contracts = list_task_contracts(project_id)
@@ -1999,33 +3100,73 @@ def cancel_task_or_project(
     task_key: Optional[str] = None,
     actor: str = "operator",
     reason: str = "User requested cancellation",
-    process_cleanup_confirmed: bool = True,
+    process_cleanup_confirmed: Optional[bool] = None,
 ) -> Dict[str, Any]:
-    """Cancel a specific task or the entire project, respecting process cleanup confirmation.
+    """Cancel a specific task or the entire project using authoritative cleanup confirmation.
 
-    Never marks a task or project cleanly `'cancelled'` while `process_cleanup_confirmed` is False.
+    Enforces explicit lifecycle: `requested -> dispatch_stopped -> draining -> cleanup_confirmed`
+    (with honest `cleanup_unknown` / `cleanup_failed` states when active work cannot be confirmed terminated).
+    Caller-supplied `process_cleanup_confirmed=True` is NEVER trusted as authority over active
+    tasks, outstanding leases, or unacknowledged expired leases.
     """
     now = now_iso()
-    if not process_cleanup_confirmed:
-        if task_key:
-            with db_transaction() as c:
+
+    # Step 1: requested -> dispatch_stopped
+    cancelled_queued = _stop_project_dispatch_and_cancel_queued(project_id, task_key=task_key)
+
+    # Step 2: Authoritative cleanup inspection
+    cleanup_report = inspect_authoritative_execution_cleanup(project_id, task_key=task_key)
+    if process_cleanup_confirmed is False:
+        cleanup_report["cleanup_confirmed"] = False
+        cleanup_report["lifecycle_state"] = "cleanup_unknown"
+        cleanup_report["blockers"].append({
+            "type": "caller_reported_unconfirmed_process",
+            "detail": "Caller explicitly reported unconfirmed active process cleanup.",
+        })
+
+    if not cleanup_report["cleanup_confirmed"]:
+        honest_state = cleanup_report["lifecycle_state"]
+        with db_transaction() as c:
+            if task_key:
                 c.execute(
                     """UPDATE project_task_contracts
                        SET status = 'cancel_pending_cleanup_unknown',
+                           cleanup_lifecycle_state = ?,
                            next_action = 'verify_process_cleanup',
                            updated_at = ?
                      WHERE project_id = ? AND task_key = ?""",
-                    (now, project_id, task_key),
+                    (honest_state, now, project_id, task_key),
                 )
+            else:
+                c.execute(
+                    """UPDATE project_memory_state
+                       SET cleanup_lifecycle_state = ?,
+                           updated_at = ?
+                     WHERE project_id = ?""",
+                    (honest_state, now, project_id),
+                )
+                c.execute(
+                    """UPDATE project_task_contracts
+                       SET status = 'cancel_pending_cleanup_unknown',
+                           cleanup_lifecycle_state = ?,
+                           next_action = 'verify_process_cleanup',
+                           updated_at = ?
+                     WHERE project_id = ? AND status = 'running'""",
+                    (honest_state, now, project_id),
+                )
+        blocker_summary = "; ".join(b["detail"] for b in cleanup_report["blockers"])
         raise ParkOrCancelCleanupError(
-            f"Cannot mark {'task ' + task_key if task_key else 'project ' + project_id} as cancelled while process cleanup is unconfirmed."
+            f"Cannot mark {'task ' + task_key if task_key else 'project ' + project_id} as cancelled "
+            f"while process cleanup is unconfirmed (lifecycle_state='{honest_state}', blockers=[{blocker_summary}])."
         )
 
+    # Step 3: draining -> cleanup_confirmed
     if task_key:
         with db_transaction() as c:
             c.execute(
                 """UPDATE project_task_contracts
                    SET status = 'cancelled',
+                       cleanup_lifecycle_state = 'cleanup_confirmed',
                        next_action = 'none',
                        updated_at = ?
                  WHERE project_id = ? AND task_key = ?""",
@@ -2036,7 +3177,10 @@ def cancel_task_or_project(
             "project_id": project_id,
             "task_key": task_key,
             "status": "cancelled",
+            "cleanup_lifecycle_state": "cleanup_confirmed",
+            "lifecycle_history": ["requested", "dispatch_stopped", "draining", "cleanup_confirmed"],
             "cleanup_confirmed": True,
+            "cleanup_report": cleanup_report,
         }
 
     run = get_run_for_project(project_id)
@@ -2049,16 +3193,33 @@ def cancel_task_or_project(
     )
     with db_transaction() as c:
         c.execute(
+            """UPDATE project_memory_state
+               SET dispatch_stopped = 1,
+                   cleanup_lifecycle_state = 'cleanup_confirmed',
+                   current_cycle_phase = 'cancelled',
+                   updated_at = ?
+             WHERE project_id = ?""",
+            (now, project_id),
+        )
+        c.execute(
             """UPDATE project_task_contracts
-               SET status = 'cancelled', next_action = 'none', updated_at = ?
-             WHERE project_id = ? AND status IN ('pending', 'ready', 'running', 'stale')""",
+               SET status = 'cancelled',
+                   cleanup_lifecycle_state = 'cleanup_confirmed',
+                   next_action = 'none',
+                   updated_at = ?
+             WHERE project_id = ? AND status IN ('pending', 'ready', 'running', 'stale', 'cancel_pending_cleanup_unknown', 'park_draining', 'cancel_draining')""",
             (now, project_id),
         )
     create_working_checkpoint(
         project_id,
         boundary_type="cancel",
         next_action={"action": "none", "reason": reason},
-        delta_summary={"cancelled_by": actor, "reason": reason},
+        delta_summary={
+            "cancelled_by": actor,
+            "reason": reason,
+            "lifecycle_history": ["requested", "dispatch_stopped", "draining", "cleanup_confirmed"],
+            "cancelled_queued_tasks": cancelled_queued,
+        },
         created_by=actor,
     )
     GLOBAL_WORKING_SET_CACHE.evict_project(project_id, include_pinned=True)
@@ -2066,7 +3227,10 @@ def cancel_task_or_project(
         "ok": True,
         "project_id": project_id,
         "status": "cancelled",
+        "cleanup_lifecycle_state": "cleanup_confirmed",
+        "lifecycle_history": ["requested", "dispatch_stopped", "draining", "cleanup_confirmed"],
         "cleanup_confirmed": True,
+        "cleanup_report": cleanup_report,
         "steering_result": steer_res,
     }
 

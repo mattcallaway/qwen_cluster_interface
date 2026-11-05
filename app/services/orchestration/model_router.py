@@ -105,6 +105,8 @@ def eligible_nodes(task: Dict[str, Any], nodes: List[Dict[str, Any]],
             why = "no active worker credential"
         elif require_fresh and n["health"] != "online":
             why = f"health={n['health']} (stale/unavailable)"
+        elif (n.get("restrictions") or {}).get("operational_hold", False):
+            why = "operational hold active on this node"
         elif typ in (n.get("restrictions") or {}).get("blocked_task_types", []):
             why = "task type restricted on this node"
         model = None
@@ -276,7 +278,8 @@ class WorkerOllamaProvider(InferenceProvider):
 
     def submit(self, *, run_id: Optional[str], orch_task_id: Optional[str], purpose: str, node_id: str,
                model: str, prompt: str, max_tokens: int = 200, timeout_seconds: int = 300,
-               project_ctx: Optional[Dict[str, Any]] = None, attempt_key: Optional[str] = None) -> str:
+               project_ctx: Optional[Dict[str, Any]] = None, attempt_key: Optional[str] = None,
+               project_id: Optional[str] = None, approval_required: bool = False) -> str:
         from app.services import tasks as T
         if len(prompt) > MAX_PROMPT_CHARS:
             prompt = prompt[:MAX_PROMPT_CHARS]
@@ -290,11 +293,14 @@ class WorkerOllamaProvider(InferenceProvider):
                               stage_id=project_ctx["stage_id"], purpose=project_ctx["purpose"],
                               expected_output=project_ctx["expected_output"],
                               completion_criteria=project_ctx["completion_criteria"])
-            if t["status"] == "awaiting_approval":
+            if t["status"] == "awaiting_approval" and not approval_required:
                 T.approve_task(t["id"])
         else:
             t = T.create_task(title=title, description=title, task_type="inference", assigned_worker=node_id,
-                              input_data=inp, idempotency_key=attempt_key)
+                              approval_required=approval_required, input_data=inp, idempotency_key=attempt_key)
+            if project_id:
+                with db_transaction() as c:
+                    c.execute("UPDATE tasks SET project_id = ?, purpose = ? WHERE id = ?", (project_id, purpose, t["id"]))
         rid = new_id("inf")
         with db_transaction() as c:
             c.execute("""INSERT INTO model_inference_requests (id, run_id, orch_task_id, purpose, node_id, model,
@@ -335,7 +341,7 @@ class WorkerOllamaProvider(InferenceProvider):
         now = now_dt()
         created = parse_ts(req["created_at"])
         updated = parse_ts(t.get("updated_at")) or created
-        if st == "running":
+        if st in ("running", "in_progress"):
             if updated and (now - updated).total_seconds() > timeout_seconds:
                 self.cancel(request_id)
                 return self._finish(req, "timeout", error_class="model_timeout", timeout_type="execution_timeout")

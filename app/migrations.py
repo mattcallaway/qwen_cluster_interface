@@ -2373,7 +2373,8 @@ _M21: List[str] = [
         attempts_used INTEGER NOT NULL DEFAULT 0,
         status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
             'pending', 'ready', 'running', 'completed', 'verified', 'partial',
-            'blocked', 'stale', 'cancelled', 'cancel_pending_cleanup_unknown', 'failed'
+            'blocked', 'stale', 'cancelled', 'cancel_pending_cleanup_unknown',
+            'park_draining', 'cancel_draining', 'failed'
         )),
         next_action TEXT NOT NULL DEFAULT '',
         partial_result_definition TEXT NOT NULL DEFAULT '',
@@ -2473,7 +2474,8 @@ _M21: List[str] = [
         artifact_id TEXT,
         artifact_version INTEGER,
         journal_state TEXT NOT NULL CHECK (journal_state IN (
-            'intent_logged', 'artifact_written', 'state_committed', 'reconciled_after_crash', 'rolled_back'
+            'intent_logged', 'artifact_written', 'state_committed', 'reconciled_after_crash', 'rolled_back',
+            'rejected_stale_revision', 'rejected_unverified'
         )),
         state_revision_before INTEGER NOT NULL DEFAULT 1,
         state_revision_after INTEGER,
@@ -2483,7 +2485,17 @@ _M21: List[str] = [
     """,
     "CREATE INDEX IF NOT EXISTS idx_proj_art_pub_journal_proj ON project_artifact_publication_journal(project_id, journal_state);",
     ]
-_unused_m21_marker: List[str] = [  #op
+_M22: List[str] = [
+    "ALTER TABLE project_memory_state ADD COLUMN dispatch_stopped INTEGER NOT NULL DEFAULT 0;",
+    "ALTER TABLE project_memory_state ADD COLUMN cleanup_lifecycle_state TEXT NOT NULL DEFAULT 'none';",
+    "ALTER TABLE project_task_contracts ADD COLUMN cleanup_lifecycle_state TEXT NOT NULL DEFAULT 'none';",
+    "ALTER TABLE project_task_contracts ADD COLUMN verification_receipt_json TEXT NOT NULL DEFAULT '{}';",
+    "ALTER TABLE project_artifact_publication_journal ADD COLUMN requirement_revision_before INTEGER NOT NULL DEFAULT 1;",
+    "ALTER TABLE project_artifact_publication_journal ADD COLUMN contract_revision_before INTEGER NOT NULL DEFAULT 1;",
+    "ALTER TABLE project_artifact_publication_journal ADD COLUMN bound_requirements_snapshot_json TEXT NOT NULL DEFAULT '{}';",
+    "ALTER TABLE project_artifact_publication_journal ADD COLUMN input_artifacts_snapshot_json TEXT NOT NULL DEFAULT '[]';",
+    "ALTER TABLE project_artifact_publication_journal ADD COLUMN verification_receipt_json TEXT NOT NULL DEFAULT '{}';",
+    "ALTER TABLE project_artifact_publication_journal ADD COLUMN lease_id TEXT;",
 ]
 
 MIGRATIONS: List[Migration] = [
@@ -2508,6 +2520,7 @@ MIGRATIONS: List[Migration] = [
     (19, "paged kv cache storage and pipeline cluster topology", _M19),
     (20, "deliberate task-solving loop, durable requirement ledger, and project memory", _M20),
     (21, "live operational working memory, task contracts, epistemic items, checkpoints, and publication journal", _M21),
+    (22, "authoritative cleanup lifecycle, verification receipts, and atomic publication fencing", _M22),
 ]
 
 

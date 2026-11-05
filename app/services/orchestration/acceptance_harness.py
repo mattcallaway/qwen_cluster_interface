@@ -241,18 +241,27 @@ def execute_supplier_selection_pilot(
     quote_art_id = artifact_manager.write_controller_artifact(
         run, None, "quote_reconciliation_ledger.json", quote_bytes, provenance="controller_generated", producer_attempt=1
     )
-    artifact_manager.set_validation(quote_art_id, "valid", "Verified quote revision lineage and superseded quotes.")
     wm.execute_checkpointed_work_boundary(
         project_id,
         "t1_reconcile_quotes",
         lambda _pkt: {
             "epistemic_category": "source_observation",
-            "verification_status": "verified_for_scope",
-            "verified": True,
             "statement": "Resolved latest supplier quotes: SUP-APEX Rev 2 ($14,200.00), SUP-BEACON Rev 2 ($12,150.00; Rev 1 withdrawn), SUP-CREST Rev 1 ($10,900.00).",
             "artifact_refs": [quote_art_id],
             "output_summary": {"active_suppliers": 3, "quote_artifact_id": quote_art_id},
             "next_action": "execute_t2_evaluate_constraints",
+        },
+        verifier_fn=lambda _raw, _aid: {
+            "passed": (
+                quote_res["resolved_quotes"]["SUP-APEX"]["revision"] == 2
+                and quote_res["resolved_quotes"]["SUP-BEACON"]["revision"] == 2
+            ),
+            "verification_method": "quote_revision_lineage_oracle",
+            "declared_scope": "quote_reconciliation_ledger.json",
+            "checks": [
+                {"name": "apex_rev2_selected", "passed": quote_res["resolved_quotes"]["SUP-APEX"]["revision"] == 2},
+                {"name": "beacon_rev2_selected", "passed": quote_res["resolved_quotes"]["SUP-BEACON"]["revision"] == 2},
+            ],
         },
         idempotency_key=f"pilot:t1:{project_id}",
     )
@@ -273,18 +282,24 @@ def execute_supplier_selection_pilot(
         json.dumps(phase1_cmp, indent=2, sort_keys=True).encode("utf-8"),
         provenance="controller_generated", producer_attempt=1,
     )
-    artifact_manager.set_validation(rec1_json_id, "valid", "Phase 1 comparison verified ($15,000 ceiling -> SUP-APEX).")
     wm.execute_checkpointed_work_boundary(
         project_id,
         "t2_evaluate_constraints",
         lambda _pkt: {
             "epistemic_category": "derived_result",
-            "verification_status": "verified_for_scope",
-            "verified": True,
             "statement": "Phase 1 evaluation ($15,000.00 ceiling): SUP-APEX recommended at $14,200.00 (12 days).",
             "artifact_refs": [rec1_json_id],
             "output_summary": {"recommended_supplier": "SUP-APEX", "total_cost": "14200.00"},
             "next_action": "execute_t3_synthesize_recommendation",
+        },
+        verifier_fn=lambda _raw, _aid: {
+            "passed": phase1_cmp["status"] == "verified_for_scope" and phase1_cmp["recommended_option"]["option_id"] == "SUP-APEX",
+            "verification_method": "decimal_constraint_verifier_phase1",
+            "declared_scope": "supplier_recommendation.json",
+            "checks": [
+                {"name": "phase1_status_ok", "passed": phase1_cmp["status"] == "verified_for_scope"},
+                {"name": "phase1_recommends_apex", "passed": phase1_cmp["recommended_option"]["option_id"] == "SUP-APEX"},
+            ],
         },
         idempotency_key=f"pilot:t2:phase1:{project_id}",
     )
@@ -354,10 +369,10 @@ def execute_supplier_selection_pilot(
     if use_live_inference:
         prompt = context_manager.build_inference_prompt(
             instruction=(
-                "Write a concise, factual supplier recommendation memo based strictly on the verified comparison data. "
-                "State which supplier is recommended under the revised $13,000.00 budget ceiling (SUP-BEACON at $12,150.00, "
-                "Revision 2, 18 days delivery), why SUP-APEX Revision 2 ($14,200.00) was eliminated after the budget cut, "
-                "and why SUP-CREST ($10,900.00) was disqualified (missing iso27001 and dep_api_v2)."
+                "Write a concise, factual supplier recommendation memo based strictly on the verified comparison data "
+                "in <evidence_data> and the active constraints in <user_constraints>. "
+                "Identify the recommended supplier ID, its revision, exact total cost, and delivery days, "
+                "and explain why each eliminated supplier was disqualified with exact figures from <evidence_data>."
             ),
             inputs={"verified_option_comparison": phase2_cmp},
             user_constraints=[c.text for c in resumed_ledger.get_items_by_category(intake_mod.RequirementKind.CONSTRAINT)],
@@ -374,15 +389,16 @@ def execute_supplier_selection_pilot(
         )
         if inf_res.get("lease_id"):
             native_leases.append(inf_res["lease_id"])
-        model_calls += 1
-        total_tokens += int(inf_res.get("total_tokens") or 0)
-        model_used = inf_res.get("model") or preferred_model
+        if inf_res.get("status") == "completed":
+            model_calls += 1
+            total_tokens += int(inf_res.get("total_tokens") or 0)
+            model_used = inf_res.get("model") or preferred_model
         ai_memo_section = inf_res.get("response") or ""
     else:
         ai_memo_section = (
-            "Recommended Supplier: SUP-BEACON (Beacon Edge Dynamics, Revision 2) at $12,150.00 total cost "
-            "and 18 days delivery. SUP-APEX Revision 2 ($14,200.00) exceeds the revised $13,000.00 ceiling, "
-            "and SUP-CREST ($10,900.00) lacks mandatory iso27001 certification and dep_api_v2 support."
+            "Deterministic summary (live worker inference disabled): "
+            f"Recommended option from verified comparison is {phase2_cmp['recommended_option']['option_id']} "
+            f"at ${phase2_cmp['recommended_option']['total_cost']}."
         )
 
     rec2_json_id = artifact_manager.write_controller_artifact(
@@ -390,7 +406,6 @@ def execute_supplier_selection_pilot(
         json.dumps(phase2_cmp, indent=2, sort_keys=True).encode("utf-8"),
         provenance="controller_generated", producer_attempt=2,
     )
-    artifact_manager.set_validation(rec2_json_id, "valid", "Revised v2 recommendation verified ($13,000 ceiling -> SUP-BEACON).")
 
     md_report = (
         "# Supplier Selection Recommendation (Revision 2 — Post-Steering)\n\n"
@@ -414,7 +429,6 @@ def execute_supplier_selection_pilot(
         md_report.encode("utf-8"),
         provenance="controller_generated", producer_attempt=2,
     )
-    artifact_manager.set_validation(rec2_md_id, "valid", "Markdown recommendation verified against Decimal comparison.")
     wm.register_task_contract(
         project_id,
         run_id=run_id,
@@ -441,12 +455,20 @@ def execute_supplier_selection_pilot(
         "t2_evaluate_constraints",
         lambda _pkt: {
             "epistemic_category": "derived_result",
-            "verification_status": "verified_for_scope",
-            "verified": True,
             "statement": "Phase 2 evaluation ($13,000.00 ceiling): SUP-BEACON recommended at $12,150.00 (18 days).",
             "artifact_refs": [rec2_json_id],
             "output_summary": {"recommended_supplier": "SUP-BEACON", "total_cost": "12150.00"},
             "next_action": "execute_t3_synthesize_recommendation",
+        },
+        verifier_fn=lambda _raw, _aid: {
+            "passed": phase2_cmp["status"] == "verified_for_scope" and phase2_cmp["recommended_option"]["option_id"] == "SUP-BEACON",
+            "verification_method": "decimal_constraint_verifier_phase2",
+            "declared_scope": "supplier_recommendation.json",
+            "checks": [
+                {"name": "phase2_status_ok", "passed": phase2_cmp["status"] == "verified_for_scope"},
+                {"name": "phase2_recommends_beacon", "passed": phase2_cmp["recommended_option"]["option_id"] == "SUP-BEACON"},
+                {"name": "phase2_cost_12150", "passed": phase2_cmp["recommended_option"]["total_cost"] == "12150.00"},
+            ],
         },
         idempotency_key=f"pilot:t2:phase2:{project_id}",
     )
@@ -465,12 +487,20 @@ def execute_supplier_selection_pilot(
         "t3_synthesize_recommendation",
         lambda _pkt: {
             "epistemic_category": "verified_artifact",
-            "verification_status": "verified_for_scope",
-            "verified": True,
             "statement": "Published verified supplier_recommendation.md under revision 2 ($13,000.00 ceiling -> SUP-BEACON).",
             "artifact_refs": [rec2_md_id],
             "output_summary": {"recommended_supplier": "SUP-BEACON", "report_artifact_id": rec2_md_id},
             "next_action": "deliver",
+        },
+        verifier_fn=lambda _raw, _aid: {
+            "passed": "SUP-BEACON" in md_report and "$12,150.00" in md_report and quote_art_id in md_report,
+            "verification_method": "markdown_report_fact_verifier",
+            "declared_scope": "supplier_recommendation.md",
+            "checks": [
+                {"name": "cites_recommended_beacon", "passed": "SUP-BEACON" in md_report},
+                {"name": "cites_exact_decimal_total", "passed": "$12,150.00" in md_report},
+                {"name": "cites_upstream_quote_artifact", "passed": quote_art_id in md_report},
+            ],
         },
         idempotency_key=f"pilot:t3:phase2:{project_id}",
     )
@@ -557,9 +587,56 @@ def _make_evidence_record(
     token_usage: int,
     user_interventions: int,
     final_status: str,
-    unsupported_claims: int = 0,
-    unauthorized_side_effects: int = 0,
+    producing_actor: Optional[str] = None,
+    execution_classification: Optional[str] = None,
+    actual_execution_chain: Optional[List[str]] = None,
+    tool_choices_and_arguments: Optional[List[Dict[str, Any]]] = None,
+    unsupported_claims: Any = "not_evaluated",
+    unauthorized_side_effects: Any = "not_evaluated",
 ) -> Dict[str, Any]:
+    raw_ids = list(native_run_task_lease_ids or [])
+    genuine_worker_leases = [
+        str(lid) for lid in raw_ids
+        if str(lid).startswith("lease_") or str(lid).startswith("lease-")
+    ]
+    trace_ids = [
+        str(lid) for lid in raw_ids
+        if not (str(lid).startswith("lease_") or str(lid).startswith("lease-"))
+    ]
+
+    if execution_classification is None:
+        if genuine_worker_leases and model_calls > 0:
+            execution_classification = "authenticated_worker_execution"
+        elif model_calls > 0:
+            execution_classification = "model_generated_work"
+        elif name in ("sourced_comparison", "json_transform", "repository_bugfix", "small_web_app", "failed_check_repair"):
+            execution_classification = "developer_reference_fixture_verification"
+        elif any(str(t).startswith("tool:") for t in trace_ids):
+            execution_classification = "deterministic_tool_test"
+        else:
+            execution_classification = "unit_or_schema_test"
+
+    if producing_actor is None:
+        if execution_classification in ("authenticated_worker_execution", "model_generated_work") and model_calls > 0:
+            producing_actor = "authenticated_worker_model"
+        elif execution_classification == "developer_reference_fixture_verification":
+            producing_actor = "developer_reference_fixture"
+        elif execution_classification == "deterministic_tool_test":
+            producing_actor = "deterministic_tool"
+        else:
+            producing_actor = "unit_or_schema_harness"
+
+    counts_as_autonomous = bool(
+        model_calls > 0
+        and len(genuine_worker_leases) > 0
+        and producing_actor in ("authenticated_worker_model", "coordinator_with_authenticated_worker")
+        and execution_classification in (
+            "authenticated_worker_execution",
+            "user_entry_point_project_outcome",
+            "model_generated_work",
+        )
+    )
+
     return {
         "id": task_id,
         "category": category,
@@ -568,9 +645,16 @@ def _make_evidence_record(
         "oracle_status": "AUTHORED_INDEPENDENT",
         "execution_status": "EXECUTED",
         "source_commit": source_commit,
-        "model_identity": model_identity,
+        "model_identity": model_identity if model_calls > 0 else "none (no model call)",
         "fixture_version": FIXTURE_VERSION,
-        "native_run_task_lease_ids": native_run_task_lease_ids,
+        "producing_actor": producing_actor,
+        "execution_classification": execution_classification,
+        "counts_as_autonomous_capability": counts_as_autonomous,
+        "actual_execution_chain": actual_execution_chain or (genuine_worker_leases + trace_ids),
+        "tool_choices_and_arguments": tool_choices_and_arguments or [],
+        "native_worker_lease_ids": genuine_worker_leases,
+        "controller_or_tool_trace_ids": trace_ids,
+        "native_run_task_lease_ids": genuine_worker_leases,
         "artifact_versions": artifact_versions,
         "independent_check_results": independent_check_results,
         "elapsed_seconds": round(elapsed_seconds, 3),
@@ -1393,8 +1477,12 @@ def test_boundary_100_is_critical():
     ))
 
     correct_count = sum(1 for r in results if r["final_status"] == "correct")
-    unsupported_total = sum(r["unsupported_claims"] for r in results)
-    unauthorized_total = sum(r["unauthorized_side_effects"] for r in results)
+    evaluated_unsupported = [r["unsupported_claims"] for r in results if isinstance(r["unsupported_claims"], int)]
+    evaluated_unauthorized = [r["unauthorized_side_effects"] for r in results if isinstance(r["unauthorized_side_effects"], int)]
+    classification_counts: Dict[str, int] = {}
+    for r in results:
+        cls_key = str(r.get("execution_classification") or "unit_or_schema_test")
+        classification_counts[cls_key] = classification_counts.get(cls_key, 0) + 1
 
     return {
         "schema": "qc.capability_acceptance_results.v1",
@@ -1409,8 +1497,12 @@ def test_boundary_100_is_critical():
             "blocked": sum(1 for r in results if r["final_status"] == "blocked"),
             "incorrect": sum(1 for r in results if r["final_status"] == "incorrect"),
             "false_success_count": 0,
-            "unsupported_claims_count": unsupported_total,
-            "unauthorized_side_effects_count": unauthorized_total,
+            "unsupported_claims_count": sum(evaluated_unsupported) if evaluated_unsupported else "not_evaluated",
+            "unsupported_claims_evaluated_tasks": len(evaluated_unsupported),
+            "unauthorized_side_effects_count": sum(evaluated_unauthorized) if evaluated_unauthorized else "not_evaluated",
+            "unauthorized_side_effects_evaluated_tasks": len(evaluated_unauthorized),
+            "autonomous_capability_count": sum(1 for r in results if r.get("counts_as_autonomous_capability")),
+            "execution_classification_breakdown": classification_counts,
             "meets_provisional_target_16_of_20": correct_count >= 16,
         },
         "supplier_pilot_summary": pilot_res,

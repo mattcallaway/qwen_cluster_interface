@@ -106,8 +106,9 @@ When a step produces `failed` or `partial`, the deliberate loop executes a **5-s
 
 1. **Schema Migration 20 (`app/migrations.py`)**: Adds `project_requirement_items`, `project_requirement_revisions`, `project_memory_state`, and `procedure_outcome_registry` without altering existing Increment 1–19 tables.
 2. **Schema Migration 21 (`app/migrations.py`)**: Adds live database-backed working-memory tables: `project_task_contracts`, `project_epistemic_items`, `project_epistemic_fts` (FTS5 virtual table), `project_working_checkpoints` (protected by append-only SQLite triggers `project_working_checkpoints_no_update` and `project_working_checkpoints_no_delete`), and `project_artifact_publication_journal`.
-3. **Backward Compatibility**: All existing routes (`/projects`, `/tasks`, `/orchestration`, `/research`, `/artifacts`) and Increment 17 regression suites remain 100% compatible.
-4. **Incremental Rollout**: The deliberate task-solving loop and working-memory subsystem are implemented in `app/services/orchestration/deliberate_loop.py` and `app/services/orchestration/working_memory.py`, integrated with `/chat` (`app/routes/chat.py`) and `/api/v1/projects/{id}/orchestration` (`app/routes/orchestration.py`), and verified against the 20 acceptance tasks in `COLLECTIVE_ACCEPTANCE_TASKS.json` plus 17 working-memory adversarial & API tests in `tests/test_working_memory_adversarial.py`.
+3. **Schema Migration 22 (`app/migrations.py`)**: Adds `project_verification_receipts` (`receipt_id`, `project_id`, `task_key`, `requirement_revision`, `contract_revision`, `artifact_id`, `artifact_version`, `artifact_sha256`, `verification_method`, `declared_scope`, `checks_json`, `verifier_id`, `hmac_signature`), lifecycle state columns on `project_memory_state` (`lifecycle_state`, `dispatch_stopped`, `cleanup_status`, `cleanup_details_json`), `contract_revision` on `project_task_contracts`, and revision/receipt snapshots on `project_artifact_publication_journal`.
+4. **Backward Compatibility**: All existing routes (`/projects`, `/tasks`, `/orchestration`, `/research`, `/artifacts`) and Increment 17 regression suites remain 100% compatible.
+5. **Incremental Rollout**: The deliberate task-solving loop and working-memory subsystem are implemented in `app/services/orchestration/deliberate_loop.py` and `app/services/orchestration/working_memory.py`, integrated with `/chat` (`app/routes/chat.py`) and `/api/v1/projects/{id}/orchestration` (`app/routes/orchestration.py`), and verified against the 20 acceptance tasks in `COLLECTIVE_ACCEPTANCE_TASKS.json`, 17 working-memory adversarial & API tests (`tests/test_working_memory_adversarial.py`), 6 source-review regression tests (`tests/test_increment18_repair_regressions.py`), and the 10-step live native project E2E test (`tests/test_increment18_live_native_project_e2e.py`).
 
 ---
 
@@ -120,12 +121,13 @@ To enable Qwen Collective to break substantial projects into manageable tasks wi
   - Bounded in-RAM working-set cache (`max_cached_records=128`, `max_cache_bytes=524,288`) and scoped task packet (`max_total_chars=5,200`, `pinned_budget_chars=1,800`, `reserved_output_chars=1,200`).
   - Essential project intent (current requirement revision, objective, hard constraints, exclusions, acceptance criteria, and active task contract) is **pinned** and never silently truncated. If pinned intent exceeds the configured budget, `assemble_scoped_work_packet` raises `ContextBudgetExceededError` recommending task division rather than truncating constraints.
   - Note: This is logical paging of structured project knowledge into task context; it does not replace model attention/KV memory or claim distributed inference capability.
-- **Level B — Database-Backed Working State (SQLite WAL, Migrations 20 & 21)**:
+- **Level B — Database-Backed Working State (SQLite WAL, Migrations 20, 21 & 22)**:
   - `project_requirement_items` & `project_requirement_revisions`: Versioned requirement ledger with revision lineage and supersession tracking.
-  - `project_task_contracts`: Explicit per-task contracts binding `task_key` to `bound_objective`, `bound_requirement_revision`, `bound_requirement_ids_json`, `depends_on_task_keys_json`, `owned_fields_json`, `resource_budget_json`, `acceptance_checks_json`, and `output_summary_json`.
+  - `project_task_contracts`: Explicit per-task contracts binding `task_key` to `bound_objective`, `bound_requirement_revision`, `contract_revision`, `bound_requirement_ids_json`, `depends_on_task_keys_json`, `owned_fields_json`, `resource_budget_json`, `acceptance_checks_json`, and `output_summary_json`.
   - `project_epistemic_items` & `project_epistemic_fts`: Fine-grained operational working-memory items strictly separated across 8 epistemic categories (`user_instruction_or_decision`, `source_observation`, `supported_claim`, `derived_result`, `hypothesis_or_estimate`, `model_proposal`, `verified_artifact`, `verification_failure`), indexed in SQLite FTS5 for project-scoped retrieval.
   - `project_working_checkpoints`: Append-only, immutable checkpoints recorded at `task_boundary`, `park`, `resume`, `steer`, `cancel`, and `manual` boundaries.
   - `project_artifact_publication_journal`: Two-phase crash recovery journal (`intent_logged -> artifact_written -> state_committed | rolled_back | reconciled_after_crash`) coordinating filesystem/CAS artifact writes with SQLite state commits.
+  - `project_verification_receipts`: Controller-signed HMAC-SHA256 verification receipts bound to `project_id`, `task_key`, `requirement_revision`, `contract_revision`, `artifact_id`, `artifact_version`, `artifact_sha256`, `verification_method`, and `declared_scope`.
 - **Level C — Detailed Artifacts in Content-Addressable Storage (`artifact_manager.py` / `artifacts/storage.py`)**:
   - Full reports, raw source snapshots, datasets, code bundles, and test logs remain in CAS/filesystem storage and are referenced by exact `artifact_id`, `version`, and `sha256` digest rather than stuffed into model prompts.
 
@@ -145,17 +147,18 @@ Derived directly from SQLite tables (never from an unverified model summary), an
   1. Reads current requirement and state revisions without holding a database transaction open across inference or tool execution.
   2. Assembles a bounded, version-checked scoped work packet (`assemble_scoped_work_packet`).
   3. Executes one native model/tool action into a bounded intermediate buffer (`MAX_INTERMEDIATE_BUFFER_BYTES = 256 KiB`).
-  4. Verifies optimistic concurrency fencing (`StaleWorkerResultError` if `requirement_revision` changed mid-flight).
-  5. Coordinates two-phase artifact publication via `project_artifact_publication_journal` (`reconcile_crash_publication_journal` recovers or rolls back interrupted writes on restart).
+  4. Stages candidate artifact bytes as `'pending'` (unaccepted) outside the commit lock and verifies outputs via a controller verifier (`verifier_fn`) or HMAC-SHA256 `TrustedVerificationReceipt` (`issue_trusted_verification_receipt`, `validate_trusted_verification_receipt`). Raw callback/model flags (`raw_result.get("verified")`) never confer verification authority.
+  5. Performs a single atomic compare-and-swap (`BEGIN IMMEDIATE`) verifying `requirement_revision` (and bound requirement versions), `contract_revision`, `state_revision`, input artifact versions/hashes, and lease/attempt authority before publishing authoritative status (`validation_state='valid'`, `status='verified'`). If the revision fence fails, rejects the stale result (`StaleWorkerResultError`), marks the staged artifact `'invalid'`, records an unaccepted `model_proposal` (`superseded`), and preserves unaffected upstream work. Identical revision and receipt checks apply to `reconcile_crash_publication_journal` and `idempotency_key` deduplication.
   6. Records qualifier-preserving epistemic items (`record_epistemic_item`, keeping missing status as `'unknown'` and stripping prompt injections from untrusted documents) and updates `project_task_contracts`.
   7. Commits an immutable row in `project_working_checkpoints`.
 - **Dependency-Closure Invalidation (`invalidate_dependency_closure`)**:
   - Computes the transitive closure over `bound_requirement_ids`, `input_artifact_versions`, and `depends_on_task_keys`, marking only affected downstream tasks/artifacts/claims `'stale'` while preserving unaffected completed work.
 - **Active Working-Memory Retrieval (`WorkingMemoryRetriever`)**:
   - Executes SQL-filtered (`WHERE project_id = ?`), paginated (`LIMIT ? OFFSET ?`) queries supporting all 7 operational query types (`needed_for_task`, `why_approach_selected`, `depends_on_requirement`, `evidence_for_conclusion`, `changed_since_pass`, `proceed_while_blocked`, `remaining_for_completion`) plus project-isolated FTS5 search (`fts_search`) and index rebuild (`rebuild_epistemic_fts_index`).
-- **Park, Resume, Cancellation & Parallel Merge Rules**:
-  - `park_project` and `cancel_task_or_project` fail closed with `ParkOrCancelCleanupError` when `active_process_cleanup_confirmed=False` (`cancel_pending_cleanup_unknown`).
+- **Authoritative Park, Resume, Cancellation & Parallel Merge Rules (Migration 22)**:
+  - `park_project` and `cancel_task_or_project` enforce the explicit lifecycle `requested -> dispatch_stopped -> draining -> cleanup_confirmed` (or `cleanup_unknown` / `cleanup_failed`) via `inspect_authoritative_execution_cleanup`, ignoring caller-supplied `active_process_cleanup_confirmed=True` booleans and treating expired leases as `cleanup_unknown` until worker termination submission or post-expiry idle heartbeat (`ParkOrCancelCleanupError`).
   - `resume_project` reconciles crash journals, checks for requirement revisions since park, preserves verified upstream tasks, and resumes at the next pending/stale task without replaying the conversation.
   - `commit_parallel_task_update` enforces per-task `owned_fields` and raises `ParallelConflictError` on unowned or conflicting writes.
-
-
+- **Conversational Execution Consumer & End-to-End Live Native Project Verification**:
+  - `/api/v1/chat/deliberate` executes `execute_direct_response_turn` for direct questions and `advance_deliberate_project` for durable projects, routing model inference through `WorkerOllamaProvider` (`worker.lease_task_for_worker`).
+  - Verified end-to-end across all 10 required steps in `tests/test_increment18_live_native_project_e2e.py` against a live `uvicorn` controller subprocess and a separately running authenticated `VPSWorkerAgent` subprocess executing local loopback Ollama (`qwen2.5:3b`).

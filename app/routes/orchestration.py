@@ -73,6 +73,7 @@ class Forbidden(Exception):
 
 
 async def _do(fn: Callable[[], Any]) -> JSONResponse:
+    from app.services.orchestration import working_memory as wm
     try:
         result = await run_in_threadpool(fn)
         return JSONResponse({"ok": True, "result": result}, status_code=200)
@@ -80,9 +81,9 @@ async def _do(fn: Callable[[], Any]) -> JSONResponse:
         return _err(403, str(e))
     except NotFound as e:
         return _err(404, str(e))
-    except (InvalidTransition, StaleState) as e:
+    except (InvalidTransition, StaleState, wm.ParkOrCancelCleanupError, wm.StaleWorkerResultError, wm.ParallelConflictError) as e:
         return _err(409, str(e))
-    except (OrchestrationError, ps.ValidationError) as e:
+    except (OrchestrationError, ps.ValidationError, wm.WorkingMemoryError) as e:
         return _err(400, str(e))
 
 
@@ -634,12 +635,32 @@ async def park_project_api(request: Request, project_id: str):
         return bad
     b = await _body(request)
     from app.services.orchestration import working_memory as wm
+    # Never trust caller-provided active_process_cleanup_confirmed=True as authority;
+    # park_project derives confirmation authoritatively from tasks, leases, futures, and processes.
     return await _do(
         lambda: wm.park_project(
             project_id,
             actor=user,
             reason=str(b.get("reason", "User requested park via API")),
-            active_process_cleanup_confirmed=bool(b.get("active_process_cleanup_confirmed", True)),
+            active_process_cleanup_confirmed=None,
+        )
+    )
+
+
+@router.post(API + "/cancel-working-memory")
+async def cancel_project_working_memory_api(request: Request, project_id: str):
+    user, bad = await _auth(request, True)
+    if bad:
+        return bad
+    b = await _body(request)
+    from app.services.orchestration import working_memory as wm
+    return await _do(
+        lambda: wm.cancel_task_or_project(
+            project_id,
+            task_key=b.get("task_key"),
+            actor=user,
+            reason=str(b.get("reason", "User requested cancel via API")),
+            process_cleanup_confirmed=None,
         )
     )
 

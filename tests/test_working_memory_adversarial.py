@@ -116,10 +116,14 @@ def test_adv01_requirement_changes_during_active_work_and_closure_invalidation(i
             pid, tkey,
             lambda _pkt, tk=tkey: {
                 "epistemic_category": "derived_result",
-                "verification_status": "verified_for_scope",
-                "verified": True,
                 "statement": f"Verified output for {tk}",
                 "output_summary": {"done": tk},
+            },
+            verifier_fn=lambda _raw, _art, tk=tkey: {
+                "passed": True,
+                "verification_method": "unit_test_contract_verifier",
+                "declared_scope": f"task:{tk}",
+                "checks": [{"name": "output_summary_present", "passed": True}],
             },
         )
 
@@ -271,8 +275,13 @@ def test_adv05_crash_recovery_before_and_after_artifact_publication(isolated_wm_
         wm.execute_checkpointed_work_boundary(
             pid, "t_crash_after_write",
             lambda _pkt: {
-                "verified": True,
                 "publish_artifact": {"filename": "recover.json", "content_bytes": b'{"recovered": true}'},
+            },
+            verifier_fn=lambda _raw, _art: {
+                "passed": True,
+                "verification_method": "crash_journal_verifier",
+                "declared_scope": "recover.json",
+                "checks": [{"name": "valid_json", "passed": True}],
             },
             idempotency_key="crash-write-1",
             simulate_crash_stage="after_artifact_before_checkpoint",
@@ -300,7 +309,13 @@ def test_adv06_repeated_park_and_resume_cycles_preserve_state_without_duplicatio
     # Execute step_1, then park & resume 3 times
     wm.execute_checkpointed_work_boundary(
         pid, "step_1",
-        lambda _pkt: {"verified": True, "verification_status": "verified_for_scope", "statement": "Step 1 done"},
+        lambda _pkt: {"statement": "Step 1 done"},
+        verifier_fn=lambda _raw, _art: {
+            "passed": True,
+            "verification_method": "step_1_verifier",
+            "declared_scope": "step_1.json",
+            "checks": [{"name": "step_1_done", "passed": True}],
+        },
     )
     for cycle in range(1, 4):
         p_out = wm.park_project(pid, actor="operator", reason=f"Park cycle {cycle}")
@@ -323,17 +338,21 @@ def test_adv07_cancellation_and_park_refused_when_process_cleanup_unknown(isolat
         purpose="Long subprocess", expected_output="sub.json", status="running",
     )
 
-    with pytest.raises(wm.ParkOrCancelCleanupError, match="cleanup is unconfirmed"):
-        wm.park_project(pid, active_process_cleanup_confirmed=False)
+    with pytest.raises(wm.ParkOrCancelCleanupError):
+        wm.park_project(pid)
 
-    with pytest.raises(wm.ParkOrCancelCleanupError, match="cleanup is unconfirmed"):
-        wm.cancel_task_or_project(pid, task_key="t_Subproc", process_cleanup_confirmed=False)
+    with pytest.raises(wm.ParkOrCancelCleanupError):
+        wm.cancel_task_or_project(pid, task_key="t_Subproc")
 
     tc_unconfirmed = wm.get_task_contract(pid, "t_Subproc")
     assert tc_unconfirmed["status"] == "cancel_pending_cleanup_unknown"
 
-    # Once cleanup is confirmed, cancellation completes cleanly
-    c_ok = wm.cancel_task_or_project(pid, task_key="t_Subproc", process_cleanup_confirmed=True)
+    # Once active process terminates and contract is no longer running with unconfirmed process, cancellation completes cleanly
+    wm.register_task_contract(
+        pid, run_id=rid, task_key="t_Subproc",
+        purpose="Long subprocess", expected_output="sub.json", status="ready",
+    )
+    c_ok = wm.cancel_task_or_project(pid, task_key="t_Subproc")
     assert c_ok["status"] == "cancelled"
     assert wm.get_task_contract(pid, "t_Subproc")["status"] == "cancelled"
 
@@ -365,11 +384,23 @@ def test_adv08_missing_corrupted_outdated_and_contradictory_evidence(isolated_wm
     )
     wm.execute_checkpointed_work_boundary(
         pid, "task_a",
-        lambda _pkt: {"verified": True, "verification_status": "verified_for_scope", "output_summary": {"selected_vendor": "SUP-APEX"}},
+        lambda _pkt: {"output_summary": {"selected_vendor": "SUP-APEX"}},
+        verifier_fn=lambda _raw, _art: {
+            "passed": True,
+            "verification_method": "task_a_verifier",
+            "declared_scope": "a.json",
+            "checks": [{"name": "vendor_present", "passed": True}],
+        },
     )
     wm.execute_checkpointed_work_boundary(
         pid, "task_b",
-        lambda _pkt: {"verified": True, "verification_status": "verified_for_scope", "output_summary": {"selected_vendor": "SUP-BEACON"}},
+        lambda _pkt: {"output_summary": {"selected_vendor": "SUP-BEACON"}},
+        verifier_fn=lambda _raw, _art: {
+            "passed": True,
+            "verification_method": "task_b_verifier",
+            "declared_scope": "b.json",
+            "checks": [{"name": "vendor_present", "passed": True}],
+        },
     )
 
     integ = wm.verify_project_task_integration(pid)

@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Tuple
@@ -12,6 +13,7 @@ from app.services.infrastructure import build_architecture_context_packet
 from app.services import projects as proj_svc
 from app.services import deliverables as deliv_svc
 
+logger = logging.getLogger("qwen_collective.routes.chat")
 router = APIRouter(tags=["chat"])
 templates = Jinja2Templates(directory="app/templates")
 
@@ -512,15 +514,109 @@ async def chat_deliberate_api(request: Request):
     project_id = body.get("project_id")
     intake_override = body.get("intake")
     action = str(body.get("action") or "auto")
+    should_advance = bool(body.get("advance", False) or action == "advance")
+    use_live_worker = bool(body.get("use_live_worker", False))
+    actor_name = user if isinstance(user, str) else user["username"]
 
-    from app.services.orchestration import deliberate_loop, intake as intake_mod, engine, context_manager
+    from starlette.concurrency import run_in_threadpool
+    from app.services.orchestration import (
+        context_manager,
+        deliberate_loop,
+        engine,
+        intake as intake_mod,
+        working_memory as wm,
+    )
 
-    if action in ("steer", "cancel", "clarify") and project_id:
+    if action == "park" and project_id:
+        try:
+            park_res = await run_in_threadpool(
+                wm.park_project,
+                project_id,
+                actor=actor_name,
+                reason=message or "User requested project park via chat",
+                active_process_cleanup_confirmed=None,
+            )
+            return {
+                "ok": True,
+                "mode": "durable_project",
+                "action": "park",
+                "park_result": park_res,
+                "project_status": deliberate_loop.build_coherent_user_status(project_id),
+            }
+        except wm.ParkOrCancelCleanupError as exc:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=status.HTTP_409_CONFLICT,
+                content={
+                    "ok": False,
+                    "mode": "durable_project",
+                    "action": "park",
+                    "error": "cleanup_unconfirmed",
+                    "detail": str(exc),
+                    "project_status": deliberate_loop.build_coherent_user_status(project_id),
+                },
+            )
+
+    if action == "cancel" and project_id:
+        try:
+            cancel_res = await run_in_threadpool(
+                wm.cancel_task_or_project,
+                project_id,
+                task_key=body.get("task_key"),
+                actor=actor_name,
+                reason=message or "User requested cancellation via chat",
+                process_cleanup_confirmed=None,
+            )
+            return {
+                "ok": True,
+                "mode": "durable_project",
+                "action": "cancel",
+                "cancel_result": cancel_res,
+                "project_status": deliberate_loop.build_coherent_user_status(project_id),
+            }
+        except wm.ParkOrCancelCleanupError as exc:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=status.HTTP_409_CONFLICT,
+                content={
+                    "ok": False,
+                    "mode": "durable_project",
+                    "action": "cancel",
+                    "error": "cleanup_unconfirmed",
+                    "detail": str(exc),
+                    "project_status": deliberate_loop.build_coherent_user_status(project_id),
+                },
+            )
+
+    if action == "resume" and project_id:
+        res_out = await run_in_threadpool(wm.resume_project, project_id, actor=actor_name)
+        adv_out = None
+        if should_advance:
+            adv_out = await run_in_threadpool(
+                deliberate_loop.advance_deliberate_project,
+                project_id,
+                max_steps=int(body.get("max_steps", 5)),
+                use_live_worker=use_live_worker,
+                preferred_model=str(body.get("preferred_model") or "qwen2.5:3b"),
+                quotes_data=body.get("quotes"),
+                simulate_first_attempt_defect=bool(body.get("simulate_first_attempt_defect", False)),
+            )
+        return {
+            "ok": True,
+            "mode": "durable_project",
+            "action": "resume",
+            "resume_result": res_out,
+            "advance_result": adv_out,
+            "project_status": deliberate_loop.build_coherent_user_status(project_id),
+        }
+
+    if action in ("steer", "clarify") and project_id:
         run = engine.get_run_for_project(project_id)
-        steer_res = intake_mod.apply_user_steering_update(
+        steer_res = await run_in_threadpool(
+            intake_mod.apply_user_steering_update,
             project_id,
             run_id=run["id"] if run else None,
-            actor=user if isinstance(user, str) else user["username"],
+            actor=actor_name,
             action=action,
             updated_constraints=body.get("updated_constraints"),
             replaced_req_codes=body.get("replaced_req_codes"),
@@ -528,16 +624,60 @@ async def chat_deliberate_api(request: Request):
             resolved_gaps=body.get("resolved_gaps"),
             reason=message or "Conversational steering update",
         )
+        changed_reqs = list((body.get("replaced_req_codes") or {}).keys()) + list(steer_res.get("updated_req_ids") or [])
+        closure_res = await run_in_threadpool(
+            wm.invalidate_dependency_closure,
+            project_id,
+            changed_requirement_ids=changed_reqs,
+            reason=message or "Conversational steering update",
+        )
+        adv_out = None
+        if should_advance:
+            adv_out = await run_in_threadpool(
+                deliberate_loop.advance_deliberate_project,
+                project_id,
+                max_steps=int(body.get("max_steps", 5)),
+                use_live_worker=use_live_worker,
+                preferred_model=str(body.get("preferred_model") or "qwen2.5:3b"),
+                quotes_data=body.get("quotes"),
+                simulate_first_attempt_defect=bool(body.get("simulate_first_attempt_defect", False)),
+            )
         return {
             "ok": True,
             "mode": "durable_project",
             "action": action,
             "steering_result": steer_res,
+            "closure_invalidation": closure_res,
+            "advance_result": adv_out,
+            "project_status": deliberate_loop.build_coherent_user_status(project_id),
+        }
+
+    if action == "advance" and project_id:
+        adv_out = await run_in_threadpool(
+            deliberate_loop.advance_deliberate_project,
+            project_id,
+            max_steps=int(body.get("max_steps", 5)),
+            use_live_worker=use_live_worker,
+            preferred_model=str(body.get("preferred_model") or "qwen2.5:3b"),
+            quotes_data=body.get("quotes"),
+            simulate_first_attempt_defect=bool(body.get("simulate_first_attempt_defect", False)),
+        )
+        return {
+            "ok": True,
+            "mode": "durable_project",
+            "action": "advance",
+            "project_id": project_id,
+            "advance_result": adv_out,
             "project_status": deliberate_loop.build_coherent_user_status(project_id),
         }
 
     mode_info = deliberate_loop.classify_request_mode(message, explicit_intake=intake_override)
     if mode_info["mode"] == "direct_response" and not project_id:
+        direct_out = await run_in_threadpool(
+            deliberate_loop.execute_direct_response_turn,
+            message,
+            preferred_model=body.get("preferred_model"),
+        )
         return {
             "ok": True,
             "mode": "direct_response",
@@ -545,16 +685,35 @@ async def chat_deliberate_api(request: Request):
             "created_project": False,
             "created_artifacts": [],
             "message": message,
+            "response": direct_out["response"],
+            "producing_actor": direct_out["producing_actor"],
+            "verification_status": direct_out["verification_status"],
+            "lease_id": direct_out.get("lease_id"),
+            "model": direct_out.get("model"),
         }
 
     # Durable project mode
-    actor_name = user if isinstance(user, str) else user["username"]
+    quotes_from_intake = None
+    if isinstance(intake_override, dict) and isinstance(intake_override.get("quotes"), list):
+        quotes_from_intake = intake_override["quotes"]
+    elif isinstance(body.get("quotes"), list):
+        quotes_from_intake = body["quotes"]
+
     if not project_id:
-        intake_payload = intake_override or {"objective": message}
+        intake_payload = dict(intake_override or {"objective": message})
+        if isinstance(intake_payload.get("constraints"), list):
+            intake_for_engine = {**intake_payload, "constraints": "\n".join(str(x) for x in intake_payload["constraints"])}
+        else:
+            intake_for_engine = dict(intake_payload)
+        if isinstance(intake_payload.get("deliverables"), list):
+            intake_for_engine["deliverables"] = "\n".join(str(x) for x in intake_payload["deliverables"])
+        if isinstance(intake_payload.get("success_criteria"), list):
+            intake_for_engine["success_criteria"] = "\n".join(str(x) for x in intake_payload["success_criteria"])
+
         created = engine.create_project_with_run(
             name=message[:48] or "Deliberate Assignment",
             actor=actor_name,
-            intake=intake_payload,
+            intake=intake_for_engine,
             autonomy_level=2,
         )
         project_id = created["project"]["id"]
@@ -573,11 +732,36 @@ async def chat_deliberate_api(request: Request):
             contradictions=conflict_info["conflicts"],
             next_action={"action": "await_clarification" if phase == "clarify" else "execute_plan"},
         )
+        if phase != "clarify":
+            deliberate_loop.ensure_deliberate_task_contracts(project_id, run_id=run_id)
+        if quotes_from_intake:
+            wm.record_epistemic_item(
+                project_id,
+                epistemic_category="source_observation",
+                statement=f"Attached {len(quotes_from_intake)} supplier quote records at intake.",
+                verification_status="observed",
+                run_id=run_id,
+                qualifiers={"raw_quotes": quotes_from_intake},
+                idempotency_key=f"intake:raw_quotes:{project_id}",
+            )
+
+    adv_out = None
+    if should_advance:
+        adv_out = await run_in_threadpool(
+            deliberate_loop.advance_deliberate_project,
+            project_id,
+            max_steps=int(body.get("max_steps", 5)),
+            use_live_worker=use_live_worker,
+            preferred_model=str(body.get("preferred_model") or "qwen2.5:3b"),
+            quotes_data=quotes_from_intake,
+            simulate_first_attempt_defect=bool(body.get("simulate_first_attempt_defect", False)),
+        )
 
     return {
         "ok": True,
         "mode": "durable_project",
         "reason": mode_info["reason"],
         "project_id": project_id,
+        "advance_result": adv_out,
         "project_status": deliberate_loop.build_coherent_user_status(project_id),
     }
